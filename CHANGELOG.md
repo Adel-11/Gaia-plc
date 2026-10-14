@@ -9,3 +9,4 @@
 - Single Dockerfile and documented Coolify deployment with persistent `/data` storage.
 - Automated reference generation, workbook round-trip and API checks.
 - Disabled equipment is excluded from both generated files and retained in workbook backup metadata.
+- Added a standard-library Python container health probe for Coolify deployments.

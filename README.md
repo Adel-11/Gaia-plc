@@ -47,7 +47,7 @@ Generation tests use the supplied real IO List and FUXA exports. Test tags `TEST
 3. Set the container port to **8000** (or set `PORT` and the matching Coolify port). Keep the existing FUXA resource and port untouched.
 4. Add persistent storage mounted at **`/data`**, writable by container UID **10001**. This contains `app.db`, imported files and generated exports. Back up the volume separately.
 5. Set `ADMIN_USERNAME`, a unique `ADMIN_PASSWORD` (12+ characters), a random `SECRET_KEY` (32+ characters), `DATA_DIR=/data`, `PORT=8000`, `COOKIE_SECURE=true`. Set `FORWARDED_ALLOW_IPS` to the trusted Coolify proxy address/network (or `*` only when the container is reachable exclusively through the isolated proxy network).
-6. Configure `GET /api/health` as the health check and the chosen domain, such as `iogen.gaiarefinery.ca`. HTTPS is terminated by the existing proxy/tunnel; the application serves HTTP internally.
+6. The Dockerfile includes a Python health probe for `GET /api/health`; Coolify detects it automatically. Configure the chosen domain, such as `plc-generator.gaiarefinery.ca`. HTTPS is terminated by the existing proxy/tunnel; the application serves HTTP internally.
 7. Enable automatic deployment on pushes to `main` using the GitHub integration/webhook. Deploy and verify login, imports and both downloads through the public HTTPS domain.
 
 Do not use local Docker builds, image registries, compose, GitHub Actions or SSH deployment scripts. No ARM-specific configuration is required.
