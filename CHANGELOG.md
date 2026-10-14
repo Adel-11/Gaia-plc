@@ -10,3 +10,4 @@
 - Automated reference generation, workbook round-trip and API checks.
 - Disabled equipment is excluded from both generated files and retained in workbook backup metadata.
 - Added a standard-library Python container health probe for Coolify deployments.
+- Configured production Coolify deployment, Cloudflare hostname and persistent volume; verified login and downloaded exports on the Raspberry Pi.
