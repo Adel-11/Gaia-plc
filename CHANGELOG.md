@@ -8,3 +8,4 @@
 - SQLite persistence, Alembic migrations, project JSON backups and generation history.
 - Single Dockerfile and documented Coolify deployment with persistent `/data` storage.
 - Automated reference generation, workbook round-trip and API checks.
+- Disabled equipment is excluded from both generated files and retained in workbook backup metadata.

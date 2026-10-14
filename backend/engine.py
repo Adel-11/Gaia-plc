@@ -185,7 +185,7 @@ def import_excel(data: bytes, state: dict) -> dict:
                         words = 2 if row_num < ws.max_row and ws.cell(row_num + 1, 1).value == row[0] and str(ws.cell(row_num + 1, 2).value or "").endswith(" (2nd register)") else 1
                         result.setdefault("points", []).append({"id": _id(), "equipment_id": equipment.get("id", "") if equipment else "", "plc_variable": row[0], "scada_name": row[1], "table": table, "address": address, "locked": False, "codesys_type": row[8] or "", "fuxa_type": result.get("settings", {}).get("type_map", FUXA_TYPES).get(str(row[8] or "").upper(), ""), "fuxa_type_override": False, "words": words, "divisor": 1, "scale": row[9] or "1", "unit": row[10] or "", "direction": row[6] or "", "target": row[7] or "FUXA", "hmi_address": row[5] or "", "daq_enabled": False, "daq_interval": 60, "fuxa_id": _fresh_tag_id(), "comment": ""})
                         seen.add((table, address, row[0]))
-            result["points"] = [p for p in result.get("points", []) if (p.get("table"), int(p.get("address") or -1), p.get("plc_variable")) in seen]
+            result["points"] = [p for p in result.get("points", []) if not _is_active(result, p) or (p.get("table"), int(p.get("address") or -1), p.get("plc_variable")) in seen]
             # Keep catalogue-only metadata while applying edits made to visible equipment register sheets.
             for typ in result.get("equipment_types", []):
                 for table in TABLES:
@@ -508,7 +508,7 @@ def _sheets_and_rows(state: dict):
     scada: dict[str, list[list[Any]]] = {t: [] for t in TABLES}
     for p in state.get("points", []):
         table = p.get("table")
-        if table not in scada or not p.get("address"):
+        if table not in scada or not p.get("address") or not _is_active(state, p):
             continue
         address, words = int(p["address"]), max(1, int(p.get("words") or 1))
         table_label = {"coils": "Coil", "discrete_inputs": "Discrete Input", "input_registers": "Input Register", "holding_registers": "Holding Register"}[table]

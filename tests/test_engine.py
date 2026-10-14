@@ -143,3 +143,23 @@ def test_fuxa_device_settings_import_and_excel_navigation_catalog_edits():
     adm = next(item for item in updated["equipment_types"] if item["code"] == "ADM100W")
     assert adm["registers"][0]["label"] == "Edited meter register"
 
+
+def test_inactive_equipment_is_excluded_from_exports_but_preserved_in_backup_metadata():
+    import io
+    from backend.engine import empty_state
+    state = seed_state()
+    equipment = next(e for e in state['equipment'] if e['tag'] == 'DOSENSOR_1')
+    equipment['active'] = False
+    disabled = [p for p in state['points'] if p['equipment_id'] == equipment['id']]
+    csv = export_fuxa(state).decode('utf-8')
+    for point in disabled:
+        assert ',' + point['fuxa_id'] + ',' not in csv
+    data = export_excel(state)
+    workbook = openpyxl.load_workbook(io.BytesIO(data))
+    variables = {p['plc_variable'] for p in disabled}
+    for sheet in workbook:
+        if sheet.title.startswith('SCADA-'):
+            assert not variables.intersection(row[0] for row in sheet.iter_rows(min_row=2, values_only=True))
+    restored = import_excel(data, empty_state())
+    assert any(e['id'] == equipment['id'] and e['active'] is False for e in restored['equipment'])
+    assert {p['id'] for p in disabled}.issubset({p['id'] for p in restored['points']})
