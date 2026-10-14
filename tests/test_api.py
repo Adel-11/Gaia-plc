@@ -150,6 +150,101 @@ def test_real_catalog_add_creates_valid_points_for_each_type(tmp_path, monkeypat
             assert all(equipment["tag"] in p["plc_variable"] or equipment["tag"] in p["scada_name"] for p in points), code
 
 
+def test_equipment_preview_confirm_is_reviewed_owned_and_releases_addresses(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "correct-horse-battery-42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    application = create_app(data_dir=tmp_path, secret_key="s" * 48, seed=True, cookie_secure=False)
+    with TestClient(application) as client:
+        csrf_token = login(client)
+        headers = {"X-CSRF-Token": csrf_token}
+        state = client.get("/api/state").json()
+        typ = next(t for t in state["equipment_types"] if t.get("point_templates"))
+        before = json.dumps(state, sort_keys=True)
+
+        preview = client.post("/api/equipment/preview", json={"type_id": typ["id"], "tag": "REVIEWED_1"}, headers=headers)
+        assert preview.status_code == 200, preview.text
+        draft = preview.json()
+        assert draft["token"] and draft["points"]
+        assert set(draft["free_addresses"]) == {"coils", "discrete_inputs", "input_registers", "holding_registers"}
+        assert json.dumps(client.get("/api/state").json(), sort_keys=True) == before
+
+        candidate = draft["points"][0]
+        table = candidate["table"]
+        picked = draft["free_addresses"][table][12]
+        candidate["address"] = picked
+        confirmed = client.post("/api/equipment/confirm", json={"token": draft["token"], "points": [candidate]}, headers=headers)
+        assert confirmed.status_code == 200, confirmed.text
+        assert len(confirmed.json()["points"]) == 1
+        assert confirmed.json()["points"][0]["address"] == picked
+        assert client.post("/api/equipment/confirm", json={"token": draft["token"], "points": [candidate]}, headers=headers).status_code == 404
+
+        # A full-width collision with an existing point is rejected without saving the instance.
+        state = client.get("/api/state").json()
+        collision = next((p for p in state["points"] if p.get("address") and p.get("table") == table), None)
+        if collision:
+            rejected_preview = client.post("/api/equipment/preview", json={"type_id": typ["id"], "tag": "REVIEWED_2"}, headers=headers).json()
+            rejected_point = rejected_preview["points"][0]
+            rejected_point["table"] = collision["table"]
+            rejected_point["address"] = collision["address"]
+            pre_reject = json.dumps(client.get("/api/state").json(), sort_keys=True)
+            rejected = client.post("/api/equipment/confirm", json={"token": rejected_preview["token"], "points": [rejected_point]}, headers=headers)
+            assert rejected.status_code == 422
+            assert json.dumps(client.get("/api/state").json(), sort_keys=True) == pre_reject
+
+        stale_preview = client.post("/api/equipment/preview", json={"type_id": typ["id"], "tag": "REVIEWED_3"}, headers=headers).json()
+        changed = client.get("/api/state").json()
+        changed["settings"]["version"] = "changed"
+        assert client.put("/api/state", json=changed, headers=headers).status_code == 200
+        stale = client.post("/api/equipment/confirm", json={"token": stale_preview["token"], "points": []}, headers=headers)
+        assert stale.status_code == 409
+
+        # Deleting the confirmed instance releases its address for the next preview.
+        assert client.delete(f"/api/equipment/{confirmed.json()['equipment']['id']}", headers=headers).status_code == 200
+        next_preview = client.post("/api/equipment/preview", json={"type_id": typ["id"], "tag": "REVIEWED_4"}, headers=headers).json()
+        next_point = next(p for p in next_preview["points"] if p["table"] == table)
+        next_point["address"] = picked
+        reused = client.post("/api/equipment/confirm", json={"token": next_preview["token"], "points": [next_point]}, headers=headers)
+        assert reused.status_code == 200, reused.text
+
+
+def test_equipment_categories_use_distinct_namespaces_and_import_route_rejects_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "correct-horse-battery-42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    application = create_app(data_dir=tmp_path, secret_key="s" * 48, seed=True, cookie_secure=False)
+    with TestClient(application) as client:
+        csrf_token = login(client)
+        headers = {"X-CSRF-Token": csrf_token}
+        state = client.get("/api/state").json()
+        typ = next(t for t in state["equipment_types"] if t.get("point_templates"))
+        typ["point_templates"] = [
+            {"variable_category": "SCADA", "suffix": "Pressure", "scada_name": "{instance} Pressure", "table": "coils", "codesys_type": "BOOL", "fuxa_type": "Bool", "words": 1, "direction": "Plc To SCADA", "target": "FUXA"},
+            {"variable_category": "IO", "suffix": "InputOk", "scada_name": "{instance} Input OK", "table": "discrete_inputs", "codesys_type": "BOOL", "fuxa_type": "Bool", "words": 1, "direction": "Plc To SCADA", "target": "FUXA", "io_address": "%IX0.0"},
+            {"variable_category": "COM", "suffix": "Flow", "scada_name": "{instance} Flow", "table": "input_registers", "codesys_type": "DINT", "fuxa_type": "Int32", "words": 1, "direction": "Plc To SCADA", "target": "FUXA", "source_address": "40001", "source_table": "holding_registers"},
+        ]
+        changed = client.put("/api/state", json=state, headers=headers)
+        assert changed.status_code == 200, changed.text
+
+        preview = client.post("/api/equipment/preview", json={"type_id": typ["id"], "tag": "CATTEST_1"}, headers=headers)
+        assert preview.status_code == 200, preview.text
+        draft = preview.json()
+        # Equipment preview credentials cannot be replayed through the import-apply endpoint.
+        assert client.post("/api/imports/apply", json={"token": draft["token"]}, headers=headers).status_code == 404
+        by_category = {p["variable_category"]: p for p in draft["points"]}
+        assert by_category["SCADA"]["plc_variable"] == "GVL_SCADA.SCADA_CATTEST_1.Pressure"
+        assert by_category["IO"]["plc_variable"] == "GVL_IO.IO_CATTEST_1.InputOk"
+        assert by_category["COM"]["plc_variable"] == "GVL_COM.COM_CATTEST_1.Flow"
+        confirmed = client.post("/api/equipment/confirm", json={"token": draft["token"], "points": draft["points"]}, headers=headers)
+        assert confirmed.status_code == 200, confirmed.text
+        exported = client.get("/api/exports/fuxa")
+        assert exported.status_code == 200
+        csv = exported.content.decode("utf-8")
+        assert "CATTEST_1 Pressure" in csv
+        assert "CATTEST_1 Input OK" not in csv
+        assert "CATTEST_1 Flow" not in csv
+
+
 def test_first_start_requires_explicit_admin_credentials(tmp_path, monkeypatch):
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)

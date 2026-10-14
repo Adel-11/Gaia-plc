@@ -22,6 +22,9 @@ REFERENCE_CSV = DOCS / "02_fuxa_reference" / "SCADA_V1-devices_1_export_original
 EXPECTED_CSV = DOCS / "02_fuxa_reference" / "SCADA_V1-devices_complet_attendu.csv"
 
 TABLES = ["coils", "discrete_inputs", "input_registers", "holding_registers"]
+VARIABLE_CATEGORIES = {"SCADA", "IO", "COM"}
+TYPE_WORDS = {"BOOL": 1, "WORD": 1, "UINT": 1, "INT": 1, "BYTE": 1,
+              "USINT": 1, "SINT": 1, "REAL": 2, "DWORD": 2, "UDINT": 2, "DINT": 2}
 SCADA_SHEETS = {
     "SCADA-Coils": "coils", "SCADA-Discrete Inputs": "discrete_inputs",
     "SCADA-Input Registers": "input_registers", "SCADA-Holding Registers": "holding_registers",
@@ -110,8 +113,9 @@ def _excel_points(wb) -> tuple[list[dict], list[dict], list[dict]]:
             if table == "discrete_inputs":
                 address -= 10000
             plcvar = str(variable)
-            match = re.search(r"SCADA_([A-Z0-9]+_\d+)\.", plcvar)
+            match = re.search(r"(?:SCADA|IO|COM)_([A-Za-z0-9_]+_\d+)\.", plcvar)
             tag = match.group(1) if match else "DOSENSOR_1"
+            category = "IO" if plcvar.startswith("GVL_IO.") else "COM" if plcvar.startswith("GVL_COM.") else "SCADA"
             code = re.sub(r"_\d+$", "", tag)
             if code not in types_by_code:
                 types_by_code[code] = _type_from_sheet(code + "-Input Registers", table)
@@ -127,7 +131,9 @@ def _excel_points(wb) -> tuple[list[dict], list[dict], list[dict]]:
                 continue
             target = row[7] or "FUXA"
             points.append({"id": _id(), "equipment_id": eq_by_tag[tag]["id"], "plc_variable": plcvar, "scada_name": base_name, "table": table, "address": address, "locked": False, "codesys_type": data_type, "fuxa_type": FUXA_TYPES.get(data_type.upper(), ""), "words": 2 if pair else 1, "divisor": 1, "scale": row[9] or "1", "unit": row[10] or "", "direction": row[6] or "Plc To SCADA", "target": target, "hmi_address": row[5] or "", "daq_enabled": False, "daq_interval": 60, "fuxa_id": _fresh_tag_id(), "comment": ""})
+            points[-1]["variable_category"] = category
             types_by_code[code]["point_templates"].append({k: points[-1].get(k) for k in ("plc_variable", "scada_name", "table", "codesys_type", "fuxa_type", "words", "divisor", "scale", "unit", "direction", "target", "hmi_address", "daq_enabled", "daq_interval", "comment")})
+            types_by_code[code]["point_templates"][-1]["variable_category"] = category
             idx += 1
     return list(types_by_code.values()), list(eq_by_tag.values()), points
 
@@ -185,7 +191,7 @@ def import_excel(data: bytes, state: dict) -> dict:
                         words = 2 if row_num < ws.max_row and ws.cell(row_num + 1, 1).value == row[0] and str(ws.cell(row_num + 1, 2).value or "").endswith(" (2nd register)") else 1
                         result.setdefault("points", []).append({"id": _id(), "equipment_id": equipment.get("id", "") if equipment else "", "plc_variable": row[0], "scada_name": row[1], "table": table, "address": address, "locked": False, "codesys_type": row[8] or "", "fuxa_type": result.get("settings", {}).get("type_map", FUXA_TYPES).get(str(row[8] or "").upper(), ""), "fuxa_type_override": False, "words": words, "divisor": 1, "scale": row[9] or "1", "unit": row[10] or "", "direction": row[6] or "", "target": row[7] or "FUXA", "hmi_address": row[5] or "", "daq_enabled": False, "daq_interval": 60, "fuxa_id": _fresh_tag_id(), "comment": ""})
                         seen.add((table, address, row[0]))
-            result["points"] = [p for p in result.get("points", []) if not _is_active(result, p) or (p.get("table"), int(p.get("address") or -1), p.get("plc_variable")) in seen]
+            result["points"] = [p for p in result.get("points", []) if not _is_active(result, p) or not _is_scada(p) or (p.get("table"), int(p.get("address") or -1), p.get("plc_variable")) in seen]
             # Keep catalogue-only metadata while applying edits made to visible equipment register sheets.
             for typ in result.get("equipment_types", []):
                 for table in TABLES:
@@ -203,7 +209,7 @@ def import_excel(data: bytes, state: dict) -> dict:
                         reg = copy.deepcopy(old)
                         reg.update({"table": table, "label": row[0], "plc_table": row[3] or "", "address": address, "access": row[5] or "", "type": row[6] or "", "scale": row[7] or "", "unit": row[8] or ""})
                         edited.append(reg)
-                    typ["registers"] = edited
+                    typ["registers"] = [r for r in typ.get("registers", []) if r.get("table") != table] + edited
             return result
         except (ValueError, TypeError, KeyError):
             pass
@@ -241,7 +247,7 @@ def import_excel(data: bytes, state: dict) -> dict:
     result["equipment_types"] = list(current_types.values())
     result["equipment"] = list(current_eq.values())
     # The workbook is an authoritative IO list for matching points; unmatched current points are reported by callers if desired.
-    result["points"] = incoming_points
+    result["points"] = incoming_points + [p for p in state.get("points", []) if not _is_scada(p) and (p.get("plc_variable"), p.get("table")) not in {(x.get("plc_variable"), x.get("table")) for x in incoming_points}]
     return result
 
 
@@ -266,6 +272,8 @@ def import_fuxa(data: bytes, state: dict) -> dict:
         existing.append({"device_id": row[1], "id": row[2], "name": row[3], "type": row[5], "memaddress": row[6], "address": row[7], "line": line})
     result["fuxa_existing"] = existing
     for p in result.get("points", []):
+        if not _is_scada(p):
+            continue
         found = next((t for t in existing if t["memaddress"] == MEMADDRESS.get(p.get("table")) and _addr_number(t["address"]) == _fuxa_address(p)), None)
         if not found:
             found = next((t for t in existing if t["name"].casefold() == str(p.get("scada_name", "")).casefold()), None)
@@ -284,6 +292,11 @@ def _fuxa_address(point: dict) -> int:
 def _is_active(state: dict, point: dict) -> bool:
     equipment = next((e for e in state.get("equipment", []) if e.get("id") == point.get("equipment_id")), None)
     return equipment is None or equipment.get("active", True) is not False
+
+
+def _is_scada(point: dict) -> bool:
+    """Legacy points without an explicit category remain SCADA points."""
+    return point.get("variable_category", "SCADA") == "SCADA"
 
 
 def _point_fuxa_type(state: dict, point: dict) -> str:
@@ -349,6 +362,11 @@ def validate(state: dict) -> dict:
         if not isinstance(typ.get("registers", []), list): errors.append({"message": f"Equipment type {code} registers must be an array"})
         if not isinstance(typ.get("point_templates", []), list): errors.append({"message": f"Equipment type {code} point_templates must be an array"})
         if not isinstance(typ.get("defaults", {}), dict): errors.append({"message": f"Equipment type {code} defaults must be an object"})
+        for template in typ.get("point_templates", []) if isinstance(typ.get("point_templates", []), list) else []:
+            if not isinstance(template, dict):
+                errors.append({"message": f"Equipment type {code} variables must be objects"})
+            elif template.get("variable_category", "SCADA") not in VARIABLE_CATEGORIES:
+                errors.append({"message": f"Invalid variable category in equipment type {code}"})
     equipment_by_id = {e.get("id"): e for e in equipment if isinstance(e, dict)}
     equipment_tags = set()
     for eq in equipment:
@@ -384,6 +402,8 @@ def validate(state: dict) -> dict:
     plc_variables: set[str] = set()
     for p in points:
         if not isinstance(p, dict): errors.append({"message": "Each point must be an object"}); continue
+        if p.get("variable_category", "SCADA") not in VARIABLE_CATEGORIES:
+            errors.append({"message": "Variable category must be SCADA, IO, or COM", "point_id": p.get("id")})
         if p.get("equipment_id") not in equipment_by_id: errors.append({"message": f"Point {p.get('id')} has an unknown equipment_id", "point_id": p.get("id")})
         table, address = p.get("table"), p.get("address")
         if table not in TABLES:
@@ -418,7 +438,7 @@ def validate(state: dict) -> dict:
             if not re.fullmatch(r"t_[0-9a-f]{8}-[0-9a-f]{8}", str(fuxa_id)): errors.append({"message": f"Invalid FUXA tag id for {name}", "point_id": p.get("id")})
             if fuxa_id in fuxa_ids: errors.append({"message": f"Duplicate FUXA tag id: {fuxa_id}", "point_id": p.get("id")})
             fuxa_ids.add(fuxa_id)
-        if not p.get("fuxa_type") and (p.get("target", "FUXA") == "FUXA"):
+        if _is_scada(p) and not _point_fuxa_type(state, p) and (p.get("target", "FUXA") == "FUXA"):
             errors.append({"message": f"FUXA type is required for {name}", "point_id": p.get("id")})
         try:
             divisor = float(p.get("divisor", 1))
@@ -435,6 +455,14 @@ def validate(state: dict) -> dict:
             errors.append({"message": f"Invalid address for {name}", "point_id": p.get("id")})
             continue
         if words not in (1, 2): errors.append({"message": f"Invalid word count for {name}", "point_id": p.get("id")}); continue
+        codesys_type = str(p.get("codesys_type", "")).upper()
+        expected_words = TYPE_WORDS.get(codesys_type)
+        if expected_words is not None and words != expected_words:
+            errors.append({"message": f"{codesys_type} requires {expected_words} word(s) for {name}", "point_id": p.get("id")})
+        if table in ("coils", "discrete_inputs") and codesys_type and codesys_type != "BOOL":
+            errors.append({"message": f"Bit tables require BOOL for {name}", "point_id": p.get("id")})
+        if str(address) != str(start) or isinstance(address, bool):
+            errors.append({"message": f"Address must be a whole number for {name}", "point_id": p.get("id")})
         if start < 1 or start + words - 1 > 65536: errors.append({"message": f"Address out of range for {name}", "point_id": p.get("id")}); continue
         # HMI points still occupy the PLC's Modbus address space.
         for n in range(start, start + words):
@@ -469,7 +497,7 @@ def export_fuxa(state: dict) -> bytes:
         if name.strip().lower().startswith("test"):
             continue
         point = point_by_fuxa_id.get(row[2])
-        if row[1] == original_device and name != "PLC Connection Status" and (not point or point.get("target", "FUXA") != "FUXA" or not _is_active(state, point)):
+        if row[1] == original_device and name != "PLC Connection Status" and (not point or not _is_scada(point) or point.get("target", "FUXA") != "FUXA" or not _is_active(state, point)):
             continue
         if row[1] == original_device and row[2] not in existing_ids:
             continue
@@ -484,7 +512,7 @@ def export_fuxa(state: dict) -> bytes:
     emitted_names = {l.rstrip("\r\n").split(",")[3].casefold() for l in retained if l.startswith("T@,")}
     additions = []
     for p in state.get("points", []):
-        if p.get("target", "FUXA") != "FUXA" or not _is_active(state, p):
+        if not _is_scada(p) or p.get("target", "FUXA") != "FUXA" or not _is_active(state, p):
             continue
         if not _point_fuxa_type(state, p) or not p.get("scada_name"):
             continue

@@ -19,6 +19,39 @@ def _normalize_ids(data: bytes) -> bytes:
     return re.sub(r"t_[0-9a-f]{8}-[0-9a-f]{8}", "t_NEW-ID-NEW-ID", text).encode("utf-8")
 
 
+def test_categories_keep_allocations_and_metadata_without_exporting_io_com_to_fuxa():
+    from copy import deepcopy
+    from backend.engine import allocate_addresses
+    state = seed_state()
+    base = next(p for p in state["points"] if p["codesys_type"] == "REAL")
+    additions = []
+    for category in ("IO", "COM"):
+        point = deepcopy(base)
+        point.update(id=f"category-{category}", variable_category=category,
+                     plc_variable=f"GVL_{category}.{category}_TEST_1.Value",
+                     scada_name=f"Category {category} value", address=None,
+                     locked=False, fuxa_id=None, io_address="%IW4",
+                     source_address="0x4005", source_table="input_registers")
+        additions.append(point)
+    state["points"].extend(additions)
+    state = allocate_addresses(state)
+    assert validate(state)["errors"] == []
+    generated = export_fuxa(state)
+    assert b"Category IO value" not in generated and b"Category COM value" not in generated
+    restored = import_excel(export_excel(state), {})
+    for category in ("IO", "COM"):
+        before = next(p for p in state["points"] if p["id"] == f"category-{category}")
+        after = next(p for p in restored["points"] if p["id"] == before["id"])
+        for field in ("variable_category", "address", "words", "io_address", "source_address", "source_table"):
+            assert before[field] == after[field]
+    collision = deepcopy(state)
+    collision["points"][-1]["address"] = collision["points"][-2]["address"] + 1
+    assert any("collision" in e["message"].lower() for e in validate(collision)["errors"])
+    invalid_width = deepcopy(state)
+    invalid_width["points"][-1]["words"] = 1
+    assert validate(invalid_width)["errors"]
+
+
 def test_reference_imports_generate_expected_fuxa_csv():
     state = import_excel(XLSM.read_bytes(), {
         "settings": {"project_name": "Gaia Refinery", "document_reference": "GAIA-ELEC-1451", "version": "1", "device_id": "d_abeaaea7-b8914e5b", "device_name": "PLC", "ip": "192.168.0.10", "port": 502, "slave_id": 10, "polling": 500, "type_map": {}},
@@ -141,7 +174,8 @@ def test_fuxa_device_settings_import_and_excel_navigation_catalog_edits():
     edited = __import__("io").BytesIO(); workbook.save(edited)
     updated = import_excel(edited.getvalue(), {})
     adm = next(item for item in updated["equipment_types"] if item["code"] == "ADM100W")
-    assert adm["registers"][0]["label"] == "Edited meter register"
+    assert next(r for r in adm["registers"] if r["table"] == "input_registers")["label"] == "Edited meter register"
+    assert {r["table"] for r in adm["registers"]} == {r["table"] for r in next(t for t in state["equipment_types"] if t["code"] == "ADM100W")["registers"]}
 
 
 def test_inactive_equipment_is_excluded_from_exports_but_preserved_in_backup_metadata():

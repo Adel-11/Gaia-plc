@@ -54,6 +54,10 @@ Do not use local Docker builds, image registries, compose, GitHub Actions or SSH
 
 ## Prototype architecture and limits
 
+**Equipment type** defines reusable variables in the SCADA, IO, and COM categories. Instances expand their names into `GVL_SCADA.SCADA_{tag}`, `GVL_IO.IO_{tag}`, and `GVL_COM.COM_{tag}`. In **Equipment instance**, Add or Duplicate opens a preview with free exchange addresses. Select variables, edit each address manually, and confirm to save. Two-register values reserve both words; collisions are rejected. Deleting an instance removes its points and releases its allocations. If the saved project changes during a preview, create a new preview.
+
+All categories reserve addresses in the four shared PLC exchange tables. Physical IO addresses and COM source registers are separate properties. FUXA CSV contains SCADA variables only; Excel and JSON backup retain all categories and their metadata. Type changes apply to newly created instances.
+
 The catalogue, installed equipment and SCADA points are distinct collections. For this first single-project version they are saved as one transactional JSON aggregate in SQLite; users and pending import previews have separate SQLAlchemy tables. Alembic owns schema migrations. Multiple-user editing can overwrite concurrent changes; use one editor at a time until revision checking is added.
 
 Excel exports use the reference SCADA tables and equipment sheets and include a hidden metadata sheet to retain application-only fields. Excel imports show differences before applying. FUXA IDs are stored with points; fixed CSV sections come from the last imported export. A backup includes project state and generation logs, not login credentials or source/upload files. Keep volume backups for full disaster recovery.

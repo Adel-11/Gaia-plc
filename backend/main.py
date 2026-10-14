@@ -55,6 +55,17 @@ class EquipmentBody(BaseModel):
     description: str = ""
 
 
+class EquipmentPreviewBody(BaseModel):
+    type_id: str | None = None
+    tag: str | None = None
+    source_id: str | None = None
+
+
+class EquipmentConfirmBody(BaseModel):
+    token: str
+    points: list[dict[str, Any]]
+
+
 def _env_bool(name: str, default: bool) -> bool:
     return os.environ.get(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
@@ -106,10 +117,124 @@ def _rename_instance(value: Any, code: str, tag: str) -> Any:
 def _codesys_names(code: str, tag: str) -> dict[str, str]:
     return {
         "gvl_io": f"GVL_IO.IO_{tag}", "dut_io": f"DUT_IO_{code}",
+        "gvl_com": f"GVL_COM.COM_{tag}", "dut_com": f"DUT_COM_{code}",
         "gvl_exc": f"GVL_EXC.EXC_{tag}", "dut_exc": f"DUT_EXC_{code}",
         "gvl_scada": f"GVL_SCADA.SCADA_{tag}", "dut_scada": f"DUT_SCADA_{code}",
         "fb_instance": f"FB_INST_{tag}",
     }
+
+
+def _state_hash(state: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _build_equipment_candidate(state: dict[str, Any], body: EquipmentBody | EquipmentPreviewBody):
+    """Build a detached equipment and point set. This never mutates project state."""
+    from copy import deepcopy
+    types = {str(x.get("id")): x for x in state.get("equipment_types", [])}
+    source = next((x for x in state.get("equipment", []) if x.get("id") == body.source_id), None) if body.source_id else None
+    type_id = str(source.get("type_id")) if source else body.type_id
+    equipment_type = types.get(str(type_id))
+    if not equipment_type:
+        raise HTTPException(422, "Unknown equipment type")
+    code = str(equipment_type.get("code") or "EQUIPMENT")
+    tag = body.tag or _allocate_name(code, state.get("equipment", []))
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", str(tag)):
+        raise HTTPException(422, "Invalid equipment tag")
+    if any(str(x.get("tag", "")).casefold() == str(tag).casefold() for x in state.get("equipment", [])):
+        raise HTTPException(409, "Equipment tag already exists")
+    new_id = str(uuid.uuid4())
+    if source:
+        equipment = deepcopy(source)
+        old_tag = source.get("tag", "")
+        equipment.update({"id": new_id, "tag": tag,
+                          "description": getattr(body, "description", "") or source.get("description", ""),
+                          "codesys_names": _codesys_names(code, tag)})
+        points = []
+        for source_point in state.get("points", []):
+            if source_point.get("equipment_id") != source["id"]:
+                continue
+            point = deepcopy(source_point)
+            point["id"] = str(uuid.uuid4())
+            point["equipment_id"] = new_id
+            for field in ("plc_variable", "scada_name", "hmi_address"):
+                value = point.get(field)
+                if isinstance(value, str):
+                    point[field] = _rename_instance(value.replace(old_tag, tag), code, tag)
+                    if field == "scada_name" and code in point[field] and tag not in point[field]:
+                        point[field] = point[field].replace(code, tag)
+                    elif field == "scada_name" and point[field].strip() and tag not in point[field]:
+                        point[field] = f"{tag} {point[field]}"
+            point["locked"] = False
+            point["address"] = None
+            point["fuxa_id"] = "t_" + uuid.uuid4().hex[:8] + "-" + uuid.uuid4().hex[:8]
+            points.append(point)
+    else:
+        equipment = {"id": new_id, "tag": tag, "type_id": type_id,
+                     "description": getattr(body, "description", "") or equipment_type.get("description", ""),
+                     "active": True, "status": "planned",
+                     "communication": deepcopy(equipment_type.get("defaults", {})), "notes": "",
+                     "codesys_names": _codesys_names(code, tag)}
+        points = []
+        type_map = state.get("settings", {}).get("type_map", {})
+        from backend.engine import FUXA_TYPES
+        for template in equipment_type.get("point_templates", []):
+            point = deepcopy(template)
+            suffix = point.get("suffix") or "Point"
+            point.pop("suffix", None)
+            category = str(point.get("variable_category") or "SCADA").upper()
+            if category not in {"SCADA", "IO", "COM"}:
+                category = "SCADA"
+            point["variable_category"] = category
+            point["id"] = str(uuid.uuid4())
+            point["equipment_id"] = new_id
+            for field in ("plc_variable", "scada_name", "hmi_address"):
+                value = point.get(field)
+                point[field] = _rename_instance(value, code, tag)
+                if field == "scada_name" and isinstance(point[field], str) and code in point[field] and tag not in point[field]:
+                    point[field] = point[field].replace(code, tag)
+                elif field == "scada_name" and isinstance(point[field], str) and point[field].strip() and tag not in point[field]:
+                    point[field] = f"{tag} {point[field]}"
+            if isinstance(point.get("plc_variable"), str):
+                target_prefix = {"SCADA": "GVL_SCADA.SCADA_", "IO": "GVL_IO.IO_", "COM": "GVL_COM.COM_"}[category]
+                point["plc_variable"] = re.sub(r"^GVL_(?:SCADA|IO|EXC|COM)\.(?:SCADA|IO|EXC|COM)_", target_prefix, point["plc_variable"])
+            if not point.get("plc_variable"):
+                prefix = {"SCADA": "GVL_SCADA.SCADA", "IO": "GVL_IO.IO", "COM": "GVL_COM.COM"}[category]
+                suffix = str(suffix).replace(" ", "_")
+                point["plc_variable"] = f"{prefix}_{tag}.{suffix}"
+            if not str(point.get("scada_name") or "").strip():
+                suffix = str(point.get("plc_variable") or "point").rsplit(".", 1)[-1].replace("_", " ").strip()
+                point["scada_name"] = f"{tag} {suffix or 'Point'}"
+            code_type = str(point.get("codesys_type") or "REAL").upper()
+            point.setdefault("codesys_type", code_type)
+            point["words"] = 2 if code_type in {"REAL", "DINT", "UDINT", "DWORD"} else 1
+            point.setdefault("fuxa_type", type_map.get(code_type, FUXA_TYPES.get(code_type, "")))
+            if not point.get("fuxa_id"):
+                point["fuxa_id"] = "t_" + uuid.uuid4().hex[:8] + "-" + uuid.uuid4().hex[:8]
+            point.setdefault("locked", False)
+            points.append(point)
+    return equipment, points
+
+
+def _free_address_options(state: dict[str, Any], points: list[dict[str, Any]]) -> dict[str, list[int]]:
+    from backend.engine import TABLES
+    existing = list(state.get("points", []))
+    result: dict[str, list[int]] = {}
+    for table in TABLES:
+        occupied: set[int] = set()
+        for point in existing:
+            if point.get("table") == table and point.get("address") is not None:
+                try:
+                    occupied.update(range(int(point["address"]), int(point["address"]) + max(1, int(point.get("words") or 1))))
+                except (TypeError, ValueError):
+                    continue
+        # Keep the response compact while giving the editor a useful set of starts
+        # that can hold any supported point width (including two-register values).
+        capacity = 504 if table in {"coils", "discrete_inputs"} else 501
+        # The UI knows each selected point's width and can filter starts accordingly.
+        result[table] = [address for address in range(1, 65536)
+                         if address not in occupied][:capacity]
+    return result
 
 
 def create_app(*, data_dir: str | Path | None = None, database_url: str | None = None,
@@ -147,8 +272,14 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                 type_by_id = {str(item.get("id")): item for item in initial.get("equipment_types", [])}
                 changed_names = False
                 for item in initial.get("equipment", []):
-                    if not item.get("codesys_names"):
-                        item["codesys_names"] = _codesys_names(str(type_by_id.get(str(item.get("type_id")), {}).get("code", "EQUIPMENT")), str(item.get("tag", "EQUIPMENT_1")))
+                    expected = _codesys_names(str(type_by_id.get(str(item.get("type_id")), {}).get("code", "EQUIPMENT")), str(item.get("tag", "EQUIPMENT_1")))
+                    existing = item.get("codesys_names") if isinstance(item.get("codesys_names"), dict) else {}
+                    completed = dict(existing)
+                    for key, value in expected.items():
+                        if not completed.get(key):
+                            completed[key] = value
+                    if completed != existing:
+                        item["codesys_names"] = completed
                         changed_names = True
                 if changed_names or db.load_state(session) is None:
                     db.save_state(session, initial)
@@ -258,95 +389,95 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         from backend.engine import validate
         return validate(state_for(session))
 
+    @app.post("/api/equipment/preview")
+    def preview_equipment(body: EquipmentPreviewBody, session: Session = Depends(get_session), user: User = Depends(current_user), _: None = Depends(csrf)):
+        from backend.engine import allocate_addresses, validate
+        state = state_for(session)
+        equipment, points = _build_equipment_candidate(state, body)
+        proposed = {**state, "equipment": [*state.get("equipment", []), equipment], "points": [*state.get("points", []), *points]}
+        try:
+            allocated = allocate_addresses(proposed)
+        except Exception as exc:
+            raise HTTPException(422, f"Unable to suggest addresses: {exc}") from exc
+        by_id = {p["id"]: p for p in allocated.get("points", [])}
+        points = [by_id[p["id"]] for p in points]
+        # Report validation of the proposed candidate while preserving the user's current state.
+        outcome = validate(allocated)
+        free = _free_address_options(state, points)
+        token = secrets.token_urlsafe(32)
+        session.add(ImportPreview(token=token, owner_id=user.id,
+                                  state_payload=json.dumps({"equipment": equipment, "points": points}, ensure_ascii=False),
+                                  diff_payload=json.dumps({"kind": "equipment", "base_hash": _state_hash(state)}, ensure_ascii=False),
+                                  expires_at=datetime.now(timezone.utc) + timedelta(hours=PREVIEW_TTL_HOURS)))
+        session.commit()
+        return {"token": token, "equipment": equipment, "points": points,
+                "free_addresses": free, "validation": outcome}
+
+    @app.post("/api/equipment/confirm")
+    def confirm_equipment(body: EquipmentConfirmBody, session: Session = Depends(get_session), user: User = Depends(current_user), _: None = Depends(csrf)):
+        from backend.engine import validate, FUXA_TYPES
+        preview = session.get(ImportPreview, body.token)
+        now = datetime.now(timezone.utc)
+        expiry = preview.expires_at.replace(tzinfo=timezone.utc) if preview and preview.expires_at.tzinfo is None else (preview.expires_at if preview else now)
+        if not preview or preview.owner_id != user.id or expiry <= now:
+            if preview and expiry <= now:
+                session.delete(preview); session.commit()
+            raise HTTPException(404, "Equipment preview not found or expired")
+        metadata = json.loads(preview.diff_payload or "{}")
+        if metadata.get("kind") != "equipment":
+            raise HTTPException(404, "Equipment preview not found or expired")
+        state = state_for(session)
+        if _state_hash(state) != metadata.get("base_hash"):
+            raise HTTPException(409, "Project changed after preview; create a new preview")
+        candidate = json.loads(preview.state_payload)
+        equipment = candidate["equipment"]
+        original_points = {p["id"]: p for p in candidate.get("points", [])}
+        allowed = {"plc_variable", "scada_name", "table", "address", "codesys_type", "fuxa_type", "fuxa_type_override", "words", "divisor", "scale", "unit", "direction", "target", "hmi_address", "daq_enabled", "daq_interval", "comment", "io_address", "source_address", "source_table"}
+        selected = []
+        selected_ids = set()
+        for edited in body.points:
+            point_id = str(edited.get("id") or "")
+            if point_id not in original_points or point_id in selected_ids:
+                raise HTTPException(422, "Selected points must be unique points from this preview")
+            selected_ids.add(point_id)
+            point = dict(original_points[point_id])
+            for key in allowed:
+                if key in edited:
+                    point[key] = edited[key]
+            code_type = str(point.get("codesys_type") or "REAL").upper()
+            point["words"] = 2 if code_type in {"REAL", "DINT", "UDINT", "DWORD"} else 1
+            if not point.get("fuxa_type_override"):
+                point["fuxa_type"] = state.get("settings", {}).get("type_map", FUXA_TYPES).get(code_type, FUXA_TYPES.get(code_type, point.get("fuxa_type", "")))
+            selected.append(point)
+        proposed = {**state, "equipment": [*state.get("equipment", []), equipment], "points": [*state.get("points", []), *selected]}
+        outcome = validate(proposed)
+        if outcome.get("errors"):
+            raise HTTPException(422, detail=outcome)
+        db.save_state(session, proposed)
+        session.delete(preview)
+        session.commit()
+        return {"equipment": equipment, "points": selected, "validation": outcome}
+
     @app.post("/api/equipment")
     def add_equipment(body: EquipmentBody, session: Session = Depends(get_session), user: User = Depends(current_user), _: None = Depends(csrf)):
-        from backend.engine import allocate_addresses
-        from copy import deepcopy
+        from backend.engine import allocate_addresses, validate
         state = state_for(session)
-        types = {str(x.get("id")): x for x in state.get("equipment_types", [])}
-        source = next((x for x in state.get("equipment", []) if x.get("id") == body.source_id), None) if body.source_id else None
-        type_id = str(source.get("type_id")) if source else body.type_id
-        equipment_type = types.get(str(type_id))
-        if not equipment_type:
-            raise HTTPException(422, "Unknown equipment type")
-        code = str(equipment_type.get("code") or "EQUIPMENT")
-        tag = body.tag or _allocate_name(code, state.get("equipment", []))
-        if any(x.get("tag") == tag for x in state.get("equipment", [])):
-            raise HTTPException(409, "Equipment tag already exists")
-        new_id = str(uuid.uuid4())
-        if source:
-            equipment = deepcopy(source)
-            old_tag = source.get("tag", "")
-            equipment["id"] = new_id
-            equipment["tag"] = tag
-            equipment["description"] = body.description or source.get("description", "")
-            equipment["codesys_names"] = _codesys_names(code, tag)
-            points = []
-            for source_point in state.get("points", []):
-                if source_point.get("equipment_id") != source["id"]:
-                    continue
-                point = deepcopy(source_point)
-                point["id"] = str(uuid.uuid4())
-                point["equipment_id"] = new_id
-                for field in ("plc_variable", "scada_name", "hmi_address"):
-                    value = point.get(field)
-                    if isinstance(value, str):
-                        point[field] = _rename_instance(value.replace(old_tag, tag), code, tag)
-                        if field == "scada_name" and code in point[field] and tag not in point[field]:
-                            point[field] = point[field].replace(code, tag)
-                        elif field == "scada_name" and point[field].strip() and tag not in point[field]:
-                            point[field] = f"{tag} {point[field]}"
-                point["locked"] = False
-                point["address"] = None
-                point["fuxa_id"] = "t_" + uuid.uuid4().hex[:8] + "-" + uuid.uuid4().hex[:8]
-                points.append(point)
-            state.setdefault("points", []).extend(points)
-        else:
-            equipment = {
-                "id": new_id, "tag": tag, "type_id": type_id,
-                "description": body.description or equipment_type.get("description", ""),
-                "active": True, "status": "planned",
-                "communication": deepcopy(equipment_type.get("defaults", {})), "notes": "",
-                "codesys_names": _codesys_names(code, tag),
-            }
-            points = []
-            for template in equipment_type.get("point_templates", []):
-                point = deepcopy(template)
-                point.pop("suffix", None)
-                point["id"] = str(uuid.uuid4())
-                point["equipment_id"] = new_id
-                for field in ("plc_variable", "scada_name", "hmi_address"):
-                    value = point.get(field)
-                    point[field] = _rename_instance(value, code, tag)
-                    if field == "scada_name" and isinstance(point[field], str) and code in point[field] and tag not in point[field]:
-                        point[field] = point[field].replace(code, tag)
-                    elif field == "scada_name" and isinstance(point[field], str) and point[field].strip() and tag not in point[field]:
-                        point[field] = f"{tag} {point[field]}"
-                if not str(point.get("scada_name") or "").strip():
-                    suffix = str(point.get("plc_variable") or "point").rsplit(".", 1)[-1].replace("_", " ").strip()
-                    point["scada_name"] = f"{tag} {suffix or 'Point'}"
-                if not point.get("fuxa_id"):
-                    point["fuxa_id"] = "t_" + uuid.uuid4().hex[:8] + "-" + uuid.uuid4().hex[:8]
-                point.setdefault("locked", False)
-                points.append(point)
-            state.setdefault("points", []).extend(points)
-        state.setdefault("equipment", []).append(equipment)
-        prior_addresses = {p.get("id"): p.get("address") for p in state.get("points", []) if p.get("id") not in {x.get("id") for x in points}}
+        equipment, points = _build_equipment_candidate(state, body)
+        proposed = {**state, "equipment": [*state.get("equipment", []), equipment], "points": [*state.get("points", []), *points]}
         try:
-            updated = allocate_addresses(state)
+            updated = allocate_addresses(proposed)
         except Exception as exc:
             raise HTTPException(422, f"Unable to allocate addresses: {exc}") from exc
-        for point in updated.get("points", []):
-            if point.get("id") in prior_addresses:
-                point["address"] = prior_addresses[point["id"]]
-        from backend.engine import validate
+        updated_by_id = {p["id"]: p for p in updated.get("points", [])}
+        for point in state.get("points", []):
+            updated_by_id[point["id"]]["address"] = point.get("address")
+        points = [updated_by_id[p["id"]] for p in points]
         outcome = validate(updated)
         if outcome.get("errors"):
             raise HTTPException(422, detail=outcome)
         db.save_state(session, updated)
         session.commit()
         return {"equipment": equipment, "points": points}
-
     @app.delete("/api/equipment/{equipment_id}")
     def delete_equipment(equipment_id: str, session: Session = Depends(get_session), user: User = Depends(current_user), _: None = Depends(csrf)):
         state = state_for(session)
@@ -383,7 +514,7 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         original_hash = hashlib.sha256(json.dumps(original, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
         session.add(ImportPreview(token=token, owner_id=user.id,
                                   state_payload=json.dumps(prospective, ensure_ascii=False),
-                                  diff_payload=json.dumps({"diff": diff, "base_hash": original_hash}, ensure_ascii=False),
+                                  diff_payload=json.dumps({"kind": "import", "diff": diff, "base_hash": original_hash}, ensure_ascii=False),
                                   expires_at=datetime.now(timezone.utc) + timedelta(hours=PREVIEW_TTL_HOURS)))
         session.commit()
         return {"token": token, "diff": diff, "state": prospective}
@@ -401,6 +532,8 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
             raise HTTPException(404, "Import preview not found or expired")
         state = json.loads(preview.state_payload)
         stored_preview = json.loads(preview.diff_payload)
+        if stored_preview.get("kind") == "equipment":
+            raise HTTPException(404, "Import preview not found or expired")
         current = state_for(session)
         current_hash = hashlib.sha256(json.dumps(current, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
         if not secrets.compare_digest(current_hash, stored_preview.get("base_hash", "")):
