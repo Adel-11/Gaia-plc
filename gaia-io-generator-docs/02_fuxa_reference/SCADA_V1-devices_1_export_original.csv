@@ -1,0 +1,55 @@
+!! CSV separator property convertion to "~"
+#id,: Device id, GUID
+#name,: Device name
+#enabled,: Enabled
+#type,: Device Type: FuxaServer | SiemensS7 | OPCUA | BACnet | ModbusRTU | ModbusTCP | WebAPI | MQTTclient | internal | EthernetIP | ADSclient | Gpio | WebCam | MELSEC | REDIS
+#polling,: Polling interval in millisec., check changed value after ask value, by OPCUA there is a monitor
+#property.address,: Device address (IP)
+#property.baudrate,: dynamic property field
+#property.connectionOption,: dynamic property field
+#property.databits,: dynamic property field
+#property.delay,: dynamic property field
+#property.forceFC16,: dynamic property field
+#property.parity,: dynamic property field
+#property.port,: dynamic property field
+#property.rack,: dynamic property field
+#property.slaveid,: dynamic property field
+#property.slot,: dynamic property field
+#property.stopbits,: dynamic property field
+
+@header,id,name,enabled,type,polling,property.address,property.baudrate,property.connectionOption,property.databits,property.delay,property.forceFC16,property.parity,property.port,property.rack,property.slaveid,property.slot,property.stopbits,
+D@,0,FUXA Server,true,FuxaServer,1000,,,,,,,,,,,,,
+D@,d_abeaaea7-b8914e5b,PLC,true,ModbusTCP,500,192.168.0.10,9600,TcpPort,8,10,false,None,,,10,,1,
+
+#deviceId,:Reference to device
+#id,: Tag id, GUID
+#name,: Tag name, is like the id
+#label,: Tag label, used by BACnet and WebAPI
+#type,: Tag type, Bool, Byte, etc. depending of device type
+#memaddress,: Address of Tag, combine with address by Modbus, some property for WebAPI
+#address,: Tag address, for OPCUA like the id
+#divisor,: Value divisor, used by Modbus
+#init,: Init value
+#format,: Number of digits to appear after the decimal point
+#direction,: A string specifying whether the GPIO should be configured as an input or output. The valid values are: 'in', 'out', 'high', and 'low'. If 'out' is specified the GPIO will be configured as an output and the value of the GPIO will be set to 0. 'high' and 'low' are variants of 'out' that configure the GPIO as an output with an initial level of 1 or 0 respectively.
+#edge,: An optional string specifying the interrupt generating edge or edges for an input GPIO. The valid values are: 'none', 'rising', 'falling' or 'both'. The default value is 'none' indicating that the GPIO will not generate interrupts. Whether or not interrupts are supported by an input GPIO is GPIO specific. If interrupts are not supported by a GPIO the edge argument should not be specified. The edge argument is ignored for output GPIOs.
+#description,: dynamic tag field
+#sysType,: dynamic tag field
+#options,: Options is a string JSON object, used for WebAPI and MQTT, pubs: items to publish | subs: items to subscribe
+#daq.enabled,: Daq enabled storage
+#daq.interval,: min storage interval (without change value)
+#daq.changed,: dynamic daq field
+#daq.restored,: dynamic daq field
+
+@header,deviceId,id,name,label,type,memaddress,address,divisor,init,format,direction,edge,description,sysType,options,daq.enabled,daq.interval,daq.changed,daq.restored,
+T@,0,t_c7629909-ac0d463f,PLC Connection Status,PLC Connection Status,number,d_abeaaea7-b8914e5b,,1,,,,,,1,,false,60,false,false,
+
+T@,d_abeaaea7-b8914e5b,t_e524c270-b63c44e2,DO SENSOR SIGNAL,,Float32MLE,300000,89,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_99aa2e8b-bfa84504,DO Calibration High,,Bool,000000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_4864cae0-51e54573,DO Calibration Low,,Bool,000000,2,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_409fa23c-f3e446bb,Do sensor fault,,Bool,100000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_314d2a85-c45f42a4,Do sensor calibration done,,Bool,100000,2,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_6b8821f1-ace04618,TEST Holding,,Float32MLE,400000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_5a887610-e6104d94,Test descrete,,Bool,100000,1,1,,,,,,,,false,60,false,false,
+
+
