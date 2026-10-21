@@ -28,7 +28,7 @@ npm run dev
 
 Open http://localhost:5173. Vite proxies `/api` to port 8000. For a single-server preview, run `npm run build` in `frontend`, then restart the backend and open http://localhost:8000.
 
-`.env.example` documents configuration; the application reads environment variables. It does not load `.env` automatically. Startup applies migrations and seeds the provided reference project and three equipment types. Admin credentials must be configured on the first startup; passwords are hashed with Argon2. Never commit real credentials.
+`.env.example` documents configuration; the application reads environment variables. It does not load `.env` automatically. Startup applies migrations and initializes the v2 project from the supplied pack. Admin credentials must be configured on the first startup; existing accounts are preserved and passwords are hashed with Argon2. Never commit real credentials.
 
 ## Checks
 
@@ -38,7 +38,7 @@ cd frontend
 npm run build
 ```
 
-Generation tests use the supplied real IO List and FUXA exports. Test tags `TEST Holding` and `Test descrete` are excluded because their addresses conflict with real points. Imported source files remain available in the persistent data directory.
+Tests cover legacy generation and the v2 pack, Excel round trips, exact FUXA output, reviewed imports, migration backups, and account preservation. In v2 the reference CSV test tags are retained as CSV-only references with warnings. Imported source files remain available in the persistent data directory.
 
 ## Coolify deployment
 
@@ -52,7 +52,44 @@ Generation tests use the supplied real IO List and FUXA exports. Test tags `TEST
 
 Do not use local Docker builds, image registries, compose, GitHub Actions or SSH deployment scripts. No ARM-specific configuration is required.
 
-## Prototype architecture and limits
+## V2 stage 1: data and files
+
+The current workspace starts from `reference-v2/02_excel` and the supplied FUXA
+v4 CSV. Existing accounts remain valid. The v1 engineering data stays archived;
+it is not merged into the new model. Types, instances, communications, physical
+I/O, parameters, exchanges, and CODESYS identities have normalized SQL tables,
+with complete immutable revision documents for lossless file exchange and audit.
+
+Browse types and instances, inspect DUT members and source FB implementations,
+read workbook sheets, download all eleven populated workbooks, and export the
+FUXA CSV. To change data in this stage, edit an exported workbook and upload it.
+Merge retains missing rows; Replace replaces only the uploaded workbook's scope.
+Both modes require a preview and explicit application. TO CHECK values are kept
+as text and reported without blocking otherwise valid imports. The source FUXA
+CSV's two test tags are retained for exact compatibility and explicitly reported.
+
+The latest full CODESYS snapshot is `reference-v2/latest_codesys.xml`. Its wrapped
+Application can be inspected on import; future PLCopen generation must emit free
+objects, never that Application wrapper. The approved changes to the pack's
+proposals are recorded in `reference-v2/DECISIONS.md`.
+
+Before a legacy database is migrated, the application creates
+`/data/backups/legacy-v1-before-v2.sqlite3`, the legacy project JSON, and a `.tar.gz`
+archive of the database plus persistent source/export files. Source and export
+directories remain in the existing volume. V2 JSON backups contain project data,
+not users/password hashes; retain volume backups for complete recovery.
+
+Rollback requires restoring the archived v1 database **before** starting the old
+v1 release: its Alembic installation does not know migration `0002_v2_model`.
+Stop the generator, keep a separate copy of the current v2 volume, restore the
+archived `app.db` while no application process has it open, then deploy commit
+`b0481aa`. Restore other archived files only if needed. Do not alter FUXA's volume.
+
+PLCopen export, graphical authoring, ST editing/custom section composition, and
+device configuration pages are later stages. This release does not write to the
+PLC or change its devices, channels, tasks, or running parameters.
+
+## V1 archive and previous prototype limits
 
 **Equipment type** defines reusable variables in the SCADA, IO, and COM categories. Instances expand their names into `GVL_SCADA.SCADA_{tag}`, `GVL_IO.IO_{tag}`, and `GVL_COM.COM_{tag}`. In **Equipment instance**, Add or Duplicate opens a preview with free exchange addresses. Select variables, edit each address manually, and confirm to save. Two-register values reserve both words; collisions are rejected. Deleting an instance removes its points and releases its allocations. If the saved project changes during a preview, create a new preview.
 

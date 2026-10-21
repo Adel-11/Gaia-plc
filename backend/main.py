@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from functools import lru_cache
 
 from alembic import command
 from alembic.config import Config
@@ -33,6 +34,52 @@ PREVIEW_TTL_HOURS = 2
 SESSION_MAX_AGE = 12 * 60 * 60
 _login_attempts: dict[str, list[float]] = {}
 _password_hasher = PasswordHash.recommended()
+
+
+@lru_cache(maxsize=1)
+def _v2_reference_project():
+    from backend.v2_engine import load_pack
+    return load_pack()
+
+
+def _backup_legacy_before_v2(engine, data_dir: Path):
+    """Keep the legacy database, including users, before the first v2 migration."""
+    import sqlite3
+    from sqlalchemy import inspect
+    tables = inspect(engine).get_table_names()
+    if "project_state" not in tables:
+        return
+    with engine.connect() as connection:
+        legacy = connection.execute(text("SELECT payload FROM project_state WHERE id=1")).scalar()
+        if not legacy:
+            return
+        if "v2_project" in tables and connection.execute(text("SELECT COUNT(*) FROM v2_project")).scalar():
+            return
+    backup_dir = data_dir / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    json_backup = backup_dir / "legacy-v1-before-v2.json"
+    if not json_backup.exists():
+        json_backup.write_text(legacy, encoding="utf-8")
+    sqlite_backup = backup_dir / "legacy-v1-before-v2.sqlite3"
+    if engine.dialect.name == "sqlite" and not sqlite_backup.exists():
+        raw = engine.raw_connection()
+        try:
+            with sqlite3.connect(sqlite_backup) as target:
+                raw.driver_connection.backup(target)
+        finally:
+            raw.close()
+    archive_path = backup_dir / "legacy-v1-before-v2.tar.gz"
+    if not archive_path.exists():
+        import tarfile
+        temporary = archive_path.with_suffix(".tmp")
+        with tarfile.open(temporary, "w:gz", dereference=False) as archive:
+            if sqlite_backup.exists():
+                archive.add(sqlite_backup, arcname="app.db")
+            for child in data_dir.iterdir():
+                if child.name == "backups" or child.name.startswith("app.db"):
+                    continue
+                archive.add(child, arcname=child.name)
+        temporary.replace(archive_path)
 
 
 class Credentials(BaseModel):
@@ -257,6 +304,9 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         app.state.engine = engine
         app.state.session_factory = db.make_session_factory(engine)
         try:
+            from backend import v2_store
+            if seed:
+                _backup_legacy_before_v2(engine, resolved_data)
             config = Config(str(alembic_path))
             config.set_main_option("sqlalchemy.url", resolved_db_url.replace("%", "%%"))
             command.upgrade(config, "head")
@@ -283,6 +333,18 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                         changed_names = True
                 if changed_names or db.load_state(session) is None:
                     db.save_state(session, initial)
+                if seed and v2_store.load_project(session) is None:
+                    from copy import deepcopy
+                    v2_initial = deepcopy(_v2_reference_project())
+                    v2_initial["migration"] = {
+                        "source": "reference-v2 pack",
+                        "legacy_backup": "backups/legacy-v1-before-v2.sqlite3" if (resolved_data / "backups/legacy-v1-before-v2.sqlite3").exists() else None,
+                        "users_preserved": True,
+                        "legacy_files_backup": "backups/legacy-v1-before-v2.tar.gz" if (resolved_data / "backups/legacy-v1-before-v2.tar.gz").exists() else None,
+                    }
+                    if v2_initial.get("snapshot"):
+                        v2_initial["snapshot"].setdefault("imported_at", datetime.now(timezone.utc).isoformat())
+                    v2_store.initialize(session, v2_initial)
                 session.commit()
             yield
         finally:
@@ -614,6 +676,9 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         db.save_state(session, state)
         session.commit()
         return {"state": state, "validation": outcome}
+
+    from backend.v2_routes import register_v2_routes
+    register_v2_routes(app, get_session, current_user, csrf)
 
     @app.api_route("/api/{unknown_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def unknown_api_path(unknown_path: str):

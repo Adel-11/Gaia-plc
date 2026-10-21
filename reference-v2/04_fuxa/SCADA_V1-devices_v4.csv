@@ -1,0 +1,146 @@
+!! CSV separator property convertion to "~"
+#id,: Device id, GUID
+#name,: Device name
+#enabled,: Enabled
+#type,: Device Type: FuxaServer | SiemensS7 | OPCUA | BACnet | ModbusRTU | ModbusTCP | WebAPI | MQTTclient | internal | EthernetIP | ADSclient | Gpio | WebCam | MELSEC | REDIS
+#polling,: Polling interval in millisec., check changed value after ask value, by OPCUA there is a monitor
+#property.address,: Device address (IP)
+#property.baudrate,: dynamic property field
+#property.connectionOption,: dynamic property field
+#property.databits,: dynamic property field
+#property.delay,: dynamic property field
+#property.forceFC16,: dynamic property field
+#property.parity,: dynamic property field
+#property.port,: dynamic property field
+#property.rack,: dynamic property field
+#property.slaveid,: dynamic property field
+#property.slot,: dynamic property field
+#property.stopbits,: dynamic property field
+
+@header,id,name,enabled,type,polling,property.address,property.baudrate,property.connectionOption,property.databits,property.delay,property.forceFC16,property.parity,property.port,property.rack,property.slaveid,property.slot,property.stopbits,
+D@,0,FUXA Server,true,FuxaServer,1000,,,,,,,,,,,,,
+D@,d_abeaaea7-b8914e5b,PLC,true,ModbusTCP,500,192.168.0.10,9600,TcpPort,8,10,false,None,,,10,,1,
+
+#deviceId,:Reference to device
+#id,: Tag id, GUID
+#name,: Tag name, is like the id
+#label,: Tag label, used by BACnet and WebAPI
+#type,: Tag type, Bool, Byte, etc. depending of device type
+#memaddress,: Address of Tag, combine with address by Modbus, some property for WebAPI
+#address,: Tag address, for OPCUA like the id
+#divisor,: Value divisor, used by Modbus
+#init,: Init value
+#format,: Number of digits to appear after the decimal point
+#direction,: A string specifying whether the GPIO should be configured as an input or output. The valid values are: 'in', 'out', 'high', and 'low'. If 'out' is specified the GPIO will be configured as an output and the value of the GPIO will be set to 0. 'high' and 'low' are variants of 'out' that configure the GPIO as an output with an initial level of 1 or 0 respectively.
+#edge,: An optional string specifying the interrupt generating edge or edges for an input GPIO. The valid values are: 'none', 'rising', 'falling' or 'both'. The default value is 'none' indicating that the GPIO will not generate interrupts. Whether or not interrupts are supported by an input GPIO is GPIO specific. If interrupts are not supported by a GPIO the edge argument should not be specified. The edge argument is ignored for output GPIOs.
+#description,: dynamic tag field
+#sysType,: dynamic tag field
+#options,: Options is a string JSON object, used for WebAPI and MQTT, pubs: items to publish | subs: items to subscribe
+#daq.enabled,: Daq enabled storage
+#daq.interval,: min storage interval (without change value)
+#daq.changed,: dynamic daq field
+#daq.restored,: dynamic daq field
+
+@header,deviceId,id,name,label,type,memaddress,address,divisor,init,format,direction,edge,description,sysType,options,daq.enabled,daq.interval,daq.changed,daq.restored,
+T@,0,t_c7629909-ac0d463f,PLC Connection Status,PLC Connection Status,number,d_abeaaea7-b8914e5b,,1,,,,,,1,,false,60,false,false,
+
+T@,d_abeaaea7-b8914e5b,t_e524c270-b63c44e2,DO SENSOR SIGNAL,,Float32MLE,300000,89,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_99aa2e8b-bfa84504,DO Calibration High,,Bool,000000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_4864cae0-51e54573,DO Calibration Low,,Bool,000000,2,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_409fa23c-f3e446bb,Do sensor fault,,Bool,100000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_314d2a85-c45f42a4,Do sensor calibration done,,Bool,100000,2,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_6b8821f1-ace04618,TEST Holding,,Float32MLE,400000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_5a887610-e6104d94,Test descrete,,Bool,100000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_2558a5ac-6b5daf87,DIP1500 Motor Start Stop,,Bool,000000,3,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7d68aca6-499227b6,DIP1500 Motor Direction,,Bool,000000,4,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_2a421793-ca18bb5a,DIP1500 Flash Save,,Bool,000000,5,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_b940c124-a356f405,DIP1500 Operation Mode,,Bool,000000,6,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_2e0f9185-20e1caa7,DIP1500 Parameter Write Enable,,Bool,000000,7,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_ef2622c2-0fc71827,ADM100W Alarm 1 Status,,Bool,100000,3,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_4b42c69d-a63863df,ADM100W Alarm 2 Status,,Bool,100000,4,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_43cbd7ec-85907362,ADM100W Alarm 3 Status,,Bool,100000,5,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_15569b42-de21b53a,ADM100W Alarm 4 Status,,Bool,100000,6,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_1dddfa41-caa4916d,ADM100W Alarm 5 Status,,Bool,100000,7,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_11633cf6-f6de467c,ADM100W Alarm 6 Status,,Bool,100000,8,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_377143a7-9ca45c11,ADM100W Alarm 7 Status,,Bool,100000,9,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_3f5c9463-852b717d,ADM100W Alarm 8 Status,,Bool,100000,10,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_9a91f78d-ec045e84,ADM100W Alarm 9 Status,,Bool,100000,11,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_4f8460e9-506a9af3,ADM100W Alarm 10 Status,,Bool,100000,12,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_a60dcdc0-5f1f69aa,ADM100W Frequency,,Float32MLE,300000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_41d6ff93-1eb672ff,ADM100W L1-L2 Voltage,,Float32MLE,300000,3,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_51142f01-613e2566,ADM100W L1-N Voltage,,Float32MLE,300000,5,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_c6d66c51-7d8aa685,ADM100W L1 Current,,Float32MLE,300000,7,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_afd83bf7-1f19118c,ADM100W L1 Active Power,,Float32MLE,300000,9,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_59e7ee73-70974237,ADM100W L1 Apparent Power,,Float32MLE,300000,11,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_44bd7e06-67a17c0c,ADM100W L1 Reactive Power,,Float32MLE,300000,13,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_f7175f4d-2c2e85a2,ADM100W L1 Current Phase Angle,,Float32MLE,300000,15,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_bdac6a16-470ba7b5,ADM100W L1 Power Factor,,Float32MLE,300000,17,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_ee831fe5-130af9ae,ADM100W L1 Voltage THD,,Float32MLE,300000,19,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_deb8002b-cfd602a9,ADM100W L1 Current THD,,Float32MLE,300000,21,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7129090f-a69f792d,ADM100W L1 Max Load,,Float32MLE,300000,23,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7828edcb-bb77197e,ADM100W L1-L2 Voltage Phase Angle,,Float32MLE,300000,25,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_b34d84d9-117636fa,ADM100W L2-L3 Voltage,,Float32MLE,300000,27,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_c20c2492-d56ded19,ADM100W L2-N Voltage,,Float32MLE,300000,29,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_10c8bf3c-5ee926b8,ADM100W L2 Current,,Float32MLE,300000,31,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_41b290d4-1425e511,ADM100W L2 Active Power,,Float32MLE,300000,33,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_0231e8c8-87cce606,ADM100W L2 Apparent Power,,Float32MLE,300000,35,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_ad398b7f-e85fafe2,ADM100W L2 Reactive Power,,Float32MLE,300000,37,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_72e8eb3b-50813dc6,ADM100W L2 Current Phase Angle,,Float32MLE,300000,39,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_adbec083-a7070b0e,ADM100W L2 Power Factor,,Float32MLE,300000,41,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_498fdb84-c62bbd3d,ADM100W L2 Voltage THD,,Float32MLE,300000,43,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_423c7beb-fd87642b,ADM100W L2 Current THD,,Float32MLE,300000,45,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_5e9f0c7d-813edd31,ADM100W L2 Max Load,,Float32MLE,300000,47,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_68cf23ea-cf9e58ed,ADM100W L1-L3 Voltage Phase Angle,,Float32MLE,300000,49,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_10ace479-dac72505,ADM100W L3-L1 Voltage,,Float32MLE,300000,51,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_81ebfd70-f1f5aef6,ADM100W L3-N Voltage,,Float32MLE,300000,53,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_fda5d125-86ee2953,ADM100W L3 Current,,Float32MLE,300000,55,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_58401097-5809ebf5,ADM100W L3 Active Power,,Float32MLE,300000,57,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_0d04444d-28cce6ff,ADM100W L3 Apparent Power,,Float32MLE,300000,59,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_15c40746-a5b36ab4,ADM100W L3 Reactive Power,,Float32MLE,300000,61,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_a5c5a0c3-66256efd,ADM100W L3 Current Phase Angle,,Float32MLE,300000,63,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_3c5c28b9-2e0fdb7d,ADM100W L3 Power Factor,,Float32MLE,300000,65,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_2bae10fb-89190fc6,ADM100W L3 Voltage THD,,Float32MLE,300000,67,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_8b8f5179-27b4e98d,ADM100W L3 Current THD,,Float32MLE,300000,69,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7c217bc8-d8a01913,ADM100W L3 Max Load,,Float32MLE,300000,71,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_8cb591f4-cdde8b01,ADM100W Internal Temperature,,Float32MLE,300000,73,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_849089a2-0a6cd791,ADM100W Active Energy,,Float32MLE,300000,75,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_0e3e3539-7797f1f7,ADM100W Apparent Energy,,Float32MLE,300000,77,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_1b0aff01-a316de4a,ADM100W Reactive Energy,,Float32MLE,300000,79,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_18f565d8-a60bf85a,ADM100W Total Active Power,,Float32MLE,300000,81,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_d800ff2b-bfc578fe,ADM100W Total Apparent Power,,Float32MLE,300000,83,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7acaa67f-1f038bfc,ADM100W Total Reactive Power,,Float32MLE,300000,85,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_65238f8e-0448a22b,ADM100W All Phase Power Factor,,Float32MLE,300000,87,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_589669d5-5683581c,DIP1500 Firmware Version,,UInt16,300000,91,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_b8b70659-22176bcc,DIP1500 Hardware Version,,UInt16,300000,92,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_13db9635-1fb8af37,DIP1500 Temperature,,UInt16,300000,93,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_9ea9e775-fb018606,DIP1500 Float Level Alarm,,UInt16,300000,94,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_9ed1ae88-d429cb57,DIP1500 Digital Output Value,,UInt16,300000,95,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_c069d88d-f87a3ea1,DIP1500 Real-Time Run Time Or Volume,,Float32MLE,300000,96,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_4d38374c-41a5f123,DIP1500 Accumulated Run Time Or Volume,,Float32MLE,300000,98,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_767e9ef5-88c286e3,DIP1500 Motor Speed,,Float32MLE,400000,1,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_eeb86bdc-4e68690f,DIP1500 Max Motor Speed,,Float32MLE,400000,3,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_36ce4a48-8ae3bd03,DIP1500 Run Time Or Volume Setpoint,,Float32MLE,400000,5,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_f4b29fb5-ea6753ee,DIP1500 Flow Rate Or Speed Calibration Coefficient,,Float32MLE,400000,7,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_b3113f59-1412e15c,DIP1500 Foot Switch Input Mode,,UInt16,400000,9,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_37808e0d-266855a1,DIP1500 Liquid Level Input Mode,,UInt16,400000,10,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_cb62bd4c-08739696,DIP1500 State Output Mode,,UInt16,400000,11,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_a96a9b33-aeb8840e,DIP1500 Communication Address,,UInt16,400000,12,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_50c9a992-80de1ab7,DIP1500 Baud Rate Index,,UInt16,400000,13,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_b7feddd2-ae7dedfc,DO Sensor Local Request,,Bool,000000,8,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_bbe011a5-248c4525,DO Sensor Auto Request,,Bool,000000,9,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_be1088b2-55ba22c4,DIP1500 Local Request,,Bool,000000,10,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7f24da88-7ed3346d,DIP1500 Auto Request,,Bool,000000,11,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_7f1b063e-c91fb916,ADM100W Local Request,,Bool,000000,12,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_f881b76d-eb710d44,ADM100W Auto Request,,Bool,000000,13,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_d6959825-75da8d73,Global Local FUXA Request,,Bool,000000,14,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_21e04df5-f9ce2e22,Global Auto FUXA Request,,Bool,000000,15,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_074307e2-dc07fc9c,DO Sensor Local FUXA Active,,Bool,100000,13,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_619259d1-ae00d146,DO Sensor Local HMI Active,,Bool,100000,14,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_fb2813e5-ae9652f6,DIP1500 Local FUXA Active,,Bool,100000,15,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_48780df0-0b2b38d7,DIP1500 Local HMI Active,,Bool,100000,16,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_d7a852ec-a101a5e8,ADM100W Local FUXA Active,,Bool,100000,17,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_8f9f47bf-1577a4de,ADM100W Local HMI Active,,Bool,100000,18,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_e60e5c98-3482f08c,Global Local FUXA Active,,Bool,100000,19,1,,,,,,,,false,60,false,false,
+T@,d_abeaaea7-b8914e5b,t_c6b688f9-02e92c3a,Global Local HMI Active,,Bool,100000,20,1,,,,,,,,false,60,false,false,
+
+

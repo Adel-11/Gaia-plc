@@ -1,0 +1,1601 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="" productName="CODESYS" productVersion="CODESYS V3.5 SP22 Patch 2" creationDateTime="2026-10-19T13:39:19.9405881"/>
+  <contentHeader name="Gaia V5.project" modificationDateTime="2026-10-19T11:01:14.4686621">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1"/>
+      </fbd>
+      <ld>
+        <scaling x="1" y="1"/>
+      </ld>
+      <sfc>
+        <scaling x="1" y="1"/>
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation/>
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="DUT_INT_DIP1500">
+        <baseType>
+          <struct>
+            <variable name="FUXA_LOCAL_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Control mode] From FUXA : local request (pulse or maintained)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FUXA_AUTO_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From FUXA : auto request, releases the individual FUXA local</xhtml>
+              </documentation>
+            </variable>
+            <variable name="HMI_LOCAL_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From HMI : local request (pulse or maintained)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="HMI_AUTO_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From HMI : auto request, releases the individual HMI local</xhtml>
+              </documentation>
+            </variable>
+            <variable name="GLOBAL_LOCAL_FUXA">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From UPI_LOCAL_FUXA : global FUXA local active</xhtml>
+              </documentation>
+            </variable>
+            <variable name="GLOBAL_LOCAL_HMI">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From UPI_LOCAL_HMI : global HMI local active</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_FUXA_INDIVIDUAL">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Memory : individual FUXA local, set by local request, reset by auto request</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_HMI_INDIVIDUAL">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Memory : individual HMI local, set by local request, reset by auto request</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_HMI">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Result : equipment in HMI local (individual or global), unless WEBVISU local is active</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_FUXA">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Result : equipment in FUXA local (individual or global), unless WEBVISU or HMI local is active</xhtml>
+              </documentation>
+            </variable>
+            <variable name="AUTO">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Result : no local mode, commands come from the functional units (UPI)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_RUN">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Commands (to pump), from the active source] 0 stop, 1 start</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_CLOCKWISE">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 0 counterclockwise, 1 clockwise</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_SAVE_FLASH">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 1 s pulse to coil 0x0003, saves pump parameters to flash</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_VOLUME_MODE">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 0 time mode, 1 volume mode</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_SPEED">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> rpm</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_MAX_SPEED">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> rpm</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_RUN_SETPOINT">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> ms (time mode) or ml (volume mode), 0 = continuous</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_CALIB_COEF">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> ml/min or rpm</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_FOOT_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Foot switch input mode</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_LEVEL_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Liquid level input mode</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_STATE_OUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> State output mode</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_ADDRESS">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Modbus address</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_BAUD_INDEX">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 0=1200 .. 3=9600 .. 7=115200</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PARAM_WRITE_ENABLE">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Parameter writing] 1 = write configuration to the pump, 0 = stop writing</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FLASH_SAVE_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Flash save request (rising edge used)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PARAM_VALID">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Address 1..31, baud index 0..7, max speed &gt; 0, calibration coefficient &gt; 0</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PULSE_500MS">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Write triggers] Square wave, 500 ms period, source of the trigger edges</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_CHANGED">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> A command value changed this cycle</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_WINDOW">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Command write window, 3 s after the last change</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CMD_TRIGGER">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Command channel trigger</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CONFIG_TRIGGER">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Configuration channel trigger</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PREV_RUN">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Previous command values] Previous values for change detection</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PREV_CLOCKWISE">
+              <type>
+                <BOOL/>
+              </type>
+            </variable>
+            <variable name="PREV_VOLUME_MODE">
+              <type>
+                <BOOL/>
+              </type>
+            </variable>
+            <variable name="PREV_SAVE_FLASH">
+              <type>
+                <BOOL/>
+              </type>
+            </variable>
+            <variable name="PREV_SPEED">
+              <type>
+                <REAL/>
+              </type>
+            </variable>
+            <variable name="PREV_MAX_SPEED">
+              <type>
+                <REAL/>
+              </type>
+            </variable>
+            <variable name="PREV_RUN_SETPOINT">
+              <type>
+                <REAL/>
+              </type>
+            </variable>
+            <variable name="FBK_FIRMWARE_VERSION">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Feedback (from pump)] 3+5+8 bits (major+minor+revision)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_HARDWARE_VERSION">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 3+5+8 bits (major+sub+reserved)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_TEMPERATURE">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> (raw - 500) / 10 = degC, 65535 = not connected</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_LEVEL_ALARM">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 0 no alarm, 1 alarm, 65535 = not connected</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_DIGITAL_OUTPUT">
+              <type>
+                <WORD/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Digital output value</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_RUN_ACTUAL">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Current run, ms (time mode) or ml (volume mode)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FBK_RUN_TOTAL">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Accumulated run, ms (time mode) or ml (volume mode)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="UDINT_TEMP">
+              <type>
+                <UDINT/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Work] Work variable, time mode conversion</xhtml>
+              </documentation>
+            </variable>
+            <variable name="WEBVISU_LOCAL_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From WEBVISU : individual local request</xhtml>
+              </documentation>
+            </variable>
+            <variable name="WEBVISU_AUTO_REQUEST">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From WEBVISU : releases individual WEBVISU local (auto wins)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="GLOBAL_LOCAL_WEBVISU">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> From UPI_LOCAL_WEBVISU : global local request</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_WEBVISU_INDIVIDUAL">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Memory : individual WEBVISU local request</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LOCAL_WEBVISU">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Effective WEBVISU local : highest source priority</xhtml>
+              </documentation>
+            </variable>
+            <variable name="SRC_MAX_MOTOR_SPEED">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Parameter source] Value typed in the active local supervision</xhtml>
+              </documentation>
+            </variable>
+            <variable name="SRC_CALIBRATION_COEFFICIENT">
+              <type>
+                <REAL/>
+              </type>
+            </variable>
+            <variable name="SRC_FOOT_SWITCH_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="SRC_LIQUID_LEVEL_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="SRC_STATE_OUTPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="SRC_COMMUNICATION_ADDRESS">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="SRC_BAUD_RATE_INDEX">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_MAX_MOTOR_SPEED">
+              <type>
+                <REAL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Parameter change detection] Previous source values</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PREV_SRC_CALIBRATION_COEFFICIENT">
+              <type>
+                <REAL/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_FOOT_SWITCH_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_LIQUID_LEVEL_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_STATE_OUTPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_COMMUNICATION_ADDRESS">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_SRC_BAUD_RATE_INDEX">
+              <type>
+                <WORD/>
+              </type>
+            </variable>
+            <variable name="PREV_LOCAL_WEBVISU">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Previous control mode, to ignore the cycle where the source changes</xhtml>
+              </documentation>
+            </variable>
+            <variable name="PREV_LOCAL_HMI">
+              <type>
+                <BOOL/>
+              </type>
+            </variable>
+            <variable name="PREV_LOCAL_FUXA">
+              <type>
+                <BOOL/>
+              </type>
+            </variable>
+            <variable name="SOURCE_CHANGED">
+              <type>
+                <BOOL/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> The active local source changed this cycle : no parameter is taken</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>f5ee17f2-c16b-46b0-9670-78a06d712270</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+      <dataType name="DUT_PA_DIP1500">
+        <baseType>
+          <struct>
+            <variable name="MAX_MOTOR_SPEED">
+              <type>
+                <REAL/>
+              </type>
+              <initialValue>
+                <simpleValue value="350.0"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> [Pump configuration, default value = declaration value, kept in GVL_PA (persistent)] rpm. Max motor speed (pump register 0x4003)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="CALIBRATION_COEFFICIENT">
+              <type>
+                <REAL/>
+              </type>
+              <initialValue>
+                <simpleValue value="100.0"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> ml/min or rpm. Flow / speed calibration coefficient (0x400B)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="FOOT_SWITCH_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <initialValue>
+                <simpleValue value="0"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Foot switch input mode (0x400D)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="LIQUID_LEVEL_INPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <initialValue>
+                <simpleValue value="100"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Liquid level input mode (0x400E)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="STATE_OUTPUT_MODE">
+              <type>
+                <WORD/>
+              </type>
+              <initialValue>
+                <simpleValue value="7"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> State output mode (0x400F)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="COMMUNICATION_ADDRESS">
+              <type>
+                <WORD/>
+              </type>
+              <initialValue>
+                <simpleValue value="11"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Pump Modbus address, 1..31 (0x4010)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="BAUD_RATE_INDEX">
+              <type>
+                <WORD/>
+              </type>
+              <initialValue>
+                <simpleValue value="3"/>
+              </initialValue>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> 0=1200 .. 3=9600 .. 7=115200 (0x4011)</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>aee30126-63e7-4181-833b-70094984ae90</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+    </dataTypes>
+    <pous>
+      <pou name="FB_INST_ADM100W" pouType="functionBlock">
+        <interface>
+          <inOutVars>
+            <variable name="PA">
+              <type>
+                <derived name="DUT_PA_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Parameters (persistent, GVL_PA)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="COM">
+              <type>
+                <derived name="DUT_COM_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Communication : Modbus RTU (COM_), SCADA FUXA (SCADA_), HMI (HMI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC">
+              <type>
+                <derived name="DUT_EXC_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges : other equipment (EXC_), functional units (UPI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="IO">
+              <type>
+                <derived name="DUT_IO_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Wired PLC I/O</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+          <localVars>
+            <variable name="INTERN">
+              <type>
+                <derived name="DUT_INT_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Internal variables</xhtml>
+              </documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FB_INST_ADM100W
+// Trumeter ADM100W power meter, Modbus RTU, 32-bit float MSW first (ABCD). No command : local mode is only reported
+// 1. INPUTS     : requests, control mode, command source, equipment feedback -&gt; INTERN
+// 2. PROCESSING : on INTERN only
+// 3. OUTPUTS    : INTERN -&gt; COM / IO / EXC
+// Control mode  : local WEBVISU &gt; local HMI &gt; local FUXA &gt; auto (functional units)
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// 1. INPUTS
+//------------------------------------------------------------------------------
+	//--- Control mode requests (WEBVISU, HMI, FUXA, global UPI)
+	INTERN.FUXA_LOCAL_REQUEST := COM.SCADA_INPUT_LOCAL_REQUEST;
+	INTERN.FUXA_AUTO_REQUEST  := COM.SCADA_INPUT_AUTO_REQUEST;
+	INTERN.HMI_LOCAL_REQUEST  := COM.HMI_INPUT_LOCAL_REQUEST;
+	INTERN.HMI_AUTO_REQUEST   := COM.HMI_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_FUXA  := EXC.UPI_INPUT_GLOBAL_LOCAL_FUXA;
+	INTERN.GLOBAL_LOCAL_HMI   := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;
+	INTERN.WEBVISU_LOCAL_REQUEST := COM.WEBVISU_INPUT_LOCAL_REQUEST;
+	INTERN.WEBVISU_AUTO_REQUEST  := COM.WEBVISU_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_WEBVISU  := EXC.UPI_INPUT_GLOBAL_LOCAL_WEBVISU;
+
+	//--- Control mode
+	// Individual memories : set by the local request, reset by the auto request (auto wins if both)
+	IF INTERN.WEBVISU_LOCAL_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.WEBVISU_AUTO_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.HMI_LOCAL_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.HMI_AUTO_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.FUXA_LOCAL_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.FUXA_AUTO_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := FALSE;
+	END_IF
+
+	// Resulting mode : individual OR global, WEBVISU &gt; HMI &gt; FUXA &gt; auto
+	INTERN.LOCAL_WEBVISU := INTERN.LOCAL_WEBVISU_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_WEBVISU;
+	INTERN.LOCAL_HMI     := (INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI) AND NOT INTERN.LOCAL_WEBVISU;
+	INTERN.LOCAL_FUXA    := (INTERN.LOCAL_FUXA_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_FUXA) AND NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI;
+	INTERN.AUTO          := NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI AND NOT INTERN.LOCAL_FUXA;
+
+	//--- COM : alarms (coils 0..9)
+	INTERN.ALARM_1  := COM.COM_INPUT_COILS[0].0;
+	INTERN.ALARM_2  := COM.COM_INPUT_COILS[0].1;
+	INTERN.ALARM_3  := COM.COM_INPUT_COILS[0].2;
+	INTERN.ALARM_4  := COM.COM_INPUT_COILS[0].3;
+	INTERN.ALARM_5  := COM.COM_INPUT_COILS[0].4;
+	INTERN.ALARM_6  := COM.COM_INPUT_COILS[0].5;
+	INTERN.ALARM_7  := COM.COM_INPUT_COILS[0].6;
+	INTERN.ALARM_8  := COM.COM_INPUT_COILS[0].7;
+	INTERN.ALARM_9  := COM.COM_INPUT_COILS[1].0;
+	INTERN.ALARM_10 := COM.COM_INPUT_COILS[1].1;
+
+	//--- COM : measures (input registers, MSW first)
+	INTERN.FREQUENCY                 := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[0], Low_word := COM.COM_INPUT_IR[1]);
+	INTERN.L1_L2_VOLTAGE             := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[2], Low_word := COM.COM_INPUT_IR[3]);
+	INTERN.L1_N_VOLTAGE              := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[4], Low_word := COM.COM_INPUT_IR[5]);
+	INTERN.L1_CURRENT                := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[6], Low_word := COM.COM_INPUT_IR[7]);
+	INTERN.L1_ACTIVE_POWER           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[8], Low_word := COM.COM_INPUT_IR[9]);
+	INTERN.L1_APPARENT_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[10], Low_word := COM.COM_INPUT_IR[11]);
+	INTERN.L1_REACTIVE_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[12], Low_word := COM.COM_INPUT_IR[13]);
+	INTERN.L1_CURRENT_PHASE_ANGLE    := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[14], Low_word := COM.COM_INPUT_IR[15]);
+	INTERN.L1_POWER_FACTOR           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[16], Low_word := COM.COM_INPUT_IR[17]);
+	INTERN.L1_VOLTAGE_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[18], Low_word := COM.COM_INPUT_IR[19]);
+	INTERN.L1_CURRENT_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[20], Low_word := COM.COM_INPUT_IR[21]);
+	INTERN.L1_MAX_LOAD               := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[22], Low_word := COM.COM_INPUT_IR[23]);
+	INTERN.L1_L2_VOLTAGE_PHASE_ANGLE := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[24], Low_word := COM.COM_INPUT_IR[25]);
+	INTERN.L2_L3_VOLTAGE             := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[26], Low_word := COM.COM_INPUT_IR[27]);
+	INTERN.L2_N_VOLTAGE              := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[28], Low_word := COM.COM_INPUT_IR[29]);
+	INTERN.L2_CURRENT                := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[30], Low_word := COM.COM_INPUT_IR[31]);
+	INTERN.L2_ACTIVE_POWER           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[32], Low_word := COM.COM_INPUT_IR[33]);
+	INTERN.L2_APPARENT_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[34], Low_word := COM.COM_INPUT_IR[35]);
+	INTERN.L2_REACTIVE_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[36], Low_word := COM.COM_INPUT_IR[37]);
+	INTERN.L2_CURRENT_PHASE_ANGLE    := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[38], Low_word := COM.COM_INPUT_IR[39]);
+	INTERN.L2_POWER_FACTOR           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[40], Low_word := COM.COM_INPUT_IR[41]);
+	INTERN.L2_VOLTAGE_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[42], Low_word := COM.COM_INPUT_IR[43]);
+	INTERN.L2_CURRENT_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[44], Low_word := COM.COM_INPUT_IR[45]);
+	INTERN.L2_MAX_LOAD               := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[46], Low_word := COM.COM_INPUT_IR[47]);
+	INTERN.L1_L3_VOLTAGE_PHASE_ANGLE := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[48], Low_word := COM.COM_INPUT_IR[49]);
+	INTERN.L3_L1_VOLTAGE             := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[50], Low_word := COM.COM_INPUT_IR[51]);
+	INTERN.L3_N_VOLTAGE              := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[52], Low_word := COM.COM_INPUT_IR[53]);
+	INTERN.L3_CURRENT                := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[54], Low_word := COM.COM_INPUT_IR[55]);
+	INTERN.L3_ACTIVE_POWER           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[56], Low_word := COM.COM_INPUT_IR[57]);
+	INTERN.L3_APPARENT_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[58], Low_word := COM.COM_INPUT_IR[59]);
+	INTERN.L3_REACTIVE_POWER         := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[60], Low_word := COM.COM_INPUT_IR[61]);
+	INTERN.L3_CURRENT_PHASE_ANGLE    := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[62], Low_word := COM.COM_INPUT_IR[63]);
+	INTERN.L3_POWER_FACTOR           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[64], Low_word := COM.COM_INPUT_IR[65]);
+	INTERN.L3_VOLTAGE_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[66], Low_word := COM.COM_INPUT_IR[67]);
+	INTERN.L3_CURRENT_THD            := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[68], Low_word := COM.COM_INPUT_IR[69]);
+	INTERN.L3_MAX_LOAD               := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[70], Low_word := COM.COM_INPUT_IR[71]);
+	INTERN.INTERNAL_TEMPERATURE      := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[72], Low_word := COM.COM_INPUT_IR[73]);
+	INTERN.ACTIVE_ENERGY             := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[74], Low_word := COM.COM_INPUT_IR[75]);
+	INTERN.APPARENT_ENERGY           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[76], Low_word := COM.COM_INPUT_IR[77]);
+	INTERN.REACTIVE_ENERGY           := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[78], Low_word := COM.COM_INPUT_IR[79]);
+	INTERN.TOTAL_ACTIVE_POWER        := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[80], Low_word := COM.COM_INPUT_IR[81]);
+	INTERN.TOTAL_APPARENT_POWER      := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[82], Low_word := COM.COM_INPUT_IR[83]);
+	INTERN.TOTAL_REACTIVE_POWER      := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[84], Low_word := COM.COM_INPUT_IR[85]);
+	INTERN.ALL_PHASE_POWER_FACTOR    := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_IR[86], Low_word := COM.COM_INPUT_IR[87]);
+
+
+//------------------------------------------------------------------------------
+// 2. PROCESSING
+//------------------------------------------------------------------------------
+	// Nothing
+
+
+//------------------------------------------------------------------------------
+// 3. OUTPUTS
+//------------------------------------------------------------------------------
+	//--- COM : control mode status to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+	COM.SCADA_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.HMI_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_WEBVISU;
+	COM.WEBVISU_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+
+	//--- EXC
+	EXC.EXC_OUTPUT_FREQUENCY            := INTERN.FREQUENCY;
+	EXC.EXC_OUTPUT_L1_N_VOLTAGE         := INTERN.L1_N_VOLTAGE;
+	EXC.EXC_OUTPUT_L1_CURRENT           := INTERN.L1_CURRENT;
+	EXC.EXC_OUTPUT_L1_ACTIVE_POWER      := INTERN.L1_ACTIVE_POWER;
+	EXC.EXC_OUTPUT_L1_APPARENT_POWER    := INTERN.L1_APPARENT_POWER;
+	EXC.EXC_OUTPUT_L1_REACTIVE_POWER    := INTERN.L1_REACTIVE_POWER;
+	EXC.EXC_OUTPUT_L1_POWER_FACTOR      := INTERN.L1_POWER_FACTOR;
+	EXC.EXC_OUTPUT_L1_VOLTAGE_THD       := INTERN.L1_VOLTAGE_THD;
+	EXC.EXC_OUTPUT_L1_CURRENT_THD       := INTERN.L1_CURRENT_THD;
+	EXC.EXC_OUTPUT_L1_MAX_LOAD          := INTERN.L1_MAX_LOAD;
+	EXC.EXC_OUTPUT_INTERNAL_TEMPERATURE := INTERN.INTERNAL_TEMPERATURE;
+	EXC.EXC_OUTPUT_ACTIVE_ENERGY        := INTERN.ACTIVE_ENERGY;
+	// EXC.EXC_OUTPUT_DATA_VALID : not managed yet (no Modbus diagnostic)
+
+	//--- COM : alarms to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_ALARM_1_STATUS  := INTERN.ALARM_1;
+	COM.HMI_OUTPUT_ALARM_1_STATUS    := INTERN.ALARM_1;
+	COM.WEBVISU_OUTPUT_ALARM_1_STATUS    := INTERN.ALARM_1;
+	COM.SCADA_OUTPUT_ALARM_2_STATUS  := INTERN.ALARM_2;
+	COM.HMI_OUTPUT_ALARM_2_STATUS    := INTERN.ALARM_2;
+	COM.WEBVISU_OUTPUT_ALARM_2_STATUS    := INTERN.ALARM_2;
+	COM.SCADA_OUTPUT_ALARM_3_STATUS  := INTERN.ALARM_3;
+	COM.HMI_OUTPUT_ALARM_3_STATUS    := INTERN.ALARM_3;
+	COM.WEBVISU_OUTPUT_ALARM_3_STATUS    := INTERN.ALARM_3;
+	COM.SCADA_OUTPUT_ALARM_4_STATUS  := INTERN.ALARM_4;
+	COM.HMI_OUTPUT_ALARM_4_STATUS    := INTERN.ALARM_4;
+	COM.WEBVISU_OUTPUT_ALARM_4_STATUS    := INTERN.ALARM_4;
+	COM.SCADA_OUTPUT_ALARM_5_STATUS  := INTERN.ALARM_5;
+	COM.HMI_OUTPUT_ALARM_5_STATUS    := INTERN.ALARM_5;
+	COM.WEBVISU_OUTPUT_ALARM_5_STATUS    := INTERN.ALARM_5;
+	COM.SCADA_OUTPUT_ALARM_6_STATUS  := INTERN.ALARM_6;
+	COM.HMI_OUTPUT_ALARM_6_STATUS    := INTERN.ALARM_6;
+	COM.WEBVISU_OUTPUT_ALARM_6_STATUS    := INTERN.ALARM_6;
+	COM.SCADA_OUTPUT_ALARM_7_STATUS  := INTERN.ALARM_7;
+	COM.HMI_OUTPUT_ALARM_7_STATUS    := INTERN.ALARM_7;
+	COM.WEBVISU_OUTPUT_ALARM_7_STATUS    := INTERN.ALARM_7;
+	COM.SCADA_OUTPUT_ALARM_8_STATUS  := INTERN.ALARM_8;
+	COM.HMI_OUTPUT_ALARM_8_STATUS    := INTERN.ALARM_8;
+	COM.WEBVISU_OUTPUT_ALARM_8_STATUS    := INTERN.ALARM_8;
+	COM.SCADA_OUTPUT_ALARM_9_STATUS  := INTERN.ALARM_9;
+	COM.HMI_OUTPUT_ALARM_9_STATUS    := INTERN.ALARM_9;
+	COM.WEBVISU_OUTPUT_ALARM_9_STATUS    := INTERN.ALARM_9;
+	COM.SCADA_OUTPUT_ALARM_10_STATUS := INTERN.ALARM_10;
+	COM.HMI_OUTPUT_ALARM_10_STATUS   := INTERN.ALARM_10;
+	COM.WEBVISU_OUTPUT_ALARM_10_STATUS   := INTERN.ALARM_10;
+
+	//--- COM : measures to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_FREQUENCY.Real_value                 := INTERN.FREQUENCY;
+	COM.HMI_OUTPUT_FREQUENCY.Real_value                   := INTERN.FREQUENCY;
+	COM.WEBVISU_OUTPUT_FREQUENCY.Real_value                   := INTERN.FREQUENCY;
+	COM.SCADA_OUTPUT_L1_L2_VOLTAGE.Real_value             := INTERN.L1_L2_VOLTAGE;
+	COM.HMI_OUTPUT_L1_L2_VOLTAGE.Real_value               := INTERN.L1_L2_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L1_L2_VOLTAGE.Real_value               := INTERN.L1_L2_VOLTAGE;
+	COM.SCADA_OUTPUT_L1_N_VOLTAGE.Real_value              := INTERN.L1_N_VOLTAGE;
+	COM.HMI_OUTPUT_L1_N_VOLTAGE.Real_value                := INTERN.L1_N_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L1_N_VOLTAGE.Real_value                := INTERN.L1_N_VOLTAGE;
+	COM.SCADA_OUTPUT_L1_CURRENT.Real_value                := INTERN.L1_CURRENT;
+	COM.HMI_OUTPUT_L1_CURRENT.Real_value                  := INTERN.L1_CURRENT;
+	COM.WEBVISU_OUTPUT_L1_CURRENT.Real_value                  := INTERN.L1_CURRENT;
+	COM.SCADA_OUTPUT_L1_ACTIVE_POWER.Real_value           := INTERN.L1_ACTIVE_POWER;
+	COM.HMI_OUTPUT_L1_ACTIVE_POWER.Real_value             := INTERN.L1_ACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L1_ACTIVE_POWER.Real_value             := INTERN.L1_ACTIVE_POWER;
+	COM.SCADA_OUTPUT_L1_APPARENT_POWER.Real_value         := INTERN.L1_APPARENT_POWER;
+	COM.HMI_OUTPUT_L1_APPARENT_POWER.Real_value           := INTERN.L1_APPARENT_POWER;
+	COM.WEBVISU_OUTPUT_L1_APPARENT_POWER.Real_value           := INTERN.L1_APPARENT_POWER;
+	COM.SCADA_OUTPUT_L1_REACTIVE_POWER.Real_value         := INTERN.L1_REACTIVE_POWER;
+	COM.HMI_OUTPUT_L1_REACTIVE_POWER.Real_value           := INTERN.L1_REACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L1_REACTIVE_POWER.Real_value           := INTERN.L1_REACTIVE_POWER;
+	COM.SCADA_OUTPUT_L1_CURRENT_PHASE_ANGLE.Real_value    := INTERN.L1_CURRENT_PHASE_ANGLE;
+	COM.HMI_OUTPUT_L1_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L1_CURRENT_PHASE_ANGLE;
+	COM.WEBVISU_OUTPUT_L1_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L1_CURRENT_PHASE_ANGLE;
+	COM.SCADA_OUTPUT_L1_POWER_FACTOR.Real_value           := INTERN.L1_POWER_FACTOR;
+	COM.HMI_OUTPUT_L1_POWER_FACTOR.Real_value             := INTERN.L1_POWER_FACTOR;
+	COM.WEBVISU_OUTPUT_L1_POWER_FACTOR.Real_value             := INTERN.L1_POWER_FACTOR;
+	COM.SCADA_OUTPUT_L1_VOLTAGE_THD.Real_value            := INTERN.L1_VOLTAGE_THD;
+	COM.HMI_OUTPUT_L1_VOLTAGE_THD.Real_value              := INTERN.L1_VOLTAGE_THD;
+	COM.WEBVISU_OUTPUT_L1_VOLTAGE_THD.Real_value              := INTERN.L1_VOLTAGE_THD;
+	COM.SCADA_OUTPUT_L1_CURRENT_THD.Real_value            := INTERN.L1_CURRENT_THD;
+	COM.HMI_OUTPUT_L1_CURRENT_THD.Real_value              := INTERN.L1_CURRENT_THD;
+	COM.WEBVISU_OUTPUT_L1_CURRENT_THD.Real_value              := INTERN.L1_CURRENT_THD;
+	COM.SCADA_OUTPUT_L1_MAX_LOAD.Real_value               := INTERN.L1_MAX_LOAD;
+	COM.HMI_OUTPUT_L1_MAX_LOAD.Real_value                 := INTERN.L1_MAX_LOAD;
+	COM.WEBVISU_OUTPUT_L1_MAX_LOAD.Real_value                 := INTERN.L1_MAX_LOAD;
+	COM.SCADA_OUTPUT_L1_L2_VOLTAGE_PHASE_ANGLE.Real_value := INTERN.L1_L2_VOLTAGE_PHASE_ANGLE;
+	COM.HMI_OUTPUT_L1_L2_VOLTAGE_PHASE_ANGLE.Real_value   := INTERN.L1_L2_VOLTAGE_PHASE_ANGLE;
+	COM.WEBVISU_OUTPUT_L1_L2_VOLTAGE_PHASE_ANGLE.Real_value   := INTERN.L1_L2_VOLTAGE_PHASE_ANGLE;
+	COM.SCADA_OUTPUT_L2_L3_VOLTAGE.Real_value             := INTERN.L2_L3_VOLTAGE;
+	COM.HMI_OUTPUT_L2_L3_VOLTAGE.Real_value               := INTERN.L2_L3_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L2_L3_VOLTAGE.Real_value               := INTERN.L2_L3_VOLTAGE;
+	COM.SCADA_OUTPUT_L2_N_VOLTAGE.Real_value              := INTERN.L2_N_VOLTAGE;
+	COM.HMI_OUTPUT_L2_N_VOLTAGE.Real_value                := INTERN.L2_N_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L2_N_VOLTAGE.Real_value                := INTERN.L2_N_VOLTAGE;
+	COM.SCADA_OUTPUT_L2_CURRENT.Real_value                := INTERN.L2_CURRENT;
+	COM.HMI_OUTPUT_L2_CURRENT.Real_value                  := INTERN.L2_CURRENT;
+	COM.WEBVISU_OUTPUT_L2_CURRENT.Real_value                  := INTERN.L2_CURRENT;
+	COM.SCADA_OUTPUT_L2_ACTIVE_POWER.Real_value           := INTERN.L2_ACTIVE_POWER;
+	COM.HMI_OUTPUT_L2_ACTIVE_POWER.Real_value             := INTERN.L2_ACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L2_ACTIVE_POWER.Real_value             := INTERN.L2_ACTIVE_POWER;
+	COM.SCADA_OUTPUT_L2_APPARENT_POWER.Real_value         := INTERN.L2_APPARENT_POWER;
+	COM.HMI_OUTPUT_L2_APPARENT_POWER.Real_value           := INTERN.L2_APPARENT_POWER;
+	COM.WEBVISU_OUTPUT_L2_APPARENT_POWER.Real_value           := INTERN.L2_APPARENT_POWER;
+	COM.SCADA_OUTPUT_L2_REACTIVE_POWER.Real_value         := INTERN.L2_REACTIVE_POWER;
+	COM.HMI_OUTPUT_L2_REACTIVE_POWER.Real_value           := INTERN.L2_REACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L2_REACTIVE_POWER.Real_value           := INTERN.L2_REACTIVE_POWER;
+	COM.SCADA_OUTPUT_L2_CURRENT_PHASE_ANGLE.Real_value    := INTERN.L2_CURRENT_PHASE_ANGLE;
+	COM.HMI_OUTPUT_L2_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L2_CURRENT_PHASE_ANGLE;
+	COM.WEBVISU_OUTPUT_L2_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L2_CURRENT_PHASE_ANGLE;
+	COM.SCADA_OUTPUT_L2_POWER_FACTOR.Real_value           := INTERN.L2_POWER_FACTOR;
+	COM.HMI_OUTPUT_L2_POWER_FACTOR.Real_value             := INTERN.L2_POWER_FACTOR;
+	COM.WEBVISU_OUTPUT_L2_POWER_FACTOR.Real_value             := INTERN.L2_POWER_FACTOR;
+	COM.SCADA_OUTPUT_L2_VOLTAGE_THD.Real_value            := INTERN.L2_VOLTAGE_THD;
+	COM.HMI_OUTPUT_L2_VOLTAGE_THD.Real_value              := INTERN.L2_VOLTAGE_THD;
+	COM.WEBVISU_OUTPUT_L2_VOLTAGE_THD.Real_value              := INTERN.L2_VOLTAGE_THD;
+	COM.SCADA_OUTPUT_L2_CURRENT_THD.Real_value            := INTERN.L2_CURRENT_THD;
+	COM.HMI_OUTPUT_L2_CURRENT_THD.Real_value              := INTERN.L2_CURRENT_THD;
+	COM.WEBVISU_OUTPUT_L2_CURRENT_THD.Real_value              := INTERN.L2_CURRENT_THD;
+	COM.SCADA_OUTPUT_L2_MAX_LOAD.Real_value               := INTERN.L2_MAX_LOAD;
+	COM.HMI_OUTPUT_L2_MAX_LOAD.Real_value                 := INTERN.L2_MAX_LOAD;
+	COM.WEBVISU_OUTPUT_L2_MAX_LOAD.Real_value                 := INTERN.L2_MAX_LOAD;
+	COM.SCADA_OUTPUT_L1_L3_VOLTAGE_PHASE_ANGLE.Real_value := INTERN.L1_L3_VOLTAGE_PHASE_ANGLE;
+	COM.HMI_OUTPUT_L1_L3_VOLTAGE_PHASE_ANGLE.Real_value   := INTERN.L1_L3_VOLTAGE_PHASE_ANGLE;
+	COM.WEBVISU_OUTPUT_L1_L3_VOLTAGE_PHASE_ANGLE.Real_value   := INTERN.L1_L3_VOLTAGE_PHASE_ANGLE;
+	COM.SCADA_OUTPUT_L3_L1_VOLTAGE.Real_value             := INTERN.L3_L1_VOLTAGE;
+	COM.HMI_OUTPUT_L3_L1_VOLTAGE.Real_value               := INTERN.L3_L1_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L3_L1_VOLTAGE.Real_value               := INTERN.L3_L1_VOLTAGE;
+	COM.SCADA_OUTPUT_L3_N_VOLTAGE.Real_value              := INTERN.L3_N_VOLTAGE;
+	COM.HMI_OUTPUT_L3_N_VOLTAGE.Real_value                := INTERN.L3_N_VOLTAGE;
+	COM.WEBVISU_OUTPUT_L3_N_VOLTAGE.Real_value                := INTERN.L3_N_VOLTAGE;
+	COM.SCADA_OUTPUT_L3_CURRENT.Real_value                := INTERN.L3_CURRENT;
+	COM.HMI_OUTPUT_L3_CURRENT.Real_value                  := INTERN.L3_CURRENT;
+	COM.WEBVISU_OUTPUT_L3_CURRENT.Real_value                  := INTERN.L3_CURRENT;
+	COM.SCADA_OUTPUT_L3_ACTIVE_POWER.Real_value           := INTERN.L3_ACTIVE_POWER;
+	COM.HMI_OUTPUT_L3_ACTIVE_POWER.Real_value             := INTERN.L3_ACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L3_ACTIVE_POWER.Real_value             := INTERN.L3_ACTIVE_POWER;
+	COM.SCADA_OUTPUT_L3_APPARENT_POWER.Real_value         := INTERN.L3_APPARENT_POWER;
+	COM.HMI_OUTPUT_L3_APPARENT_POWER.Real_value           := INTERN.L3_APPARENT_POWER;
+	COM.WEBVISU_OUTPUT_L3_APPARENT_POWER.Real_value           := INTERN.L3_APPARENT_POWER;
+	COM.SCADA_OUTPUT_L3_REACTIVE_POWER.Real_value         := INTERN.L3_REACTIVE_POWER;
+	COM.HMI_OUTPUT_L3_REACTIVE_POWER.Real_value           := INTERN.L3_REACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_L3_REACTIVE_POWER.Real_value           := INTERN.L3_REACTIVE_POWER;
+	COM.SCADA_OUTPUT_L3_CURRENT_PHASE_ANGLE.Real_value    := INTERN.L3_CURRENT_PHASE_ANGLE;
+	COM.HMI_OUTPUT_L3_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L3_CURRENT_PHASE_ANGLE;
+	COM.WEBVISU_OUTPUT_L3_CURRENT_PHASE_ANGLE.Real_value      := INTERN.L3_CURRENT_PHASE_ANGLE;
+	COM.SCADA_OUTPUT_L3_POWER_FACTOR.Real_value           := INTERN.L3_POWER_FACTOR;
+	COM.HMI_OUTPUT_L3_POWER_FACTOR.Real_value             := INTERN.L3_POWER_FACTOR;
+	COM.WEBVISU_OUTPUT_L3_POWER_FACTOR.Real_value             := INTERN.L3_POWER_FACTOR;
+	COM.SCADA_OUTPUT_L3_VOLTAGE_THD.Real_value            := INTERN.L3_VOLTAGE_THD;
+	COM.HMI_OUTPUT_L3_VOLTAGE_THD.Real_value              := INTERN.L3_VOLTAGE_THD;
+	COM.WEBVISU_OUTPUT_L3_VOLTAGE_THD.Real_value              := INTERN.L3_VOLTAGE_THD;
+	COM.SCADA_OUTPUT_L3_CURRENT_THD.Real_value            := INTERN.L3_CURRENT_THD;
+	COM.HMI_OUTPUT_L3_CURRENT_THD.Real_value              := INTERN.L3_CURRENT_THD;
+	COM.WEBVISU_OUTPUT_L3_CURRENT_THD.Real_value              := INTERN.L3_CURRENT_THD;
+	COM.SCADA_OUTPUT_L3_MAX_LOAD.Real_value               := INTERN.L3_MAX_LOAD;
+	COM.HMI_OUTPUT_L3_MAX_LOAD.Real_value                 := INTERN.L3_MAX_LOAD;
+	COM.WEBVISU_OUTPUT_L3_MAX_LOAD.Real_value                 := INTERN.L3_MAX_LOAD;
+	COM.SCADA_OUTPUT_INTERNAL_TEMPERATURE.Real_value      := INTERN.INTERNAL_TEMPERATURE;
+	COM.HMI_OUTPUT_INTERNAL_TEMPERATURE.Real_value        := INTERN.INTERNAL_TEMPERATURE;
+	COM.WEBVISU_OUTPUT_INTERNAL_TEMPERATURE.Real_value        := INTERN.INTERNAL_TEMPERATURE;
+	COM.SCADA_OUTPUT_ACTIVE_ENERGY.Real_value             := INTERN.ACTIVE_ENERGY;
+	COM.HMI_OUTPUT_ACTIVE_ENERGY.Real_value               := INTERN.ACTIVE_ENERGY;
+	COM.WEBVISU_OUTPUT_ACTIVE_ENERGY.Real_value               := INTERN.ACTIVE_ENERGY;
+	COM.SCADA_OUTPUT_APPARENT_ENERGY.Real_value           := INTERN.APPARENT_ENERGY;
+	COM.HMI_OUTPUT_APPARENT_ENERGY.Real_value             := INTERN.APPARENT_ENERGY;
+	COM.WEBVISU_OUTPUT_APPARENT_ENERGY.Real_value             := INTERN.APPARENT_ENERGY;
+	COM.SCADA_OUTPUT_REACTIVE_ENERGY.Real_value           := INTERN.REACTIVE_ENERGY;
+	COM.HMI_OUTPUT_REACTIVE_ENERGY.Real_value             := INTERN.REACTIVE_ENERGY;
+	COM.WEBVISU_OUTPUT_REACTIVE_ENERGY.Real_value             := INTERN.REACTIVE_ENERGY;
+	COM.SCADA_OUTPUT_TOTAL_ACTIVE_POWER.Real_value        := INTERN.TOTAL_ACTIVE_POWER;
+	COM.HMI_OUTPUT_TOTAL_ACTIVE_POWER.Real_value          := INTERN.TOTAL_ACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_TOTAL_ACTIVE_POWER.Real_value          := INTERN.TOTAL_ACTIVE_POWER;
+	COM.SCADA_OUTPUT_TOTAL_APPARENT_POWER.Real_value      := INTERN.TOTAL_APPARENT_POWER;
+	COM.HMI_OUTPUT_TOTAL_APPARENT_POWER.Real_value        := INTERN.TOTAL_APPARENT_POWER;
+	COM.WEBVISU_OUTPUT_TOTAL_APPARENT_POWER.Real_value        := INTERN.TOTAL_APPARENT_POWER;
+	COM.SCADA_OUTPUT_TOTAL_REACTIVE_POWER.Real_value      := INTERN.TOTAL_REACTIVE_POWER;
+	COM.HMI_OUTPUT_TOTAL_REACTIVE_POWER.Real_value        := INTERN.TOTAL_REACTIVE_POWER;
+	COM.WEBVISU_OUTPUT_TOTAL_REACTIVE_POWER.Real_value        := INTERN.TOTAL_REACTIVE_POWER;
+	COM.SCADA_OUTPUT_ALL_PHASE_POWER_FACTOR.Real_value    := INTERN.ALL_PHASE_POWER_FACTOR;
+	COM.HMI_OUTPUT_ALL_PHASE_POWER_FACTOR.Real_value      := INTERN.ALL_PHASE_POWER_FACTOR;
+	COM.WEBVISU_OUTPUT_ALL_PHASE_POWER_FACTOR.Real_value      := INTERN.ALL_PHASE_POWER_FACTOR;
+
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>5a693ac2-76cb-41d8-ad9c-7513981188e0</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FB_INST_DOSENSOR" pouType="functionBlock">
+        <interface>
+          <inOutVars>
+            <variable name="PA">
+              <type>
+                <derived name="DUT_PA_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Parameters (persistent, GVL_PA)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="COM">
+              <type>
+                <derived name="DUT_COM_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Communication : Modbus RTU (COM_), SCADA FUXA (SCADA_), HMI (HMI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC">
+              <type>
+                <derived name="DUT_EXC_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges : other equipment (EXC_), functional units (UPI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="IO">
+              <type>
+                <derived name="DUT_IO_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Wired PLC I/O</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+          <localVars>
+            <variable name="INTERN">
+              <type>
+                <derived name="DUT_INT_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Internal variables</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TP_CALIB_HIGH">
+              <type>
+                <derived name="TP"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> High calibration pulse</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TP_CALIB_LOW">
+              <type>
+                <derived name="TP"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Low calibration pulse</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TP_CALIB_DONE">
+              <type>
+                <derived name="TP"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Calibration done message</xhtml>
+              </documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FB_INST_DOSENSOR
+// Dissolved oxygen sensor, analog signal + fault input + 2 calibration outputs
+// 1. INPUTS     : requests, control mode, command source, equipment feedback -&gt; INTERN
+// 2. PROCESSING : on INTERN only
+// 3. OUTPUTS    : INTERN -&gt; COM / IO / EXC
+// Control mode  : local WEBVISU &gt; local HMI &gt; local FUXA &gt; auto (functional units)
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// 1. INPUTS
+//------------------------------------------------------------------------------
+	//--- Control mode requests (WEBVISU, HMI, FUXA, global UPI)
+	INTERN.FUXA_LOCAL_REQUEST := COM.SCADA_INPUT_LOCAL_REQUEST;
+	INTERN.FUXA_AUTO_REQUEST  := COM.SCADA_INPUT_AUTO_REQUEST;
+	INTERN.HMI_LOCAL_REQUEST  := COM.HMI_INPUT_LOCAL_REQUEST;
+	INTERN.HMI_AUTO_REQUEST   := COM.HMI_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_FUXA  := EXC.UPI_INPUT_GLOBAL_LOCAL_FUXA;
+	INTERN.GLOBAL_LOCAL_HMI   := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;
+	INTERN.WEBVISU_LOCAL_REQUEST := COM.WEBVISU_INPUT_LOCAL_REQUEST;
+	INTERN.WEBVISU_AUTO_REQUEST  := COM.WEBVISU_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_WEBVISU  := EXC.UPI_INPUT_GLOBAL_LOCAL_WEBVISU;
+	//--- Control mode
+	// Individual memories : set by the local request, reset by the auto request (auto wins if both)
+	IF INTERN.WEBVISU_LOCAL_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.WEBVISU_AUTO_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.HMI_LOCAL_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.HMI_AUTO_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.FUXA_LOCAL_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.FUXA_AUTO_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := FALSE;
+	END_IF
+
+	// Resulting mode : individual OR global, WEBVISU &gt; HMI &gt; FUXA &gt; auto
+	INTERN.LOCAL_WEBVISU := INTERN.LOCAL_WEBVISU_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_WEBVISU;
+	INTERN.LOCAL_HMI     := (INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI) AND NOT INTERN.LOCAL_WEBVISU;
+	INTERN.LOCAL_FUXA    := (INTERN.LOCAL_FUXA_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_FUXA) AND NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI;
+	INTERN.AUTO          := NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI AND NOT INTERN.LOCAL_FUXA;
+
+	//--- Command source : calibration requests
+	IF INTERN.LOCAL_WEBVISU THEN
+		INTERN.CALIB_HIGH_REQUEST := COM.WEBVISU_INPUT_CALIBRATION_HIGH;
+		INTERN.CALIB_LOW_REQUEST  := COM.WEBVISU_INPUT_CALIBRATION_LOW;
+	ELSIF INTERN.LOCAL_HMI THEN
+		INTERN.CALIB_HIGH_REQUEST := COM.HMI_INPUT_CALIBRATION_HIGH;
+		INTERN.CALIB_LOW_REQUEST  := COM.HMI_INPUT_CALIBRATION_LOW;
+	ELSIF INTERN.LOCAL_FUXA THEN
+		INTERN.CALIB_HIGH_REQUEST := COM.SCADA_INPUT_CALIBRATION_HIGH;
+		INTERN.CALIB_LOW_REQUEST  := COM.SCADA_INPUT_CALIBRATION_LOW;
+	ELSE
+		// Auto : functional units (UPI)
+		INTERN.CALIB_HIGH_REQUEST := FALSE;
+		INTERN.CALIB_LOW_REQUEST  := FALSE;
+	END_IF
+
+	//--- IO
+	INTERN.SIGNAL_RAW := IO.INPUT_SIGNAL;
+	INTERN.FAULT      := IO.INPUT_SENSOR_FAULT;
+
+
+//------------------------------------------------------------------------------
+// 2. PROCESSING
+//------------------------------------------------------------------------------
+	//--- Signal scaling
+	INTERN.SIGNAL := (DWORD_TO_REAL(INTERN.SIGNAL_RAW * 40) / 65535) - 8;
+
+	//--- Calibration : 1 s pulse to the sensor, 5 s "done" message
+	TP_CALIB_HIGH(IN := INTERN.CALIB_HIGH_REQUEST, PT := T#1S);
+	TP_CALIB_LOW(IN := INTERN.CALIB_LOW_REQUEST, PT := T#1S);
+	TP_CALIB_DONE(IN := TP_CALIB_HIGH.Q OR TP_CALIB_LOW.Q, PT := T#5S);
+
+	INTERN.CALIB_HIGH := TP_CALIB_HIGH.Q;
+	INTERN.CALIB_LOW  := TP_CALIB_LOW.Q;
+	INTERN.CALIB_DONE := TP_CALIB_DONE.Q;
+
+
+//------------------------------------------------------------------------------
+// 3. OUTPUTS
+//------------------------------------------------------------------------------
+	//--- COM : control mode status to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+	COM.SCADA_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.HMI_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_WEBVISU;
+	COM.WEBVISU_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+
+	//--- EXC
+	EXC.EXC_OUTPUT_SIGNAL := INTERN.SIGNAL;
+
+	//--- IO
+	IO.OUTPUT_CALIBRATION_HIGH := INTERN.CALIB_HIGH;
+	IO.OUTPUT_CALIBRATION_LOW  := INTERN.CALIB_LOW;
+
+	//--- COM : feedback to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_SIGNAL.Real_value := INTERN.SIGNAL;
+	COM.HMI_OUTPUT_SIGNAL.Real_value   := INTERN.SIGNAL;
+	COM.WEBVISU_OUTPUT_SIGNAL.Real_value   := INTERN.SIGNAL;
+	COM.SCADA_OUTPUT_FAULT             := INTERN.FAULT;
+	COM.HMI_OUTPUT_FAULT               := INTERN.FAULT;
+	COM.WEBVISU_OUTPUT_FAULT               := INTERN.FAULT;
+	COM.SCADA_OUTPUT_CALIBRATION_DONE  := INTERN.CALIB_DONE;
+	COM.HMI_OUTPUT_CALIBRATION_DONE    := INTERN.CALIB_DONE;
+	COM.WEBVISU_OUTPUT_CALIBRATION_DONE    := INTERN.CALIB_DONE;
+
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>27a68d82-0284-4c8b-ba08-16fa17dad52c</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FB_INST_DIP1500" pouType="functionBlock">
+        <interface>
+          <inOutVars>
+            <variable name="PA">
+              <type>
+                <derived name="DUT_PA_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Parameters (persistent, GVL_PA)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="COM">
+              <type>
+                <derived name="DUT_COM_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Communication : Modbus RTU (COM_), SCADA FUXA (SCADA_), HMI (HMI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC">
+              <type>
+                <derived name="DUT_EXC_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges : other equipment (EXC_), functional units (UPI_)</xhtml>
+              </documentation>
+            </variable>
+            <variable name="IO">
+              <type>
+                <derived name="DUT_IO_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Wired PLC I/O</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+          <localVars>
+            <variable name="INTERN">
+              <type>
+                <derived name="DUT_INT_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Internal variables</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TON_PULSE">
+              <type>
+                <derived name="TON"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Square wave timer</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TOF_CMD_WINDOW">
+              <type>
+                <derived name="TOF"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Command write window</xhtml>
+              </documentation>
+            </variable>
+            <variable name="R_TRIG_FLASH">
+              <type>
+                <derived name="R_TRIG"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Flash save request edge</xhtml>
+              </documentation>
+            </variable>
+            <variable name="TP_FLASH">
+              <type>
+                <derived name="TP"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Flash save pulse</xhtml>
+              </documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FB_INST_DIP1500
+// Kamoer DIP1500 peristaltic pump, Modbus RTU, 32-bit low word first (CDAB)
+// 1. INPUTS     : requests, control mode, command source, equipment feedback -&gt; INTERN
+// 2. PROCESSING : on INTERN only
+// 3. OUTPUTS    : INTERN -&gt; COM / IO / EXC
+// Parameters    : pump configuration in PA (persistent), changed from the active local supervision
+// Control mode  : local WEBVISU &gt; local HMI &gt; local FUXA &gt; auto (functional units)
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// 1. INPUTS
+//------------------------------------------------------------------------------
+	//--- Control mode requests (WEBVISU, HMI, FUXA, global UPI)
+	INTERN.FUXA_LOCAL_REQUEST := COM.SCADA_INPUT_LOCAL_REQUEST;
+	INTERN.FUXA_AUTO_REQUEST  := COM.SCADA_INPUT_AUTO_REQUEST;
+	INTERN.HMI_LOCAL_REQUEST  := COM.HMI_INPUT_LOCAL_REQUEST;
+	INTERN.HMI_AUTO_REQUEST   := COM.HMI_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_FUXA  := EXC.UPI_INPUT_GLOBAL_LOCAL_FUXA;
+	INTERN.GLOBAL_LOCAL_HMI   := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;
+	INTERN.WEBVISU_LOCAL_REQUEST := COM.WEBVISU_INPUT_LOCAL_REQUEST;
+	INTERN.WEBVISU_AUTO_REQUEST  := COM.WEBVISU_INPUT_AUTO_REQUEST;
+	INTERN.GLOBAL_LOCAL_WEBVISU  := EXC.UPI_INPUT_GLOBAL_LOCAL_WEBVISU;
+
+	//--- Control mode
+	// Individual memories : set by the local request, reset by the auto request (auto wins if both)
+	IF INTERN.WEBVISU_LOCAL_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.WEBVISU_AUTO_REQUEST THEN
+		INTERN.LOCAL_WEBVISU_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.HMI_LOCAL_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.HMI_AUTO_REQUEST THEN
+		INTERN.LOCAL_HMI_INDIVIDUAL := FALSE;
+	END_IF
+	IF INTERN.FUXA_LOCAL_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := TRUE;
+	END_IF
+	IF INTERN.FUXA_AUTO_REQUEST THEN
+		INTERN.LOCAL_FUXA_INDIVIDUAL := FALSE;
+	END_IF
+
+	// Resulting mode : individual OR global, WEBVISU &gt; HMI &gt; FUXA &gt; auto
+	INTERN.LOCAL_WEBVISU := INTERN.LOCAL_WEBVISU_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_WEBVISU;
+	INTERN.LOCAL_HMI     := (INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI) AND NOT INTERN.LOCAL_WEBVISU;
+	INTERN.LOCAL_FUXA    := (INTERN.LOCAL_FUXA_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_FUXA) AND NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI;
+	INTERN.AUTO          := NOT INTERN.LOCAL_WEBVISU AND NOT INTERN.LOCAL_HMI AND NOT INTERN.LOCAL_FUXA;
+
+	//--- Command source : local WEBVISU &gt; local HMI &gt; local FUXA &gt; auto (UPI)
+	IF INTERN.LOCAL_WEBVISU THEN
+		INTERN.CMD_RUN            := COM.WEBVISU_INPUT_MOTOR_START_STOP;
+		INTERN.CMD_CLOCKWISE      := COM.WEBVISU_INPUT_MOTOR_DIRECTION;
+		INTERN.CMD_VOLUME_MODE    := COM.WEBVISU_INPUT_OPERATION_MODE;
+		INTERN.CMD_SPEED          := COM.WEBVISU_INPUT_MOTOR_SPEED.Real_value;
+		INTERN.CMD_RUN_SETPOINT   := COM.WEBVISU_INPUT_RUN_TIME_OR_VOLUME_SETPOINT.Real_value;
+		INTERN.PARAM_WRITE_ENABLE := COM.WEBVISU_INPUT_PARAM_WRITE_ENABLE;
+		INTERN.FLASH_SAVE_REQUEST := COM.WEBVISU_INPUT_FLASH_SAVE;
+	ELSIF INTERN.LOCAL_HMI THEN
+		INTERN.CMD_RUN            := COM.HMI_INPUT_MOTOR_START_STOP;
+		INTERN.CMD_CLOCKWISE      := COM.HMI_INPUT_MOTOR_DIRECTION;
+		INTERN.CMD_VOLUME_MODE    := COM.HMI_INPUT_OPERATION_MODE;
+		INTERN.CMD_SPEED          := COM.HMI_INPUT_MOTOR_SPEED.Real_value;
+		INTERN.CMD_RUN_SETPOINT   := COM.HMI_INPUT_RUN_TIME_OR_VOLUME_SETPOINT.Real_value;
+		INTERN.PARAM_WRITE_ENABLE := COM.HMI_INPUT_PARAM_WRITE_ENABLE;
+		INTERN.FLASH_SAVE_REQUEST := COM.HMI_INPUT_FLASH_SAVE;
+	ELSIF INTERN.LOCAL_FUXA THEN
+		INTERN.CMD_RUN            := COM.SCADA_INPUT_MOTOR_START_STOP;
+		INTERN.CMD_CLOCKWISE      := COM.SCADA_INPUT_MOTOR_DIRECTION;
+		INTERN.CMD_VOLUME_MODE    := COM.SCADA_INPUT_OPERATION_MODE;
+		INTERN.CMD_SPEED          := COM.SCADA_INPUT_MOTOR_SPEED.Real_value;
+		INTERN.CMD_RUN_SETPOINT   := COM.SCADA_INPUT_RUN_TIME_OR_VOLUME_SETPOINT.Real_value;
+		INTERN.PARAM_WRITE_ENABLE := COM.SCADA_INPUT_PARAM_WRITE_ENABLE;
+		INTERN.FLASH_SAVE_REQUEST := COM.SCADA_INPUT_FLASH_SAVE;
+	ELSE
+		// Auto : functional units (UPI)
+		INTERN.CMD_RUN            := EXC.UPI_INPUT_RUN;
+		INTERN.CMD_CLOCKWISE      := EXC.UPI_INPUT_CLOCKWISE;
+		INTERN.CMD_VOLUME_MODE    := EXC.UPI_INPUT_VOLUME_MODE;
+		INTERN.CMD_SPEED          := EXC.UPI_INPUT_SPEED;
+		INTERN.CMD_RUN_SETPOINT   := EXC.UPI_INPUT_RUN_SETPOINT;
+		INTERN.PARAM_WRITE_ENABLE := FALSE;                        // configuration is never written in auto
+		INTERN.FLASH_SAVE_REQUEST := FALSE;
+	END_IF
+
+	//--- Parameter source : values typed in the active local supervision (nothing in auto)
+	IF INTERN.LOCAL_WEBVISU THEN
+		INTERN.SRC_MAX_MOTOR_SPEED         := COM.WEBVISU_INPUT_MAX_MOTOR_SPEED.Real_value;
+		INTERN.SRC_CALIBRATION_COEFFICIENT := COM.WEBVISU_INPUT_FLOW_RATE_OR_SPEED_CALIBRATION_COEFFICIENT.Real_value;
+		INTERN.SRC_FOOT_SWITCH_INPUT_MODE  := COM.WEBVISU_INPUT_FOOT_SWITCH_INPUT_MODE;
+		INTERN.SRC_LIQUID_LEVEL_INPUT_MODE := COM.WEBVISU_INPUT_LIQUID_LEVEL_INPUT_MODE;
+		INTERN.SRC_STATE_OUTPUT_MODE       := COM.WEBVISU_INPUT_STATE_OUTPUT_MODE;
+		INTERN.SRC_COMMUNICATION_ADDRESS   := COM.WEBVISU_INPUT_COMMUNICATION_ADDRESS;
+		INTERN.SRC_BAUD_RATE_INDEX         := COM.WEBVISU_INPUT_BAUD_RATE_INDEX;
+	ELSIF INTERN.LOCAL_HMI THEN
+		INTERN.SRC_MAX_MOTOR_SPEED         := COM.HMI_INPUT_MAX_MOTOR_SPEED.Real_value;
+		INTERN.SRC_CALIBRATION_COEFFICIENT := COM.HMI_INPUT_FLOW_RATE_OR_SPEED_CALIBRATION_COEFFICIENT.Real_value;
+		INTERN.SRC_FOOT_SWITCH_INPUT_MODE  := COM.HMI_INPUT_FOOT_SWITCH_INPUT_MODE;
+		INTERN.SRC_LIQUID_LEVEL_INPUT_MODE := COM.HMI_INPUT_LIQUID_LEVEL_INPUT_MODE;
+		INTERN.SRC_STATE_OUTPUT_MODE       := COM.HMI_INPUT_STATE_OUTPUT_MODE;
+		INTERN.SRC_COMMUNICATION_ADDRESS   := COM.HMI_INPUT_COMMUNICATION_ADDRESS;
+		INTERN.SRC_BAUD_RATE_INDEX         := COM.HMI_INPUT_BAUD_RATE_INDEX;
+	ELSIF INTERN.LOCAL_FUXA THEN
+		INTERN.SRC_MAX_MOTOR_SPEED         := COM.SCADA_INPUT_MAX_MOTOR_SPEED.Real_value;
+		INTERN.SRC_CALIBRATION_COEFFICIENT := COM.SCADA_INPUT_FLOW_RATE_OR_SPEED_CALIBRATION_COEFFICIENT.Real_value;
+		INTERN.SRC_FOOT_SWITCH_INPUT_MODE  := COM.SCADA_INPUT_FOOT_SWITCH_INPUT_MODE;
+		INTERN.SRC_LIQUID_LEVEL_INPUT_MODE := COM.SCADA_INPUT_LIQUID_LEVEL_INPUT_MODE;
+		INTERN.SRC_STATE_OUTPUT_MODE       := COM.SCADA_INPUT_STATE_OUTPUT_MODE;
+		INTERN.SRC_COMMUNICATION_ADDRESS   := COM.SCADA_INPUT_COMMUNICATION_ADDRESS;
+		INTERN.SRC_BAUD_RATE_INDEX         := COM.SCADA_INPUT_BAUD_RATE_INDEX;
+	END_IF
+
+	//--- COM : input registers 0x3001..0x3005
+	INTERN.FBK_FIRMWARE_VERSION := COM.COM_INPUT_IR[0];
+	INTERN.FBK_HARDWARE_VERSION := COM.COM_INPUT_IR[1];
+	INTERN.FBK_TEMPERATURE      := COM.COM_INPUT_IR[2];
+	INTERN.FBK_LEVEL_ALARM      := COM.COM_INPUT_IR[3];
+	INTERN.FBK_DIGITAL_OUTPUT   := COM.COM_INPUT_IR[4];
+
+	//--- COM : run counters 0x4007..0x400A (format depends on mode)
+	IF INTERN.CMD_VOLUME_MODE THEN
+		// Volume mode : 32-bit REAL (ml)
+		INTERN.FBK_RUN_ACTUAL := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_HR_COUNTERS[1], Low_word := COM.COM_INPUT_HR_COUNTERS[0]);
+		INTERN.FBK_RUN_TOTAL  := FNC_WORDS_TO_REAL(High_word := COM.COM_INPUT_HR_COUNTERS[3], Low_word := COM.COM_INPUT_HR_COUNTERS[2]);
+	ELSE
+		// Time mode : 32-bit UDINT (ms)
+		INTERN.UDINT_TEMP     := SHL(WORD_TO_UDINT(COM.COM_INPUT_HR_COUNTERS[1]), 16) OR WORD_TO_UDINT(COM.COM_INPUT_HR_COUNTERS[0]);
+		INTERN.FBK_RUN_ACTUAL := UDINT_TO_REAL(INTERN.UDINT_TEMP);
+		INTERN.UDINT_TEMP     := SHL(WORD_TO_UDINT(COM.COM_INPUT_HR_COUNTERS[3]), 16) OR WORD_TO_UDINT(COM.COM_INPUT_HR_COUNTERS[2]);
+		INTERN.FBK_RUN_TOTAL  := UDINT_TO_REAL(INTERN.UDINT_TEMP);
+	END_IF
+
+
+//------------------------------------------------------------------------------
+// 2. PROCESSING
+//------------------------------------------------------------------------------
+	//--- Parameters (PA) : a value changed in the active supervision is saved in PA
+	// PA is persistent : it keeps its value after a restart or a download. Default = declaration value.
+	// The cycle where the source changes is ignored, so switching mode never overwrites PA.
+	INTERN.SOURCE_CHANGED := (INTERN.LOCAL_WEBVISU &lt;&gt; INTERN.PREV_LOCAL_WEBVISU)
+	                         OR (INTERN.LOCAL_HMI &lt;&gt; INTERN.PREV_LOCAL_HMI)
+	                         OR (INTERN.LOCAL_FUXA &lt;&gt; INTERN.PREV_LOCAL_FUXA);
+	INTERN.PREV_LOCAL_WEBVISU := INTERN.LOCAL_WEBVISU;
+	INTERN.PREV_LOCAL_HMI     := INTERN.LOCAL_HMI;
+	INTERN.PREV_LOCAL_FUXA    := INTERN.LOCAL_FUXA;
+
+	IF NOT INTERN.SOURCE_CHANGED THEN
+		IF INTERN.SRC_MAX_MOTOR_SPEED &lt;&gt; INTERN.PREV_SRC_MAX_MOTOR_SPEED THEN
+			PA.MAX_MOTOR_SPEED := INTERN.SRC_MAX_MOTOR_SPEED;
+		END_IF
+		IF INTERN.SRC_CALIBRATION_COEFFICIENT &lt;&gt; INTERN.PREV_SRC_CALIBRATION_COEFFICIENT THEN
+			PA.CALIBRATION_COEFFICIENT := INTERN.SRC_CALIBRATION_COEFFICIENT;
+		END_IF
+		IF INTERN.SRC_FOOT_SWITCH_INPUT_MODE &lt;&gt; INTERN.PREV_SRC_FOOT_SWITCH_INPUT_MODE THEN
+			PA.FOOT_SWITCH_INPUT_MODE := INTERN.SRC_FOOT_SWITCH_INPUT_MODE;
+		END_IF
+		IF INTERN.SRC_LIQUID_LEVEL_INPUT_MODE &lt;&gt; INTERN.PREV_SRC_LIQUID_LEVEL_INPUT_MODE THEN
+			PA.LIQUID_LEVEL_INPUT_MODE := INTERN.SRC_LIQUID_LEVEL_INPUT_MODE;
+		END_IF
+		IF INTERN.SRC_STATE_OUTPUT_MODE &lt;&gt; INTERN.PREV_SRC_STATE_OUTPUT_MODE THEN
+			PA.STATE_OUTPUT_MODE := INTERN.SRC_STATE_OUTPUT_MODE;
+		END_IF
+		IF INTERN.SRC_COMMUNICATION_ADDRESS &lt;&gt; INTERN.PREV_SRC_COMMUNICATION_ADDRESS THEN
+			PA.COMMUNICATION_ADDRESS := INTERN.SRC_COMMUNICATION_ADDRESS;
+		END_IF
+		IF INTERN.SRC_BAUD_RATE_INDEX &lt;&gt; INTERN.PREV_SRC_BAUD_RATE_INDEX THEN
+			PA.BAUD_RATE_INDEX := INTERN.SRC_BAUD_RATE_INDEX;
+		END_IF
+	END_IF
+
+	INTERN.PREV_SRC_MAX_MOTOR_SPEED         := INTERN.SRC_MAX_MOTOR_SPEED;
+	INTERN.PREV_SRC_CALIBRATION_COEFFICIENT := INTERN.SRC_CALIBRATION_COEFFICIENT;
+	INTERN.PREV_SRC_FOOT_SWITCH_INPUT_MODE  := INTERN.SRC_FOOT_SWITCH_INPUT_MODE;
+	INTERN.PREV_SRC_LIQUID_LEVEL_INPUT_MODE := INTERN.SRC_LIQUID_LEVEL_INPUT_MODE;
+	INTERN.PREV_SRC_STATE_OUTPUT_MODE       := INTERN.SRC_STATE_OUTPUT_MODE;
+	INTERN.PREV_SRC_COMMUNICATION_ADDRESS   := INTERN.SRC_COMMUNICATION_ADDRESS;
+	INTERN.PREV_SRC_BAUD_RATE_INDEX         := INTERN.SRC_BAUD_RATE_INDEX;
+
+	//--- Parameters used by the pump : always from PA
+	INTERN.CMD_MAX_SPEED      := PA.MAX_MOTOR_SPEED;
+	INTERN.CMD_CALIB_COEF     := PA.CALIBRATION_COEFFICIENT;
+	INTERN.CMD_FOOT_MODE      := PA.FOOT_SWITCH_INPUT_MODE;
+	INTERN.CMD_LEVEL_MODE     := PA.LIQUID_LEVEL_INPUT_MODE;
+	INTERN.CMD_STATE_OUT_MODE := PA.STATE_OUTPUT_MODE;
+	INTERN.CMD_ADDRESS        := PA.COMMUNICATION_ADDRESS;
+	INTERN.CMD_BAUD_INDEX     := PA.BAUD_RATE_INDEX;
+
+	//--- Parameter validity
+	INTERN.PARAM_VALID := (WORD_TO_UINT(INTERN.CMD_ADDRESS) &gt;= 1) AND (WORD_TO_UINT(INTERN.CMD_ADDRESS) &lt;= 31)
+	                      AND (WORD_TO_UINT(INTERN.CMD_BAUD_INDEX) &lt;= 7)
+	                      AND (INTERN.CMD_MAX_SPEED &gt; 0.0) AND (INTERN.CMD_CALIB_COEF &gt; 0.0);
+
+	//--- Flash save : 1 s pulse on rising edge, only with valid parameters
+	R_TRIG_FLASH(CLK := INTERN.FLASH_SAVE_REQUEST);
+	TP_FLASH(IN := R_TRIG_FLASH.Q AND INTERN.PARAM_VALID, PT := T#1S);
+	INTERN.CMD_SAVE_FLASH := TP_FLASH.Q;
+
+	//--- Write triggers (rising edge channels)
+	// Square wave 500 ms : each rising edge = one write request
+	TON_PULSE(IN := NOT TON_PULSE.Q, PT := T#250MS);
+	IF TON_PULSE.Q THEN
+		INTERN.PULSE_500MS := NOT INTERN.PULSE_500MS;
+	END_IF
+
+	// Command trigger : automatic, 3 s of edges after any command change
+	INTERN.CMD_CHANGED := (INTERN.CMD_RUN &lt;&gt; INTERN.PREV_RUN) OR (INTERN.CMD_CLOCKWISE &lt;&gt; INTERN.PREV_CLOCKWISE)
+	                      OR (INTERN.CMD_VOLUME_MODE &lt;&gt; INTERN.PREV_VOLUME_MODE) OR (INTERN.CMD_SAVE_FLASH &lt;&gt; INTERN.PREV_SAVE_FLASH)
+	                      OR (INTERN.CMD_SPEED &lt;&gt; INTERN.PREV_SPEED) OR (INTERN.CMD_MAX_SPEED &lt;&gt; INTERN.PREV_MAX_SPEED)
+	                      OR (INTERN.CMD_RUN_SETPOINT &lt;&gt; INTERN.PREV_RUN_SETPOINT);
+	INTERN.PREV_RUN          := INTERN.CMD_RUN;
+	INTERN.PREV_CLOCKWISE    := INTERN.CMD_CLOCKWISE;
+	INTERN.PREV_VOLUME_MODE  := INTERN.CMD_VOLUME_MODE;
+	INTERN.PREV_SAVE_FLASH   := INTERN.CMD_SAVE_FLASH;
+	INTERN.PREV_SPEED        := INTERN.CMD_SPEED;
+	INTERN.PREV_MAX_SPEED    := INTERN.CMD_MAX_SPEED;
+	INTERN.PREV_RUN_SETPOINT := INTERN.CMD_RUN_SETPOINT;
+
+	TOF_CMD_WINDOW(IN := INTERN.CMD_CHANGED, PT := T#3S);
+	INTERN.CMD_WINDOW  := TOF_CMD_WINDOW.Q;
+	INTERN.CMD_TRIGGER := INTERN.CMD_WINDOW AND (INTERN.CMD_MAX_SPEED &gt; 0.0) AND INTERN.PULSE_500MS;
+
+	// Configuration trigger : only while writing is enabled and parameters are valid
+	INTERN.CONFIG_TRIGGER := INTERN.PARAM_WRITE_ENABLE AND INTERN.PARAM_VALID AND INTERN.PULSE_500MS;
+
+
+//------------------------------------------------------------------------------
+// 3. OUTPUTS
+//------------------------------------------------------------------------------
+	//--- COM : control mode status to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+	COM.SCADA_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.HMI_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_ACTIVE        := INTERN.LOCAL_WEBVISU;
+	COM.WEBVISU_OUTPUT_LOCAL_HMI_ACTIVE  := INTERN.LOCAL_HMI;
+	COM.WEBVISU_OUTPUT_LOCAL_FUXA_ACTIVE := INTERN.LOCAL_FUXA;
+
+	//--- COM : Modbus RTU coils
+	COM.COM_OUTPUT_COILS[0] := INTERN.CMD_RUN;           // 0x0001
+	COM.COM_OUTPUT_COILS[1] := INTERN.CMD_CLOCKWISE;     // 0x0002
+	COM.COM_OUTPUT_COILS[2] := INTERN.CMD_SAVE_FLASH;    // 0x0003
+	COM.COM_OUTPUT_COILS[3] := INTERN.CMD_VOLUME_MODE;   // 0x0004
+
+	//--- COM : Modbus RTU holding registers and write triggers
+	// Command registers 0x4001..0x4006 (sent on the command trigger)
+	FNC_REAL_TO_WORDS(Real_value := INTERN.CMD_SPEED,     High_word =&gt; COM.COM_OUTPUT_HR_CMD[1], Low_word =&gt; COM.COM_OUTPUT_HR_CMD[0]);   // 0x4001-4002
+	FNC_REAL_TO_WORDS(Real_value := INTERN.CMD_MAX_SPEED, High_word =&gt; COM.COM_OUTPUT_HR_CMD[3], Low_word =&gt; COM.COM_OUTPUT_HR_CMD[2]);   // 0x4003-4004
+	IF INTERN.CMD_VOLUME_MODE THEN
+		// Run setpoint 0x4005-4006, volume mode : 32-bit REAL (ml)
+		FNC_REAL_TO_WORDS(Real_value := INTERN.CMD_RUN_SETPOINT, High_word =&gt; COM.COM_OUTPUT_HR_CMD[5], Low_word =&gt; COM.COM_OUTPUT_HR_CMD[4]);
+	ELSE
+		// Run setpoint 0x4005-4006, time mode : 32-bit UDINT (ms)
+		INTERN.UDINT_TEMP        := REAL_TO_UDINT(MAX(INTERN.CMD_RUN_SETPOINT, 0.0));
+		COM.COM_OUTPUT_HR_CMD[4] := UDINT_TO_WORD(INTERN.UDINT_TEMP);
+		COM.COM_OUTPUT_HR_CMD[5] := UDINT_TO_WORD(SHR(INTERN.UDINT_TEMP, 16));
+	END_IF
+
+	// Configuration registers 0x400B..0x4011 (sent on the configuration trigger), updated only while enabled and valid
+	IF INTERN.PARAM_WRITE_ENABLE AND INTERN.PARAM_VALID THEN
+		FNC_REAL_TO_WORDS(Real_value := INTERN.CMD_CALIB_COEF, High_word =&gt; COM.COM_OUTPUT_HR_CONFIG[1], Low_word =&gt; COM.COM_OUTPUT_HR_CONFIG[0]);   // 0x400B-400C
+		COM.COM_OUTPUT_HR_CONFIG[2] := INTERN.CMD_FOOT_MODE;        // 0x400D
+		COM.COM_OUTPUT_HR_CONFIG[3] := INTERN.CMD_LEVEL_MODE;       // 0x400E
+		COM.COM_OUTPUT_HR_CONFIG[4] := INTERN.CMD_STATE_OUT_MODE;   // 0x400F
+		COM.COM_OUTPUT_HR_CONFIG[5] := INTERN.CMD_ADDRESS;          // 0x4010
+		COM.COM_OUTPUT_HR_CONFIG[6] := INTERN.CMD_BAUD_INDEX;       // 0x4011
+	END_IF
+
+	// Write triggers
+	COM.COM_OUTPUT_CMD_TRIGGER    := INTERN.CMD_TRIGGER;
+	COM.COM_OUTPUT_CONFIG_TRIGGER := INTERN.CONFIG_TRIGGER;
+
+	//--- COM : feedback to SCADA, HMI and WEBVISU
+	COM.SCADA_OUTPUT_FIRMWARE_VERSION                          := INTERN.FBK_FIRMWARE_VERSION;
+	COM.HMI_OUTPUT_FIRMWARE_VERSION                            := INTERN.FBK_FIRMWARE_VERSION;
+	COM.WEBVISU_OUTPUT_FIRMWARE_VERSION                            := INTERN.FBK_FIRMWARE_VERSION;
+	COM.SCADA_OUTPUT_HARDWARE_VERSION                          := INTERN.FBK_HARDWARE_VERSION;
+	COM.HMI_OUTPUT_HARDWARE_VERSION                            := INTERN.FBK_HARDWARE_VERSION;
+	COM.WEBVISU_OUTPUT_HARDWARE_VERSION                            := INTERN.FBK_HARDWARE_VERSION;
+	COM.SCADA_OUTPUT_TEMPERATURE                               := INTERN.FBK_TEMPERATURE;
+	COM.HMI_OUTPUT_TEMPERATURE                                 := INTERN.FBK_TEMPERATURE;
+	COM.WEBVISU_OUTPUT_TEMPERATURE                                 := INTERN.FBK_TEMPERATURE;
+	COM.SCADA_OUTPUT_FLOAT_LEVEL_ALARM                         := INTERN.FBK_LEVEL_ALARM;
+	COM.HMI_OUTPUT_FLOAT_LEVEL_ALARM                           := INTERN.FBK_LEVEL_ALARM;
+	COM.WEBVISU_OUTPUT_FLOAT_LEVEL_ALARM                           := INTERN.FBK_LEVEL_ALARM;
+	COM.SCADA_OUTPUT_DIGITAL_OUTPUT_VALUE                      := INTERN.FBK_DIGITAL_OUTPUT;
+	COM.HMI_OUTPUT_DIGITAL_OUTPUT_VALUE                        := INTERN.FBK_DIGITAL_OUTPUT;
+	COM.WEBVISU_OUTPUT_DIGITAL_OUTPUT_VALUE                        := INTERN.FBK_DIGITAL_OUTPUT;
+	COM.SCADA_OUTPUT_REAL_TIME_RUN_TIME_OR_VOLUME.Real_value   := INTERN.FBK_RUN_ACTUAL;
+	COM.HMI_OUTPUT_REAL_TIME_RUN_TIME_OR_VOLUME.Real_value     := INTERN.FBK_RUN_ACTUAL;
+	COM.WEBVISU_OUTPUT_REAL_TIME_RUN_TIME_OR_VOLUME.Real_value     := INTERN.FBK_RUN_ACTUAL;
+	COM.SCADA_OUTPUT_ACCUMULATED_RUN_TIME_OR_VOLUME.Real_value := INTERN.FBK_RUN_TOTAL;
+	COM.HMI_OUTPUT_ACCUMULATED_RUN_TIME_OR_VOLUME.Real_value   := INTERN.FBK_RUN_TOTAL;
+	COM.WEBVISU_OUTPUT_ACCUMULATED_RUN_TIME_OR_VOLUME.Real_value   := INTERN.FBK_RUN_TOTAL;
+
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>f2f6a4a8-5af3-400f-9a2c-a0b58aedbba7</ObjectId>
+          </data>
+        </addData>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations/>
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Folder Name="Function Blocs">
+          <Folder Name="FB">
+            <Folder Name="02-FB_DO_SENSOR">
+              <Object Name="FB_INST_DOSENSOR" ObjectId="27a68d82-0284-4c8b-ba08-16fa17dad52c"/>
+            </Folder>
+            <Folder Name="01-FB_ADM100W">
+              <Object Name="FB_INST_ADM100W" ObjectId="5a693ac2-76cb-41d8-ad9c-7513981188e0"/>
+            </Folder>
+            <Folder Name="03-FB_KAMOER_DIP1500">
+              <Object Name="DUT_INT_DIP1500" ObjectId="f5ee17f2-c16b-46b0-9670-78a06d712270"/>
+              <Object Name="FB_INST_DIP1500" ObjectId="f2f6a4a8-5af3-400f-9a2c-a0b58aedbba7"/>
+              <Object Name="DUT_PA_DIP1500" ObjectId="aee30126-63e7-4181-833b-70094984ae90"/>
+            </Folder>
+          </Folder>
+        </Folder>
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

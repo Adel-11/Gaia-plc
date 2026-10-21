@@ -13,6 +13,7 @@ COPY backend/ ./backend/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 COPY gaia-io-generator-docs/ ./gaia-io-generator-docs/
+COPY reference-v2/ ./reference-v2/
 COPY --from=frontend /build/dist ./frontend/dist
 RUN mkdir /data && useradd --uid 10001 --create-home app && chown app:app /data
 USER app

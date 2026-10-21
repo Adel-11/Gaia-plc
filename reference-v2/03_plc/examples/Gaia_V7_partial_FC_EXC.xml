@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="" productName="CODESYS" productVersion="CODESYS V3.5 SP22 Patch 2" creationDateTime="2026-10-19T15:55:08.3177105"/>
+  <contentHeader name="Gaia V5.project" modificationDateTime="2026-10-19T13:52:28.0800332">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1"/>
+      </fbd>
+      <ld>
+        <scaling x="1" y="1"/>
+      </ld>
+      <sfc>
+        <scaling x="1" y="1"/>
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation/>
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="FC_EXC_UPI_LOCAL_FUXA_ADM100W" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_FUXA">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_FUXA"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_FUXA instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_ADM100W">
+              <type>
+                <derived name="DUT_EXC_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the ADM100W instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_FUXA_ADM100W
+// Exchanges between one UPI_LOCAL_FUXA instance and one ADM100W instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_FUXA -&gt; ADM100W
+EXC_ADM100W.UPI_INPUT_GLOBAL_LOCAL_FUXA := EXC_UPI_LOCAL_FUXA.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_FUXA_ADM100W := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>2030bcbe-1789-52ce-8fda-ad54081375ce</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_HMI_ADM100W" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_HMI">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_HMI"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_HMI instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_ADM100W">
+              <type>
+                <derived name="DUT_EXC_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the ADM100W instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_HMI_ADM100W
+// Exchanges between one UPI_LOCAL_HMI instance and one ADM100W instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_HMI -&gt; ADM100W
+EXC_ADM100W.UPI_INPUT_GLOBAL_LOCAL_HMI := EXC_UPI_LOCAL_HMI.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_HMI_ADM100W := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>dae11f6a-d121-5e45-91c3-fa5404a3dee7</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_WEBVISU_ADM100W" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_WEBVISU">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_WEBVISU"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_WEBVISU instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_ADM100W">
+              <type>
+                <derived name="DUT_EXC_ADM100W"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the ADM100W instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_WEBVISU_ADM100W
+// Exchanges between one UPI_LOCAL_WEBVISU instance and one ADM100W instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_WEBVISU -&gt; ADM100W
+EXC_ADM100W.UPI_INPUT_GLOBAL_LOCAL_WEBVISU := EXC_UPI_LOCAL_WEBVISU.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_WEBVISU_ADM100W := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>0e67caab-3727-5948-ace8-5dededdb4159</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_FUXA_DOSENSOR" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_FUXA">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_FUXA"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_FUXA instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DOSENSOR">
+              <type>
+                <derived name="DUT_EXC_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DOSENSOR instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_FUXA_DOSENSOR
+// Exchanges between one UPI_LOCAL_FUXA instance and one DOSENSOR instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_FUXA -&gt; DOSENSOR
+EXC_DOSENSOR.UPI_INPUT_GLOBAL_LOCAL_FUXA := EXC_UPI_LOCAL_FUXA.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_FUXA_DOSENSOR := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>d31e74a0-a055-5eee-bf09-aa21357051ae</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_HMI_DOSENSOR" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_HMI">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_HMI"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_HMI instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DOSENSOR">
+              <type>
+                <derived name="DUT_EXC_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DOSENSOR instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_HMI_DOSENSOR
+// Exchanges between one UPI_LOCAL_HMI instance and one DOSENSOR instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_HMI -&gt; DOSENSOR
+EXC_DOSENSOR.UPI_INPUT_GLOBAL_LOCAL_HMI := EXC_UPI_LOCAL_HMI.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_HMI_DOSENSOR := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>ccbbb92c-ce65-5e9c-ad09-d7493278b67e</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_WEBVISU_DOSENSOR" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_WEBVISU">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_WEBVISU"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_WEBVISU instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DOSENSOR">
+              <type>
+                <derived name="DUT_EXC_DOSENSOR"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DOSENSOR instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_WEBVISU_DOSENSOR
+// Exchanges between one UPI_LOCAL_WEBVISU instance and one DOSENSOR instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_WEBVISU -&gt; DOSENSOR
+EXC_DOSENSOR.UPI_INPUT_GLOBAL_LOCAL_WEBVISU := EXC_UPI_LOCAL_WEBVISU.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_WEBVISU_DOSENSOR := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>1e412449-a9a8-580f-87d7-b9c35e80e5cb</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_FUXA_DIP1500" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_FUXA">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_FUXA"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_FUXA instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DIP1500">
+              <type>
+                <derived name="DUT_EXC_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DIP1500 instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_FUXA_DIP1500
+// Exchanges between one UPI_LOCAL_FUXA instance and one DIP1500 instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_FUXA -&gt; DIP1500
+EXC_DIP1500.UPI_INPUT_GLOBAL_LOCAL_FUXA := EXC_UPI_LOCAL_FUXA.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_FUXA_DIP1500 := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>27b93b13-3f6d-51fc-ad52-959b37b5b5a7</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_HMI_DIP1500" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_HMI">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_HMI"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_HMI instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DIP1500">
+              <type>
+                <derived name="DUT_EXC_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DIP1500 instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_HMI_DIP1500
+// Exchanges between one UPI_LOCAL_HMI instance and one DIP1500 instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_HMI -&gt; DIP1500
+EXC_DIP1500.UPI_INPUT_GLOBAL_LOCAL_HMI := EXC_UPI_LOCAL_HMI.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_HMI_DIP1500 := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>d02c0c21-46be-5651-8beb-eecbfc82d58a</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="FC_EXC_UPI_LOCAL_WEBVISU_DIP1500" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+          <inOutVars>
+            <variable name="EXC_UPI_LOCAL_WEBVISU">
+              <type>
+                <derived name="DUT_EXC_UPI_LOCAL_WEBVISU"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the UPI_LOCAL_WEBVISU instance</xhtml>
+              </documentation>
+            </variable>
+            <variable name="EXC_DIP1500">
+              <type>
+                <derived name="DUT_EXC_DIP1500"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Exchanges of the DIP1500 instance</xhtml>
+              </documentation>
+            </variable>
+          </inOutVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// FC_EXC_UPI_LOCAL_WEBVISU_DIP1500
+// Exchanges between one UPI_LOCAL_WEBVISU instance and one DIP1500 instance
+// Called in GFC_EXC, once per pair of instances, with their GVL_EXC variables
+// Simple copies only, no conversion
+//==============================================================================
+
+//--- UPI_LOCAL_WEBVISU -&gt; DIP1500
+EXC_DIP1500.UPI_INPUT_GLOBAL_LOCAL_WEBVISU := EXC_UPI_LOCAL_WEBVISU.UPI_OUTPUT_LOCAL_ACTIVE;
+
+FC_EXC_UPI_LOCAL_WEBVISU_DIP1500 := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>ff30caea-930c-5983-a856-5ae48898ffb0</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="GFC_EXC" pouType="function">
+        <interface>
+          <returnType>
+            <BOOL/>
+          </returnType>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// GFC_EXC
+// Exchanges between instances : one FC_EXC_&lt;A&gt;_&lt;B&gt; call per pair of instances
+// Called after GFB_UPI and before GFB_INST
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// ADM100W_1
+//------------------------------------------------------------------------------
+	//--- UPI_LOCAL_FUXA &lt;-&gt; ADM100W_1
+	FC_EXC_UPI_LOCAL_FUXA_ADM100W(
+		EXC_UPI_LOCAL_FUXA := GVL_EXC.EXC_UPI_LOCAL_FUXA,
+		EXC_ADM100W        := GVL_EXC.EXC_ADM100W_1);
+
+	//--- UPI_LOCAL_HMI &lt;-&gt; ADM100W_1
+	FC_EXC_UPI_LOCAL_HMI_ADM100W(
+		EXC_UPI_LOCAL_HMI := GVL_EXC.EXC_UPI_LOCAL_HMI,
+		EXC_ADM100W       := GVL_EXC.EXC_ADM100W_1);
+
+	//--- UPI_LOCAL_WEBVISU &lt;-&gt; ADM100W_1
+	FC_EXC_UPI_LOCAL_WEBVISU_ADM100W(
+		EXC_UPI_LOCAL_WEBVISU := GVL_EXC.EXC_UPI_LOCAL_WEBVISU,
+		EXC_ADM100W           := GVL_EXC.EXC_ADM100W_1);
+
+
+//------------------------------------------------------------------------------
+// DOSENSOR_1
+//------------------------------------------------------------------------------
+	//--- UPI_LOCAL_FUXA &lt;-&gt; DOSENSOR_1
+	FC_EXC_UPI_LOCAL_FUXA_DOSENSOR(
+		EXC_UPI_LOCAL_FUXA := GVL_EXC.EXC_UPI_LOCAL_FUXA,
+		EXC_DOSENSOR       := GVL_EXC.EXC_DOSENSOR_1);
+
+	//--- UPI_LOCAL_HMI &lt;-&gt; DOSENSOR_1
+	FC_EXC_UPI_LOCAL_HMI_DOSENSOR(
+		EXC_UPI_LOCAL_HMI := GVL_EXC.EXC_UPI_LOCAL_HMI,
+		EXC_DOSENSOR      := GVL_EXC.EXC_DOSENSOR_1);
+
+	//--- UPI_LOCAL_WEBVISU &lt;-&gt; DOSENSOR_1
+	FC_EXC_UPI_LOCAL_WEBVISU_DOSENSOR(
+		EXC_UPI_LOCAL_WEBVISU := GVL_EXC.EXC_UPI_LOCAL_WEBVISU,
+		EXC_DOSENSOR          := GVL_EXC.EXC_DOSENSOR_1);
+
+
+//------------------------------------------------------------------------------
+// DIP1500_1
+//------------------------------------------------------------------------------
+	//--- UPI_LOCAL_FUXA &lt;-&gt; DIP1500_1
+	FC_EXC_UPI_LOCAL_FUXA_DIP1500(
+		EXC_UPI_LOCAL_FUXA := GVL_EXC.EXC_UPI_LOCAL_FUXA,
+		EXC_DIP1500        := GVL_EXC.EXC_DIP1500_1);
+
+	//--- UPI_LOCAL_HMI &lt;-&gt; DIP1500_1
+	FC_EXC_UPI_LOCAL_HMI_DIP1500(
+		EXC_UPI_LOCAL_HMI := GVL_EXC.EXC_UPI_LOCAL_HMI,
+		EXC_DIP1500       := GVL_EXC.EXC_DIP1500_1);
+
+	//--- UPI_LOCAL_WEBVISU &lt;-&gt; DIP1500_1
+	FC_EXC_UPI_LOCAL_WEBVISU_DIP1500(
+		EXC_UPI_LOCAL_WEBVISU := GVL_EXC.EXC_UPI_LOCAL_WEBVISU,
+		EXC_DIP1500           := GVL_EXC.EXC_DIP1500_1);
+
+GFC_EXC := TRUE;
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>41fad8ae-c1c7-534b-af28-a2b7992ff0b3</ObjectId>
+          </data>
+        </addData>
+      </pou>
+      <pou name="PLC_PRG" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="GFB_UPI_1">
+              <type>
+                <derived name="GFB_UPI"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Functional units</xhtml>
+              </documentation>
+            </variable>
+            <variable name="GFB_INST_1">
+              <type>
+                <derived name="GFB_INST"/>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> Equipment instances</xhtml>
+              </documentation>
+            </variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">
+//==============================================================================
+// PLC_PRG
+// Main cycle : 1. read all inputs, 2. functional units, 3. equipment, 4. write all outputs
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// 1. INPUTS : interfaces -&gt; GVL
+//------------------------------------------------------------------------------
+GFC_COM_IN();
+GFC_IO_IN();
+
+//------------------------------------------------------------------------------
+// 2. FUNCTIONAL UNITS (UPI) and exchanges between instances
+//------------------------------------------------------------------------------
+GFB_UPI_1();
+GFC_EXC();      // exchanges between instances (FC_EXC_...)
+
+//------------------------------------------------------------------------------
+// 3. EQUIPMENT
+//------------------------------------------------------------------------------
+GFB_INST_1();
+
+//------------------------------------------------------------------------------
+// 4. OUTPUTS : GVL -&gt; interfaces
+//------------------------------------------------------------------------------
+GFC_COM_OUT();
+GFC_IO_OUT();
+</xhtml>
+          </ST>
+        </body>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>3ffb5cc2-af9a-411c-8ab5-5e57063ebefa</ObjectId>
+          </data>
+        </addData>
+      </pou>
+    </pous>
+  </types>
+  <instances>
+    <configurations/>
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Folder Name="Program">
+          <Object Name="PLC_PRG" ObjectId="3ffb5cc2-af9a-411c-8ab5-5e57063ebefa"/>
+        </Folder>
+        <Folder Name="Functions">
+          <Folder Name="GFC">
+            <Object Name="GFC_EXC" ObjectId="41fad8ae-c1c7-534b-af28-a2b7992ff0b3"/>
+          </Folder>
+          <Folder Name="FC_EXC">
+            <Object Name="FC_EXC_UPI_LOCAL_FUXA_ADM100W" ObjectId="2030bcbe-1789-52ce-8fda-ad54081375ce"/>
+            <Object Name="FC_EXC_UPI_LOCAL_HMI_ADM100W" ObjectId="dae11f6a-d121-5e45-91c3-fa5404a3dee7"/>
+            <Object Name="FC_EXC_UPI_LOCAL_WEBVISU_ADM100W" ObjectId="0e67caab-3727-5948-ace8-5dededdb4159"/>
+            <Object Name="FC_EXC_UPI_LOCAL_FUXA_DOSENSOR" ObjectId="d31e74a0-a055-5eee-bf09-aa21357051ae"/>
+            <Object Name="FC_EXC_UPI_LOCAL_HMI_DOSENSOR" ObjectId="ccbbb92c-ce65-5e9c-ad09-d7493278b67e"/>
+            <Object Name="FC_EXC_UPI_LOCAL_WEBVISU_DOSENSOR" ObjectId="1e412449-a9a8-580f-87d7-b9c35e80e5cb"/>
+            <Object Name="FC_EXC_UPI_LOCAL_FUXA_DIP1500" ObjectId="27b93b13-3f6d-51fc-ad52-959b37b5b5a7"/>
+            <Object Name="FC_EXC_UPI_LOCAL_HMI_DIP1500" ObjectId="d02c0c21-46be-5651-8beb-eecbfc82d58a"/>
+            <Object Name="FC_EXC_UPI_LOCAL_WEBVISU_DIP1500" ObjectId="ff30caea-930c-5983-a856-5ae48898ffb0"/>
+          </Folder>
+        </Folder>
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

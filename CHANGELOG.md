@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0 - 2026-10-21 - V2 stage 1
+
+- Start the engineering model from the supplied v2 pack: six types, six
+  instances, 24 DUTs, nine exchange functions, and eleven populated workbooks.
+- Add normalized SQLAlchemy model tables and immutable project revisions with
+  an Alembic migration; preserve existing user accounts and legacy project data.
+- Before migration, archive the v1 SQLite database, project JSON, and persistent
+  source/export files under `/data/backups/legacy-v1-before-v2.*`.
+- Add an English data workspace with type/instance search, kind filtering,
+  read-only DUT members and source FB code, and workbook/sheet inspection.
+- Import v2 Excel files with merge or workbook-scoped replace previews,
+  validation, CSRF/ownership checks, and stale-preview protection.
+- Export Excel from the official templates; preserve workbook data, tooltips,
+  validation lists, and unknown columns. Preserve FUXA tag IDs and exact v4 CSV
+  bytes, including the two legacy test tags, which are reported as warnings.
+- Keep the latest full CODESYS export as a read-only reference snapshot. Its
+  Application wrapper is not a template for future generated XML exports.
+- Record Adel's approved custom-ST, graphical-conditions, PA, RTU-naming, and
+  declaration-editing decisions in `reference-v2/DECISIONS.md`.
+- Automated acceptance covers workbook round-trips, CSV regeneration, relational
+  foreign keys, legacy account/database preservation, reviewed imports, and restart.
+- Not delivered in stage 1: PLCopen generation/validation, ST editing or custom
+  section composition, graphical object/exchange editors, and device setup pages.
+  No generated XML has been imported into CODESYS as part of this stage.
+
 ## 0.1.0 - 2026-10-14
 
 - First English-language Gaia IO Generator prototype with catalogue, equipment and editable SCADA exchange tables.
