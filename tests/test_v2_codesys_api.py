@@ -56,7 +56,7 @@ def test_codesys_review_requires_auth_csrf_resolution_and_is_one_time(tmp_path, 
         headers = _login(client)
         assert client.post('/api/v2/codesys/preview', files={'file': ('snapshot.xml', b'<xml/>')}).status_code == 403
         before = client.get('/api/v2/project').json()
-        assert before['phase'] == 3
+        assert before['phase'] >= 3
         preview = client.post('/api/v2/codesys/preview', headers=headers,
                               files={'file': ('snapshot.xml', b'<xml/>')}).json()
         assert preview['revision'] == before['revision']

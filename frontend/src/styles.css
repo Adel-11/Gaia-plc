@@ -151,3 +151,11 @@
 .v2-workspace .validation-pill.bad{background:#fbe9e8;color:#9a3028}
 @media(max-width:850px){.v2-nav-heading,.v2-nav-foot{display:none}.v2-tabbed-shell .topbar{padding:0 14px}.v2-tabbed-shell .top-actions{gap:9px}}
 @media(max-width:520px){.v2-tabbed-shell .breadcrumbs>span:not(.brand-mark),.v2-tabbed-shell .save-indicator,.v2-tabbed-shell .avatar.small{display:none}.v2-tabbed-shell .breadcrumbs{gap:8px}}
+
+/* Stage 4: object design pages and grouped navigation. */
+.v2-workspace[data-page="types"]{--page-accent:#286849;--page-tint:#dcebe1;--page-ink:#1e3c2d;--page-canvas:#edf3ee}
+.v2-workspace[data-page="instances"]{--page-accent:#2d6387;--page-tint:#dcebf4;--page-ink:#203c50;--page-canvas:#eef4f7}
+.v2-workspace[data-page="communications"]{--page-accent:#805427;--page-tint:#f1e5d7;--page-ink:#50371d;--page-canvas:#f6f2ed}
+.v2-nav-group{margin:0 0 10px}.v2-nav-group-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 10px;border:0;background:transparent;color:#b7c5cc;font-size:13px;font-weight:650;text-align:left}.v2-nav-group-toggle:hover{color:white;background:#2a383f}.v2-nav-group>[hidden]{display:none!important}.v2-nav-group .v2-page-tab{min-height:49px}.v2-page-nav{padding-top:16px}.v2-page-nav .v2-nav-heading{margin-bottom:10px}.v2-tab-label small{font-size:12px}
+.object-list-scroll{max-height:300px}.object-open-link{border:0;background:transparent;padding:2px 0;color:var(--page-accent);font-weight:700;font-size:16px;text-align:left;text-decoration:underline;text-underline-offset:4px}.object-open-link:hover{color:var(--page-ink)}.object-catalogue td small{display:block;color:#637581;margin-top:4px}.object-catalogue .catalogue-filters>input,.object-catalogue .catalogue-filters>select{min-height:40px;padding:8px;border:1px solid #ccd8df;border-radius:5px;background:white;color:#304b5a;max-width:220px}.object-catalogue .catalogue-filters{flex-wrap:wrap}
+@media(max-width:850px){.v2-page-nav{align-items:flex-start}.v2-nav-group{flex:none;margin:0}.v2-nav-group-toggle{font-size:12px;padding:2px 8px 5px}.v2-nav-group>[role="tablist"]{display:flex}.v2-nav-group .v2-page-tab{min-height:42px}.v2-page-nav{max-height:115px}.v2-nav-group .v2-tab-label small{display:none}}

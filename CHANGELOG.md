@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 - 2026-10-22 - V2 stage 4
+
+- Add graphical object views for types and instances, with DUTs around the FB and
+  linked TCP, RTU, physical I/O, parameter and exchange records.
+- Edit structured DUT members and their order; keep generated declarations read only.
+- Add Structured Text editors with highlighting, line numbers and search for the
+  authored FB body and its separate custom-code section.
+- Preview and validate edits before saving an immutable revision; retain workbook
+  data and reject stale edits and referenced-member removals.
+- Split Types, Instances and Communications into dedicated pages in collapsible
+  navigation groups. Communications displays existing configuration; advanced
+  device/address editing remains scheduled for stage 7.
+
 ## 0.4.1 - 2026-10-22 - Workspace navigation
 
 - Split the workspace into six vertical tabs with dedicated page themes: overview,

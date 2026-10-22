@@ -447,13 +447,13 @@ def build_program(state) -> dict:
     # The structured model owns authored ST; unchanged reference objects still retain their exact V7 source text.
     for typ in state.get("types", []):
         fb = typ.get("fb", {}); name = fb.get("name")
-        if name in objs and fb.get("body"):
+        if name in objs and fb.get("body") is not None:
             body=objs[name]["element"].find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
             if body is not None: body.text=fb["body"]
         if name in objs: _append_custom(objs[name],fb.get("custom_code"),name if name and objs[name]["element"].get("pouType")=="function" else None)
     for fn in state.get("functions", []):
         name=fn.get("name"); code=fn.get("custom_code")
-        if name in objs and fn.get("body"):
+        if name in objs and fn.get("body") is not None:
             body=objs[name]["element"].find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
             if body is not None: body.text=fn["body"]
         if name in objs: _append_custom(objs[name],code,name)

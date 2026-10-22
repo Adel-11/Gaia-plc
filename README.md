@@ -144,6 +144,33 @@ Graphical authoring, ST editors and device configuration pages are later stages.
 This release does not write to the PLC or change its devices, channels, tasks,
 or running parameters.
 
+## V2 stage 4: object views and authored code
+
+The grouped navigation provides separate Types, Instances and Communications pages.
+Select a type or instance to inspect its DUTs and FB, and the existing communications,
+I/O, parameter and exchange links. An instance uses its type's code and declarations;
+open the type to edit these shared definitions.
+
+DUT declarations are generated read-only ST. Edit their structured member rows,
+including order, defaults and comments. Review changes before applying them; referenced
+members cannot be removed while their mappings or source code still use them. The
+corresponding TYPE workbook is updated with the model for subsequent Excel exports.
+
+The authored FB body and its additional custom code use separate ST editors with
+syntax highlighting, line numbers and search. Generated interfaces remain read only.
+Custom code is preserved verbatim and appended during generation. Preview validation
+is a consistency check, not a CODESYS compiler; import the XML into a project copy
+and compile before any PLC download. PA declaration changes can reset persistent
+values; review the export warnings.
+
+Communications currently provides a read-only view of TCP, RTU and physical I/O
+configuration with instance links. Advanced communications settings remain stage 7;
+type creation and graphical exchange authoring remain stages 5 and 6.
+
+Stage 4 uses the existing revision schema, with no database migration. To roll back
+the UI/API, redeploy `1ae97f4`, keep the current volume and retain a JSON backup of
+its latest revision. Do not deploy an older v1 application against the v2 database.
+
 ## V1 archive and previous prototype limits
 
 **Equipment type** defines reusable variables in the SCADA, IO, and COM categories. Instances expand their names into `GVL_SCADA.SCADA_{tag}`, `GVL_IO.IO_{tag}`, and `GVL_COM.COM_{tag}`. In **Equipment instance**, Add or Duplicate opens a preview with free exchange addresses. Select variables, edit each address manually, and confirm to save. Two-register values reserve both words; collisions are rejected. Deleting an instance removes its points and releases its allocations. If the saved project changes during a preview, create a new preview.
