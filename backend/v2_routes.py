@@ -22,6 +22,9 @@ class ApplyV2Import(BaseModel):
 
 def register_v2_routes(app, get_session, current_user, csrf):
     from backend import v2_engine as engine, v2_store as store
+    from backend.v2_plc_routes import register_plc_routes
+
+    register_plc_routes(app, get_session, current_user, csrf)
 
     def project_for(session):
         state = store.load_project(session)
@@ -46,7 +49,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 for sheet in workbook.get("sheets", [])]})
         result = {key: value for key, value in state.items()
                   if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files"}}
-        result.update(phase=1, workbooks=workbooks, validation=engine.validate_project(state), counts={
+        result.update(phase=2, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),
             "duts": sum(len(t.get("duts", [])) for t in types),
             "dut_members": sum(len(d.get("members", [])) for t in types for d in t.get("duts", [])),

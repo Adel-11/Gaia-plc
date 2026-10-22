@@ -25,6 +25,20 @@ def _loaded_state():
     return copy.deepcopy(load_pack())
 
 
+def test_imported_new_type_is_part_of_the_normalized_program_model():
+    state = _loaded_state()
+    wb = openpyxl.load_workbook(io.BytesIO(_source_bytes('TYPE_DOSENSOR.xlsx')))
+    ws = wb['TYPE']
+    for row in ws.iter_rows(min_row=2):
+        if isinstance(row[1].value, str):
+            row[1].value = row[1].value.replace('DOSENSOR', 'NEW_SENSOR')
+    stream = io.BytesIO()
+    wb.save(stream)
+    result = import_workbook(stream.getvalue(), 'TYPE_NEW_SENSOR.xlsx', state)
+    assert result['validation']['errors'] == []
+    assert any(t['name'] == 'NEW_SENSOR' for t in result['state']['types'])
+
+
 def test_reference_model_counts_and_uncertain_values_are_nonblocking():
     state = _loaded_state()
     assert len(state["types"]) == 6

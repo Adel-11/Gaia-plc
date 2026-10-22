@@ -85,9 +85,42 @@ Stop the generator, keep a separate copy of the current v2 volume, restore the
 archived `app.db` while no application process has it open, then deploy commit
 `b0481aa`. Restore other archived files only if needed. Do not alter FUXA's volume.
 
-PLCopen export, graphical authoring, ST editing/custom section composition, and
-device configuration pages are later stages. This release does not write to the
-PLC or change its devices, channels, tasks, or running parameters.
+## V2 stage 2: reviewed PLCopen exports
+
+The PLCopen panel generates a full program or a partial export focused on a type,
+instance, or individual object. Review the proposed objects and their reasons,
+adjust the selection if needed, then create a fresh preview. The XML download is
+enabled after validation and acknowledgement of the review. The text summary can
+also be downloaded when validation fails. A later engineering revision invalidates
+both downloads; create a new preview to see the updated program.
+
+Generated files contain free DUT/GVL/POU objects and their folders, never an
+Application, device, task, library or the external `DUT_Union_Real_Word`.
+An exported whole GVL replaces that whole GVL in CODESYS, including during partial
+imports. Read the deletion and persistent-value warnings carefully.
+
+Import the partial XML into a **copy** of the CODESYS project using Application →
+Import PLCopenXML, inspect replacement objects and compile. Repeat with the full
+XML in another copy. Confirm PA initializers and persistent attributes before any
+real PLC download. The generator performs XSD and consistency checks, not compilation.
+
+When a TCP array is too small, the report names the array, required element count
+and device address count. Keep the engineering addresses, explicitly approve an
+array-size change in the generator's declaration model, regenerate and validate,
+then enlarge the matching Modbus TCP server zone in CODESYS and review its mapping.
+Bits need `ceil(address_count / 8)` BYTE elements; registers need one WORD element
+per register. For example, 1505 coils need 189 BYTEs (`0..188`), with a server zone
+covering those coil addresses. This stage reports the required change; it does not
+resize mapped arrays or devices automatically. Structured editing of mapped-array
+declarations and refreshed CODESYS imports are delivered in later stages.
+
+For an application rollback to stage 1, redeploy commit `1bb367d`; stage 2 adds no
+database migration. Keep the current data volume. The earlier v1 rollback procedure
+above still applies when reverting before the v2 schema.
+
+Graphical authoring, ST editors, CODESYS snapshot refresh and device configuration
+pages are later stages. This release does not write to the PLC or change its
+devices, channels, tasks, or running parameters.
 
 ## V1 archive and previous prototype limits
 

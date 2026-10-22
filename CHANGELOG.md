@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 - 2026-10-22 - V2 stage 2
+
+- Generate PLCopen free objects from the structured model: DUTs, instance GVLs,
+  communication and I/O copies, exchange functions/calls, FB calls and cycle order.
+- Preserve FB/FNC implementations, mapped identifiers, existing ObjectIds and
+  CODESYS headers. New object identities are stable and recorded with export previews.
+- Add full and focused partial exports with an adjustable object selection,
+  inclusion reasons, manual deletions/mapping actions, and persistent-data warnings.
+- Validate XML against the supplied PLCopen XSD and check references and array/bit
+  bounds before enabling download. Never include Application/device configuration,
+  tasks, libraries or the externally supplied DUT_Union_Real_Word.
+- Store reviewed export bytes behind owned, expiring tokens. Engineering edits
+  invalidate previous previews. Text reports remain downloadable on validation errors.
+- Add independent deep regression tests against V7 from the V6 snapshot and both
+  partial-example object sets, plus mutation and authenticated export tests.
+- Keep the CODESYS snapshot importer, graphical editing and ST editing for later
+  stages. Real import and compilation in a copy of the PLC project require Adel's
+  validation; automated checks do not claim to replace the CODESYS compiler.
+
 ## 0.2.0 - 2026-10-21 - V2 stage 1
 
 - Start the engineering model from the supplied v2 pack: six types, six

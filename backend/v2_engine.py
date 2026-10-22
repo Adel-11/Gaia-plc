@@ -449,7 +449,7 @@ def parse_project(workbooks: dict, snapshot: Any = None, fuxa_csv: bytes | None 
              "io_channels": [], "pa_values": [], "exchange_functions": [], "exchange_calls": [],
              "exchange_functions_detail": [], "functions": [], "mapped_variables": [], "snapshot": snapshot, "fuxa": {}}
     for book in workbooks.values():
-        if book.get("filename") in TYPE_FILES:
+        if re.fullmatch(r"TYPE_[A-Z0-9_]+\.xlsx", str(book.get("filename", ""))):
             state["types"].append(_normalize_type(book))
         else:
             _excel_state(state, book)
