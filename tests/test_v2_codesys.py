@@ -80,6 +80,8 @@ def test_wrapped_latest_folders_and_string_literals_are_preserved_semantically()
     result = preview_codesys(raw, "latest_codesys.xml", state)
     assert result["errors"] == []
     folders = {o["name"]: o["folder"] for o in result["state"]["snapshot"]["objects"]}
+    assert len(result["changes"]) == 55
+    assert sum(row["kind"] == "DUT" for row in result["changes"]) == 24
     assert folders["GVL_COM"] == "GVL"
     assert folders["FB_INST_DIP1500"] == "Function Blocs/FB/03-FB_KAMOER_DIP1500"
     canonical = etree.fromstring(result["state"]["snapshot"]["xml"].encode())

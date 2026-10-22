@@ -13,6 +13,7 @@ OID = "http://www.3s-software.com/plcopenxml/objectid"
 STRUCT = "http://www.3s-software.com/plcopenxml/projectstructure"
 GVL_DATA = "http://www.3s-software.com/plcopenxml/globalvars"
 POU_DATA = "http://www.3s-software.com/plcopenxml/pou"
+DUT_DATA = "http://www.3s-software.com/plcopenxml/datatype"
 MAX_BYTES = 20 * 1024 * 1024
 _TAGS = {"dataType": "DUT", "globalVars": "GVL", "pou": "POU"}
 
@@ -55,7 +56,7 @@ def _objects(root):
             parent = el.getparent()
             if (parent is not None and _local(parent) in {"dataTypes", "pous", "resource"}) or (
                     parent is not None and _local(parent) == "data" and
-                    parent.get("name") in {GVL_DATA, POU_DATA}):
+                    parent.get("name") in {GVL_DATA, POU_DATA, DUT_DATA}):
                 result[_name(el)] = el
     return result
 
@@ -67,7 +68,7 @@ def _duplicate_object_names(root):
             continue
         parent = el.getparent()
         is_object = ((parent is not None and _local(parent) in {"dataTypes", "pous", "resource"}) or
-                     (parent is not None and _local(parent) == "data" and parent.get("name") in {GVL_DATA, POU_DATA}))
+                     (parent is not None and _local(parent) == "data" and parent.get("name") in {GVL_DATA, POU_DATA, DUT_DATA}))
         if is_object and _name(el) in found:
             duplicates.append(_name(el))
         elif is_object:
