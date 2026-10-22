@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 - 2026-10-22 - Workspace navigation
+
+- Split the workspace into six vertical tabs with dedicated page themes: overview,
+  equipment, workbooks/imports, PLC generation, CODESYS reference and exports.
+- Preserve drafts and selections across tabs, support direct hash links and keyboard
+  navigation, and keep data tables at a readable 16px size.
+- Replace the redundant project sidebar with the functional page navigation.
+
 ## 0.4.0 - 2026-10-22 - V2 stage 3
 
 - Add reviewed CODESYS XML snapshot imports, with partial-merge and full-snapshot
