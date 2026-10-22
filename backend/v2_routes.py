@@ -27,6 +27,8 @@ class ObjectEdit(BaseModel):
     duts: list[dict] | None = None
     body: str | None = None
     custom_code: str | None = None
+    processing_code: str | None = None
+    mappings: list[dict] | None = None
 
 
 class ApplyObjectEdit(BaseModel):
@@ -40,6 +42,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
 
     register_plc_routes(app, get_session, current_user, csrf)
     register_codesys_routes(app, get_session, current_user, csrf)
+    from backend.v2_type_creation import register_type_creation_routes
+    from backend.v2_instance_editor import register_instance_editor_routes
+    register_type_creation_routes(app, get_session, current_user, csrf)
+    register_instance_editor_routes(app, get_session, current_user, csrf)
 
     def project_for(session):
         state = store.load_project(session)
@@ -100,6 +106,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
                     rendered.tag = XML_NS + "globalVars"
                     declaration.append(_st(rendered).replace("VAR_GLOBAL", labels[local], 1))
         fb["declaration"] = "\n\n".join(declaration)
+        from backend.v2_fb_flow import flow_view, variable_options
+        fb.update(flow_view(fb))
+        fb["variable_options"] = variable_options(typ, state)
         return {"id": obj.get("id", obj.get("name")), "name": obj.get("name"), "type_id": typ.get("id" if kind == "type" else "name"), "kind": kind,
                 "revision": state.get("revision", 0), "duts": duts, "fb": fb, "links": links}
 
@@ -188,6 +197,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
         typ["duts"] = submitted
         if body.body is not None: typ.setdefault("fb", {})["body"] = body.body
         if body.custom_code is not None: typ.setdefault("fb", {})["custom_code"] = body.custom_code
+        from backend.v2_fb_flow import ensure_flow, update_flow
+        ensure_flow(typ.setdefault("fb", {}))
+        flow_errors = update_flow(typ, state, mappings=body.mappings, processing_code=body.processing_code)
+        if flow_errors: return {"token": None, "errors": flow_errors, "warnings": [], "changes": []}
         _sync_type_workbook(state, typ)
         # Rebuild and run the same reference consistency checks used for PLCopen
         # exports, while allowing unrelated pre-existing project warnings/errors.
@@ -217,6 +230,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if any(d.get("role") == "PA" and d != old for d, old in zip(typ.get("duts", []), original.get("duts", []))): warnings.append("Changing DUT_PA can reset persistent parameter values on the next PLC download. Test in a CODESYS copy first.")
         if body.body is not None and body.body != original.get("fb", {}).get("body"): changes.append("Updated FB body")
         if body.custom_code is not None and body.custom_code != original.get("fb", {}).get("custom_code"): changes.append("Updated FB custom code")
+        if body.processing_code is not None and body.processing_code != original.get("fb", {}).get("flow", {}).get("processing_code"): changes.append("Updated PROCESSING source")
+        if body.mappings is not None: changes.append("Reviewed INPUTS / OUTPUTS mappings")
         token = secrets.token_urlsafe(32)
         session.add(ImportPreview(token=token, owner_id=user.id, state_payload=json.dumps(state, ensure_ascii=False),
             diff_payload=json.dumps({"kind":"v2-object-edit", "base_revision":current.get("revision",0)}, ensure_ascii=False),
@@ -276,7 +291,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 for sheet in workbook.get("sheets", [])]})
         result = {key: value for key, value in state.items()
                   if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files"}}
-        result.update(phase=4, workbooks=workbooks, validation=engine.validate_project(state), counts={
+        result.update(phase=5, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),
             "duts": sum(len(t.get("duts", [])) for t in types),
             "dut_members": sum(len(d.get("members", [])) for t in types for d in t.get("duts", [])),

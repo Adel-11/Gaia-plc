@@ -344,7 +344,14 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                     }
                     if v2_initial.get("snapshot"):
                         v2_initial["snapshot"].setdefault("imported_at", datetime.now(timezone.utc).isoformat())
+                    from backend.v2_fb_flow import convert_project
+                    convert_project(v2_initial)
                     v2_store.initialize(session, v2_initial)
+                # Automatically annotate FB sections without changing their source or behavior.
+                from backend.v2_fb_flow import convert_project
+                v2_existing = v2_store.load_project(session)
+                if v2_existing is not None and convert_project(v2_existing):
+                    v2_store.save_project(session, v2_existing, username="system:fb-section-conversion", expected_revision=v2_existing.get("revision", 0))
                 session.commit()
             yield
         finally:

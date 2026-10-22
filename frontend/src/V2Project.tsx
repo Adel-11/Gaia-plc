@@ -3,6 +3,8 @@ import V2PlcExport from './V2PlcExport'
 import V2CodesysImport from './V2CodesysImport'
 import V2ObjectView from './V2ObjectView'
 import V2Communications from './V2Communications'
+import V2Instances from './V2Instances'
+import V2TypeWizard from './V2TypeWizard'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -32,7 +34,7 @@ const pretty = (value: unknown) => typeof value === 'string' ? value : JSON.stri
 const pages = [
   { id: 'overview', label: 'Vue d’ensemble', detail: 'État du projet', icon: '◫', title: 'Votre projet, en un regard', description: 'Retrouvez les contrôles, les chiffres clés et la référence CODESYS actuelle.' },
   { id: 'types', label: 'Types', detail: 'Modèles et code ST', icon: '▤', title: 'Types d’équipements', description: 'Ouvrez un type pour explorer ses DUT, modifier les membres et éditer le code de son FB.' },
-  { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Retrouvez chaque équipement et ses liens avec les variables, les communications et les échanges.' },
+  { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Déclarez vos instances et personnalisez leurs paramètres PA et leurs adresses IO ou Modbus.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
   { id: 'workbooks', label: 'Classeurs Excel', detail: 'Lecture et import', icon: '▦', title: 'Les données du projet', description: 'Consultez vos feuilles et prévisualisez chaque import avant de le valider.' },
   { id: 'plc', label: 'Génération PLC', detail: 'Programme et XML', icon: '⌘', title: 'Générer le programme', description: 'Préparez un export PLCopen complet ou partiel et vérifiez ses dépendances.' },
@@ -57,8 +59,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
   const [typeDraftDirty, setTypeDraftDirty] = useState(false)
   const selectType = (id: string) => { if (!typeDraftDirty || window.confirm('Discard unsaved type changes?')) { setTypeDraftDirty(false); setSelectedTypeId(id) } }
   const [selectedTypeId, setSelectedTypeId] = useState('')
-  const [selectedInstanceId, setSelectedInstanceId] = useState('')
-  const [instanceTypeFilter, setInstanceTypeFilter] = useState('all')
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [sortOrder, setSortOrder] = useState('asc')
   const [workbookName, setWorkbookName] = useState('')
   const [sheetName, setSheetName] = useState('')
@@ -76,7 +77,6 @@ export default function V2Project({ csrf }: { csrf: string }) {
       const data = await request<Project>('/project')
       setProject(data)
       setSelectedTypeId(old => data.types?.some(type => type.id === old) ? old : data.types?.[0]?.id || '')
-      setSelectedInstanceId(old => data.instances?.some(item => item.id === old) ? old : data.instances?.[0]?.id || '')
       setWorkbookName(old => data.workbooks?.some(book => book.filename === old) ? old : data.workbooks?.[0]?.filename || '')
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load project') } finally { setLoading(false) }
   }
@@ -96,7 +96,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
   const instances = list(project?.instances)
   const typeKinds = useMemo(() => [...new Set(types.map(type => type.kind).filter((kind): kind is string => Boolean(kind)))].sort(), [types])
   const filteredTypes = useMemo(() => types.filter(type => (typeKind === 'all' || type.kind === typeKind) && `${type.name} ${type.kind || ''} ${type.description || ''}`.toLowerCase().includes(query.toLowerCase())), [types, query, typeKind]).sort((a, b) => a.name.localeCompare(b.name) * (sortOrder === 'asc' ? 1 : -1))
-  const filteredInstances = useMemo(() => instances.filter(instance => (instanceTypeFilter === 'all' || instance.type_id === instanceTypeFilter) && `${instance.name} ${types.find(type => type.id === instance.type_id)?.name || ''}`.toLowerCase().includes(query.toLowerCase())), [instances, types, query, instanceTypeFilter]).sort((a, b) => a.name.localeCompare(b.name) * (sortOrder === 'asc' ? 1 : -1))
+
   const currentSheet = sheetData?.sheets?.find(sheet => sheet.name === sheetName)
   const errors = list(project?.validation?.errors)
   const warnings = list(project?.validation?.warnings)
@@ -175,19 +175,21 @@ export default function V2Project({ csrf }: { csrf: string }) {
     <section className="v2-meta-grid"><article className="v2-panel"><div className="v2-panel-head compact"><div><p className="eyebrow">VALIDATION</p><h2>Project checks</h2></div><span className={`validation-pill ${errors.length?'bad':''}`}>{errors.length?'Needs attention':'Current'}</span></div><div className="validation-summary"><div><b className={errors.length?'error-text':''}>{errors.length}</b><span>Errors</span></div><div><b>{warnings.length}</b><span>Warnings</span></div></div>{[...errors.map(item=>({item,kind:'error'})),...warnings.map(item=>({item,kind:'warning'}))].slice(0,8).map((entry,index)=><p className={`issue ${entry.kind==='error'?'error-text':'warning-text'}`} key={index}>{asText(entry.item)}</p>)}{!errors.length&&!warnings.length&&<p className="v2-empty">No project validation issues reported.</p>}</article><article className="v2-panel"><div className="v2-panel-head compact"><div><p className="eyebrow">SOURCE SNAPSHOT</p><h2>Import status</h2></div></div><dl className="snapshot-list"><dt>Snapshot</dt><dd>{project?.snapshot?.filename || '—'}</dd><dt>Imported</dt><dd>{project?.snapshot?.imported_at ? new Date(project.snapshot.imported_at).toLocaleString() : '—'}</dd><dt>Objects</dt><dd>{asText(project?.snapshot?.object_count)}</dd><dt>Legacy backup</dt><dd>{asText(project?.migration?.legacy_backup || project?.migration?.legacy_backup_filename)}</dd><dt>Revision</dt><dd>{asText(project?.revision)}</dd></dl></article></section>
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-types" aria-labelledby="tab-types" hidden={activePage !== 'types'}>
+          <div className="type-page-actions"><button className="button primary" onClick={()=>{if(!typeDraftDirty || window.confirm('Discard unsaved type changes and create a new type?')) setWizardOpen(true)}}>＋ Create type</button></div>
+          {wizardOpen && project && <V2TypeWizard project={project} csrf={csrf} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
+          <div hidden={wizardOpen}>
           <section className="v2-panel object-catalogue">
             <div className="v2-panel-head"><div><h2>Equipment types</h2><p>Select a model to open its object view.</p></div><div className="catalogue-filters"><label className="v2-filter"><span>Kind</span><select aria-label="Filter types by kind" value={typeKind} onChange={e=>setTypeKind(e.target.value)}><option value="all">All kinds</option>{typeKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><input aria-label="Search types" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search types"/><select aria-label="Sort names" value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></div></div>
             <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Name</th><th>Kind</th><th>Communication</th><th>Instances</th><th>Members</th></tr></thead><tbody>{filteredTypes.map(type=><tr key={type.id} className={selectedTypeId===type.id?'active':''}><td><button className="object-open-link" onClick={()=>selectType(type.id)}>{type.name}</button><small>{type.description}</small></td><td>{type.kind}</td><td>{type.communication || '—'}</td><td>{instances.filter(instance=>instance.type_id===type.id).length}</td><td>{(type.duts||[]).reduce((n,dut)=>n+(dut.members?.length||0),0)}</td></tr>)}{!filteredTypes.length&&<tr><td colSpan={5}>No matching types.</td></tr>}</tbody></table></div>
           </section>
           {selectedTypeId && <V2ObjectView kind="type" objectId={selectedTypeId} csrf={csrf} projectRevision={project?.revision} onDirtyChange={setTypeDraftDirty} onSaved={()=>void load()}/>}
+          </div>
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-instances" aria-labelledby="tab-instances" hidden={activePage !== 'instances'}>
-          <section className="v2-panel object-catalogue"><div className="v2-panel-head"><div><h2>Equipment instances</h2><p>Inspect the variables and links of an installed object.</p></div><div className="catalogue-filters"><input aria-label="Search instances" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search instances"/><select aria-label="Filter instances by type" value={instanceTypeFilter} onChange={e=>setInstanceTypeFilter(e.target.value)}><option value="all">All types</option>{types.map(type=><option key={type.id} value={type.id}>{type.name}</option>)}</select></div></div>
-          <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Instance</th><th>Type</th><th>Communication</th></tr></thead><tbody>{filteredInstances.map(instance=><tr key={instance.id} className={selectedInstanceId===instance.id?'active':''}><td><button className="object-open-link" onClick={()=>setSelectedInstanceId(instance.id)}>{instance.name}</button></td><td>{types.find(type=>type.id===instance.type_id)?.name}</td><td>{types.find(type=>type.id===instance.type_id)?.communication || '—'}</td></tr>)}{!filteredInstances.length&&<tr><td colSpan={3}>No matching instances.</td></tr>}</tbody></table></div></section>
-          {selectedInstanceId && <V2ObjectView kind="instance" objectId={selectedInstanceId} csrf={csrf} projectRevision={project?.revision} onSaved={()=>void load()} onOpenType={id=>{selectType(id);openPage('types')}}/>}
+          {project && <V2Instances project={project} csrf={csrf} onSaved={()=>void load()}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-communications" aria-labelledby="tab-communications" hidden={activePage !== 'communications'}>
-          {project && <V2Communications project={project} onOpenInstance={id=>{setSelectedInstanceId(id);openPage('instances')}}/>}
+          {project && <V2Communications project={project} onOpenInstance={()=>openPage('instances')}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-workbooks" aria-labelledby="tab-workbooks" hidden={activePage !== 'workbooks'}>
     <section className="v2-panel workbook-panel"><div className="v2-panel-head"><div><p className="eyebrow">SOURCE WORKBOOKS</p><h2>Workbook reader</h2><p>Inspect source tables without downloading or changing the workbook.</p></div><div className="workbook-pickers"><label><span>Workbook</span><select value={workbookName} onChange={e=>setWorkbookName(e.target.value)}><option value="">Choose workbook</option>{(project?.workbooks||[]).map(book=><option key={book.filename} value={book.filename}>{book.filename}</option>)}</select></label><label><span>Sheet</span><select value={sheetName} onChange={e=>setSheetName(e.target.value)} disabled={!sheetData?.sheets?.length}><option value="">Choose sheet</option>{(sheetData?.sheets||[]).map(sheet=><option key={sheet.name} value={sheet.name}>{sheet.name}</option>)}</select></label></div></div>

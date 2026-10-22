@@ -182,3 +182,29 @@ The catalogue, installed equipment and SCADA points are distinct collections. Fo
 Excel exports use the reference SCADA tables and equipment sheets and include a hidden metadata sheet to retain application-only fields. Excel imports show differences before applying. FUXA IDs are stored with points; fixed CSV sections come from the last imported export. A backup includes project state and generation logs, not login credentials or source/upload files. Keep volume backups for full disaster recovery.
 
 Out of scope: CODESYS code generation, Weintek addresses, multiple projects and PDF reports. Build and automated tests do not prove compatibility with the installed FUXA version; verify a generated CSV in that FUXA instance before using its tags in operation. The Coolify deployment will be verified when access is available.
+
+## V2 stage 5: creation, mappings and instance editing
+
+Types > Create type opens a six-step wizard. Start blank or copy a type, edit
+DUT members, configure RTU/supervision, write PROCESSING and review before saving.
+UPI local/auto reuse copies the selected UPI logic; review it for the intended
+process. Complete equipment copies retain timer locals and interface types.
+
+Existing FBs are converted automatically without changing their source. Add
+explicit typed INPUTS/OUTPUTS links in the FB mapping editor; generated copies
+are read only. PROCESSING and separate custom code remain editable. Legacy
+conditions/calculations stay preserved. The grid supports drag pan, wheel/button
+zoom, arrows, +/- and 0/Fit. Click a block to edit its object.
+
+Instances is a table. Choose a type and name; review TCP/RTU addresses, edit rows
+and update the preview before saving. PA, I/O and Modbus buttons open dialogs.
+Blank PA fields inherit defaults. Deletion previews impacts and releases address
+allocations, keeping physical channels. Incompatible inherited exchange calls
+are skipped with a warning. Graphical exchange conditions remain stage 6.
+
+No SQL schema change is required. Existing projects get one immutable revision
+for FB metadata conversion; accounts and earlier revisions remain. If startup,
+authentication, generation or instance editing regresses, redeploy stage 4 commit
+91f6e2771527d2c25ab850d54eb1f1632a15e6cf with the same volume and retain a JSON
+backup of the latest revision. No running PLC configuration is changed. Import
+partial and complete XML into a CODESYS project copy and compile before download.

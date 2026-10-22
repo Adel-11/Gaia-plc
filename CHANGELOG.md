@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 - 2026-10-22 - V2 stage 5
+
+- Add a reviewed six-step type creation wizard: blank/copy, DUTs, RTU,
+  supervision and PROCESSING, with PLCopen validation before saving.
+- Automatically convert all FBs to INPUTS / PROCESSING / OUTPUTS metadata
+  without changing source. Generate explicit typed mappings while preserving
+  legacy conditions, calculations and separate custom code.
+- Add connected objects over a grid with zoom, pan, keyboard controls and Fit;
+  provide IEC primitive, union and custom member types.
+- Replace the instance view with a creation table and PA, I/O and Modbus dialogs.
+  Review/edit addresses before saving, reject collisions and release allocations
+  on deletion while retaining immutable revision history.
+- Preserve copied FB local declarations and Excel roundtrips. Warn rather than
+  connect a copied type to FC parameters with incompatible DUT types.
+- CODESYS import/compile in a project copy remains manual acceptance before
+  any PLC download.
+
 ## 0.5.0 - 2026-10-22 - V2 stage 4
 
 - Add graphical object views for types and instances, with DUTs around the FB and

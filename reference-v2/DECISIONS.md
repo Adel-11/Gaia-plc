@@ -35,3 +35,16 @@ conflicting proposals in the supplied prompt/specification.
 - Deploy and validate one delivery stage at a time. PLCopen generation, ST
   editors and graphical authoring are not part of stage 1 and must not be
   presented as finished until their later delivery stages pass acceptance.
+
+## Stage 5 decisions (2026-10-22)
+
+- Convert all existing FBs automatically. Preserve the original body byte for
+  byte and retain previous immutable revisions and custom code.
+- INPUTS: explicit PA/COM/EXC/IO to INTERN links. OUTPUTS: explicit INTERN to
+  COM/EXC/IO links. PROCESSING stays free ST; legacy conditions and calculations
+  remain preserved. Generated copies are read only.
+- Deliver the instance table and PA/I/O/Modbus popup editing in stage 5.
+  General communications pages remain stage 7; graphical exchange conditions
+  and optional Else remain stage 6.
+- A copied type has newly named DUTs. Skip incompatible inherited exchange FC
+  calls with a visible warning until a compatible exchange is authored.

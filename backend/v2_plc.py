@@ -121,6 +121,11 @@ def _new_fb(name, typ):
     intern=next((d for d in typ.get("duts",[]) if d.get("role")=="INT"),None)
     if intern is not None:
         locals_=etree.SubElement(interface,NS+"localVars"); v=etree.SubElement(locals_,NS+"variable",name="INTERN"); etree.SubElement(v,NS+"type").append(etree.Element(NS+"derived",name=intern.get("name")))
+    raw_interface = typ.get("fb", {}).get("interface_xml")
+    if raw_interface:
+        preserved = etree.fromstring(str(raw_interface).encode(), etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False))
+        if preserved.tag != NS + "interface": raise ValueError("Invalid preserved FB interface")
+        el.replace(interface, preserved)
     body=etree.SubElement(el,NS+"body"); st=etree.SubElement(body,NS+"ST"); xhtml=etree.SubElement(st,HNS+"xhtml",nsmap={None:HTML})
     xhtml.text="// INPUTS\n\n// PROCESSING\n\n// OUTPUTS\n"
     return el

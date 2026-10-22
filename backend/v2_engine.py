@@ -284,7 +284,7 @@ def _instances(state: dict, snapshot: Any = None) -> list[dict]:
             root = __import__("xml.etree.ElementTree", fromlist=["ElementTree"]).fromstring(xml)
             for node in root.iter():
                 name = node.attrib.get("name", "")
-                match = re.fullmatch(r"(?:COM|EXC|IO|PA)_([A-Z][A-Z0-9_]*?)(?:_\d+)?", name)
+                match = re.fullmatch(r"(?:COM|EXC|IO|PA)_([A-Za-z_][A-Za-z0-9_]*?)(?:_\d+)?", name)
                 if not match:
                     continue
                 candidate = match.group(1)
@@ -449,7 +449,7 @@ def parse_project(workbooks: dict, snapshot: Any = None, fuxa_csv: bytes | None 
              "io_channels": [], "pa_values": [], "exchange_functions": [], "exchange_calls": [],
              "exchange_functions_detail": [], "functions": [], "mapped_variables": [], "snapshot": snapshot, "fuxa": {}}
     for book in workbooks.values():
-        if re.fullmatch(r"TYPE_[A-Z0-9_]+\.xlsx", str(book.get("filename", ""))):
+        if re.fullmatch(r"TYPE_[A-Za-z0-9_]+\.xlsx", str(book.get("filename", ""))):
             state["types"].append(_normalize_type(book))
         else:
             _excel_state(state, book)
@@ -756,7 +756,7 @@ def _validate(state: dict, filename: str) -> dict:
 def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merge") -> dict:
     """Preview an upload; never mutate the supplied state."""
     safe = Path(filename).name
-    is_type_file = bool(re.fullmatch(r"TYPE_[A-Z0-9_]+\.xlsx", filename))
+    is_type_file = bool(re.fullmatch(r"TYPE_[A-Za-z0-9_]+\.xlsx", filename))
     if safe != filename or filename.startswith(".") or Path(filename).suffix.lower() in UNSAFE_SUFFIXES or (filename not in PROJECT_FILES and not is_type_file):
         return {"state": copy.deepcopy(current), "diff": {"added": [], "modified": [], "removed": []},
                 "validation": {"errors": ["Unsafe or unsupported workbook filename"], "warnings": []}}
@@ -797,7 +797,14 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
         old = old_types.get(str(typ.get("id")))
         if old and old.get("fb"):
             typ["fb"].update({k: copy.deepcopy(old["fb"].get(k, typ["fb"].get(k)))
-                              for k in ("declaration", "body", "custom_code")})
+                              for k in ("declaration", "body", "custom_code", "flow", "interface_xml") if k in old["fb"]})
+    # Excel describes scoped tables, not the complete object-instance inventory.
+    # Keep explicit instances even when they have no communications or PA rows yet.
+    known_type_ids = {str(t.get("id")) for t in project.get("types", [])}
+    seen_instances = {str(i.get("id")) for i in project.get("instances", [])}
+    for instance in current.get("instances", []):
+        if str(instance.get("id")) not in seen_instances and str(instance.get("type_id")) in known_type_ids:
+            project["instances"].append(copy.deepcopy(instance))
     old_functions = {str(f.get("id", f.get("name"))): f for f in current.get("functions", [])}
     for function in project.get("functions", []):
         old = old_functions.get(str(function.get("id", function.get("name"))))

@@ -1,0 +1,107 @@
+import { useMemo, useState } from 'react'
+import './type-wizard.css'
+
+type Member = { name: string; iec_type: string; section?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
+type Dut = { role: string; name?: string; members: Member[] }
+type AnyRow = Record<string, any>
+type Preview = { token: string | null; errors?: string[]; warnings?: string[]; changes?: string[]; objects?: string[]; generated_st?: string }
+type Props = { project: any; csrf: string; onCreated: (typeId?: string) => void; onCancel: () => void }
+const steps = ['Identity', 'DUT members', 'RTU', 'Supervision', 'FB processing', 'Review']
+const roles: Record<string, string[]> = { Equipment: ['PA', 'COM', 'EXC', 'IO', 'INT'], 'Functional unit (UPI)': ['COM', 'EXC', 'INT'] }
+const IEC_TYPES = ['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING']
+const rtuSheets = ['RTU_COILS','RTU_DI','RTU_IR','RTU_HR']
+const blankMember = (): Member => ({ name: '', iec_type: 'BOOL', section: 'VAR', default_value: '', unit: '', comment: '', exchange: '' })
+const blankDuts = (kind: string): Dut[] => (roles[kind] || roles.Equipment).map(role => ({ role, name: '', members: [{ ...blankMember(), name: 'SPARE' }] }))
+const label = (key: string) => key.replaceAll('_', ' ')
+
+async function request<T>(path: string, body: unknown, csrf: string): Promise<T> {
+  const response = await fetch(`/api/v2${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) }, body: JSON.stringify(body) })
+  if (!response.ok) { let message = `${response.status} ${response.statusText}`; try { const data = await response.json(); message = data.detail || data.message || data.error || message } catch { /* ignore non-JSON errors */ }; throw new Error(message) }
+  return response.json() as Promise<T>
+}
+
+export default function V2TypeWizard({ project, csrf, onCreated, onCancel }: Props) {
+  const types: AnyRow[] = project?.types || []
+  const [step, setStep] = useState(0), [name, setName] = useState(''), [kind, setKind] = useState('Equipment')
+  const [description, setDescription] = useState(''), [communication, setCommunication] = useState('None'), [folder, setFolder] = useState('')
+  const [copyFrom, setCopyFrom] = useState(''), [modesFrom, setModesFrom] = useState('')
+  const [duts, setDuts] = useState<Dut[]>(blankDuts('Equipment')), [selectedRole, setSelectedRole] = useState('PA')
+  const [rtuDefault, setRtuDefault] = useState<Record<string, any>>({ 'Interface': 'RS-485', 'Factory slave address': 'TO CHECK', 'Factory baud rate': 'TO CHECK', '32-bit word order': 'TO CHECK', 'Read channels': 'Cyclic', 'Write channels': 'TO CHECK' })
+  const [rtu, setRtu] = useState<Record<string, AnyRow[]>>(() => Object.fromEntries(rtuSheets.map(sheet => [sheet, []])))
+  const [supervisionTouched,setSupervisionTouched] = useState(false)
+  const [supervision, setSupervision] = useState<AnyRow[]>([]), [body, setBody] = useState(''), [customCode, setCustomCode] = useState('')
+  const [preview, setPreview] = useState<Preview | null>(null), [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const activeDut = duts.find(d => d.role === selectedRole) || duts[0]
+  const duplicate = useMemo(() => types.some(t => String(t.name || '').toLowerCase() === name.trim().toLowerCase()), [types, name])
+  const tcpTemplates: AnyRow[] = types.flatMap(t => t.templates?.TEMPLATE_TCP || [])
+  const templateHeaders = [...new Set(tcpTemplates.flatMap(row => Object.keys(row)))]
+  const rtuHeaders = (sheet: string): string[] => project?.workbooks?.flatMap((book: AnyRow) => book.sheets || []).find((s: AnyRow) => s.name === sheet)?.headers || []
+  const replaceDuts = (next: Dut[]) => { setDuts(next); setPreview(null); setReviewed(false) }
+  const changeKind = (next: string) => { setKind(next); replaceDuts(blankDuts(next)); setSelectedRole((roles[next] || roles.Equipment)[0]) }
+  const changeCopy = (id: string) => {
+    setCopyFrom(id); setSupervisionTouched(false); const selected = types.find(t => String(t.id) === id || t.name === id)
+    if (selected) {
+      setKind(selected.kind || 'Equipment'); setDescription(selected.description || ''); setCommunication(selected.communication || 'None'); setFolder(selected.folder || '')
+      replaceDuts((roles[selected.kind] || roles.Equipment).map(role => {
+        const d = (selected.duts || []).find((item: AnyRow) => item.role === role)
+        return { role, name: d?.name || '', members: (d?.members || []).map((m: AnyRow) => ({ name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || '', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '', exchange: m.exchange || '' })) }
+      }))
+      setRtuDefault({ ...(selected.rtu_default || {}) }); setRtu(Object.fromEntries(rtuSheets.map(sheet => [sheet, (selected.rtu?.[sheet] || []).map((r: AnyRow) => ({ ...r }))])))
+      setSupervision([...new Set((selected.templates?.TEMPLATE_TCP || []).map((row:AnyRow)=>String(row['GVL_COM variable'] || '').replace(/^GVL_COM\.COM_<INSTANCE>\./,'COM.').replace(/\.Word_value\[[01]\]$/,'')))].filter(path=>String(path).startsWith('COM.')).map(path=>({member_name:path,source:'SCADA/HMI'})))
+      setBody(selected.fb?.flow?.processing_code || ''); setCustomCode(selected.fb?.custom_code || '')
+    } else { changeKind(kind);setDescription('');setCommunication('None');setFolder('');setSupervision([]);setBody('');setCustomCode('');setRtuDefault({'Interface':'RS-485','Factory slave address':'TO CHECK','Factory baud rate':'TO CHECK','32-bit word order':'TO CHECK','Read channels':'Cyclic','Write channels':'TO CHECK'});setRtu(Object.fromEntries(rtuSheets.map(sheet=>[sheet,[]]))) }
+    setPreview(null); setReviewed(false)
+  }
+  const changeModes = (id:string) => {setModesFrom(id);const source=types.find(t=>String(t.id)===id);if(source)setBody(source.fb?.flow?.processing_code || '');setPreview(null)}
+  const updateMember = (index: number, key: keyof Member, value: any) => replaceDuts(duts.map(d => d.role !== activeDut?.role ? d : { ...d, members: d.members.map((m, i) => i === index ? { ...m, [key]: value } : m) }))
+  const updateRtu = (sheet: string, index: number, key: string, value: string) => { setRtu(old => ({ ...old, [sheet]: (old[sheet] || []).map((r, i) => i === index ? { ...r, [key]: value } : r) })); setPreview(null) }
+  const addRtuRow = (sheet: string) => { const headers = Object.keys((rtu[sheet] || [])[0] || {}).length ? Object.keys((rtu[sheet] || [])[0]) : rtuHeaders(sheet); setRtu(old => ({ ...old, [sheet]: [...(old[sheet] || []), Object.fromEntries(headers.map(k => [k, '']))] })); setPreview(null) }
+  const toggleSupervision = (dut: Dut, member: Member) => {
+    setSupervisionTouched(true)
+    const key = `${dut.role}.${member.name}`, exists = supervision.some(item => (item.member_name || item.member || item.name) === key)
+    setSupervision(old => exists ? old.filter(item => (item.member_name || item.member || item.name) !== key) : [...old, { member_name: key, source: 'SCADA/HMI' }]); setReviewed(false); setPreview(null)
+  }
+  const payload = () => ({ revision: project?.revision || 0, name: name.trim(), kind, description, communication, folder, copy_from: copyFrom || null, standard_modes_from: modesFrom || null,
+    duts: duts.map(d => ({ role: d.role, members: d.members.map(m => ({ ...m })) })), processing_code: body, custom_code: customCode, rtu_default: rtuDefault, rtu, supervision: copyFrom && !supervisionTouched ? undefined : supervision })
+  const prepare = async () => { setBusy(true); setError(''); setPreview(null); setReviewed(false); try { setPreview(await request<Preview>('/types/preview', payload(), csrf)) } catch (e) { setError(e instanceof Error ? e.message : 'Preview failed') } finally { setBusy(false) } }
+  const apply = async () => { if (!preview?.token || !reviewed) return; setBusy(true); setError(''); try { const result = await request<{ type?: AnyRow }>('/types/apply', { token: preview.token }, csrf); onCreated(result.type?.id || name.trim()) } catch (e) { setError(e instanceof Error ? e.message : 'Unable to create type') } finally { setBusy(false) } }
+  const validIdentity = Boolean(name.trim()) && !duplicate && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name.trim())
+  const next = () => { setError(''); setStep(s => Math.min(5, s + 1)) }
+  return <section className="type-wizard" aria-label="Create equipment type">
+    <header className="tw-header"><div><span className="tw-eyebrow">TYPE CREATION</span><h2>Create a type</h2><p>Define its structure, communications, and function block.</p></div><button type="button" className="tw-close" aria-label="Cancel type creation" onClick={onCancel}>×</button></header>
+    <nav className="tw-steps" aria-label="Creation steps">{steps.map((s, i) => <button type="button" key={s} className={i === step ? 'current' : i < step ? 'complete' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => { if (i <= step) setStep(i) }}><span>{i + 1}</span>{s}</button>)}</nav>
+    <div className="tw-content">
+      {step === 0 && <div className="tw-fields"><label>Type name <input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
+        <label>Kind <select value={kind} onChange={e => changeKind(e.target.value)}><option>Equipment</option><option>Functional unit (UPI)</option></select></label>
+        <label>Description <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)}/></label>
+        <label>Communication <select value={communication} onChange={e => setCommunication(e.target.value)}>{['None','Wired I/O','Modbus RTU'].map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Project folder <input value={folder} onChange={e => setFolder(e.target.value)} placeholder="Optional"/></label>
+        <label>Copy from an existing type <select value={copyFrom} onChange={e => changeCopy(e.target.value)}><option value="">Start with a blank type</option>{types.map(t => <option key={t.id} value={t.id}>{t.name} · {t.kind}</option>)}</select><small>Copies DUT members, RTU setup, and function block source.</small></label>
+        <label>Reuse UPI local/auto logic from <select value={modesFrom} onChange={e => changeModes(e.target.value)}><option value="">No standard modes</option>{types.filter(t=>String(t.kind).includes('UPI')).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><small>Copies the selected UPI local/auto declarations and logic. Review PROCESSING before creating the type. Use a complete equipment copy above for its full equipment control logic.</small></label></div>}
+
+      {step === 1 && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
+        {activeDut && <><div className="tw-section-head"><div><h3>DUT_{activeDut.role}_{name || 'Type'}</h3><p>{activeDut.members.length} members</p></div><label className="tw-existing">Copy members from<select value="" onChange={e => { const [typeId, role] = e.target.value.split('|'); const t = types.find(item => String(item.id) === typeId); const sourceDut = t?.duts?.find((d: AnyRow) => d.role === role); if (sourceDut) replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: sourceDut.members.map((m: AnyRow) => ({ name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || '', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '', exchange: m.exchange || '' })) } : d)) }}><option value="">Choose a type and DUT</option>{types.flatMap(t => (t.duts || []).map((d: AnyRow) => <option key={`${t.id}|${d.role}`} value={`${t.id}|${d.role}`}>{t.name} · {d.role}</option>))}</select></label></div>
+        <div className="tw-table-wrap"><table className="tw-table"><thead><tr>{['Member','IEC type','Section','Default','Unit','Comment','Exchange',''].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{activeDut.members.map((m, i) => <tr key={i}><td><input aria-label={`Member ${i + 1} name`} value={m.name} onChange={e => updateMember(i, 'name', e.target.value)}/></td><td><select aria-label={`Member ${i + 1} IEC type`} value={IEC_TYPES.includes(m.iec_type) ? m.iec_type : 'Custom…'} onChange={e => { if (e.target.value !== 'Custom…') updateMember(i, 'iec_type', e.target.value); else updateMember(i, 'iec_type', '') }}><option value="Custom…">Custom…</option>{IEC_TYPES.map(t => <option key={t}>{t}</option>)}</select>{!IEC_TYPES.includes(m.iec_type) && <input aria-label={`Member ${i + 1} custom IEC type`} value={m.iec_type} onChange={e => updateMember(i, 'iec_type', e.target.value)} placeholder="e.g. ARRAY[0..3] OF INT"/>}</td>{(['section','default_value','unit','comment','exchange'] as const).map(key => <td key={key}><input aria-label={`Member ${i + 1} ${label(key)}`} value={m[key] == null ? '' : String(m[key])} onChange={e => updateMember(i, key, e.target.value)}/></td>)}<td><button type="button" aria-label={`Remove member ${m.name || i + 1}`} disabled={activeDut.members.length <= 1} onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: d.members.filter((_, j) => j !== i) } : d))}>×</button></td></tr>)}</tbody></table></div><button className="tw-add" type="button" onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: [...d.members, blankMember()] } : d))}>＋ Add member</button></>}
+      </div>}
+
+      {step === 2 && communication !== 'Modbus RTU' && <p className="tw-intro">No Modbus RTU interface is selected for this type.</p>}
+      {step === 2 && communication === 'Modbus RTU' && <div className="tw-rtu-step"><p className="tw-intro">Configure serial defaults and register mappings. Existing RTU rows are copied with their values.</p><section className="tw-defaults"><h3>RTU defaults</h3>{Object.entries(rtuDefault).map(([key, value]) => <label key={key}>{key}<input value={value == null ? '' : String(value)} onChange={e => { setRtuDefault(old => ({ ...old, [key]: e.target.value })); setPreview(null) }}/><button type="button" aria-label={`Remove ${key}`} onClick={() => setRtuDefault(old => Object.fromEntries(Object.entries(old).filter(([k]) => k !== key)))}>×</button></label>)}<button type="button" className="tw-add" onClick={() => { const key = `Default ${Object.keys(rtuDefault).length + 1}`; setRtuDefault(old => ({ ...old, [key]: '' })) }}>＋ Add default</button></section>
+        {rtuSheets.map(sheet => { const rows = rtu[sheet] || [], columns = [...new Set([...rtuHeaders(sheet), ...rows.flatMap(row => Object.keys(row))])]; return <section className="tw-rtu-table" key={sheet}><header><h3>{sheet.replace('RTU_', '')}</h3><button type="button" onClick={() => addRtuRow(sheet)}>＋ Add row</button></header><div className="tw-table-wrap"><table className="tw-table"><thead><tr>{columns.map(c => <th key={c}>{c}</th>)}<th/></tr></thead><tbody>{rows.map((row, i) => <tr key={i}>{columns.map(c => <td key={c}><input aria-label={`${sheet} row ${i + 1} ${c}`} value={row[c] ?? ''} onChange={e => updateRtu(sheet, i, c, e.target.value)}/></td>)}<td><button type="button" aria-label={`Remove ${sheet} row ${i + 1}`} onClick={() => setRtu(old => ({ ...old, [sheet]: rows.filter((_, j) => i !== j) }))}>×</button></td></tr>)}</tbody></table>{!rows.length && <p className="tw-empty">No rows configured.</p>}</div></section>})}
+      </div>}
+
+      {step === 3 && <div className="tw-supervision"><p className="tw-intro">Select DUT members that should be exposed for SCADA or HMI supervision.</p>{duts.filter(d=>d.role === 'COM').map(d => <section key={d.role}><h3>{d.role} <small>{d.name}</small></h3>{d.members.filter(m=>/^(SCADA|HMI)_/.test(m.name)).map(m => <label key={`${d.role}.${m.name}`}><input type="checkbox" checked={supervision.some(item => (item.member_name || item.member || item.name) === `${d.role}.${m.name}`)} onChange={() => toggleSupervision(d, m)}/><span><b>{m.name || 'Unnamed member'}</b><small>{m.iec_type} · {d.role}</small></span></label>)}</section>)}
+        <details className="tw-template"><summary>Project TCP template fields ({tcpTemplates.length} template rows)</summary>{templateHeaders.length ? <div className="tw-table-wrap"><table className="tw-table"><thead><tr>{templateHeaders.map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{tcpTemplates.map((row, i) => <tr key={i}>{templateHeaders.map(h => <td key={h}>{row[h] == null ? '—' : String(row[h])}</td>)}</tr>)}</tbody></table></div> : <p>No TCP template rows are available in this project.</p>}</details>
+      </div>}
+
+      {step === 4 && <div className="tw-fb-step"><p className="tw-intro">Write the PROCESSING logic. INPUTS and OUTPUTS are generated from variable mappings in the object view for {kind==='Equipment'?'FB_INST':'FB'}_{name || 'Type'}.</p><label>PROCESSING<textarea spellCheck={false} value={body} onChange={e => { setBody(e.target.value); setPreview(null) }} placeholder="(* Add Structured Text processing here *)"/></label><label>Custom code<textarea spellCheck={false} value={customCode} onChange={e => { setCustomCode(e.target.value); setPreview(null) }} placeholder="Optional custom Structured Text, preserved separately"/></label></div>}
+
+      {step === 5 && <div className="tw-review-step"><p className="tw-intro">Review the generated type and validation before applying it to this project.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>COMMUNICATION</small><b>{communication}</b></div><div><small>DUT MEMBERS</small><b>{duts.reduce((n, d) => n + d.members.length, 0)}</b></div></div>
+        {!preview && <button type="button" className="tw-primary" disabled={!validIdentity || busy} onClick={() => void prepare()}>{busy ? 'Preparing preview…' : 'Prepare preview'}</button>}
+        {error && <p className="tw-error" role="alert">{error}</p>}
+        {preview && <><h3>Preview</h3>{preview.errors?.length ? <div className="tw-error-list" role="alert"><b>Resolve these errors before applying</b>{preview.errors.map((item, i) => <p key={i}>{item}</p>)}</div> : <p className="tw-success">Preview is valid. Review the changes below.</p>}{preview.warnings?.length ? <div className="tw-warning"><b>Warnings</b>{preview.warnings.map((item, i) => <p key={i}>{item}</p>)}</div> : null}<ul className="tw-changes">{(preview.changes || []).map((item, i) => <li key={i}>{item}</li>)}{(preview.objects || []).map((item, i) => <li key={`o${i}`}>{item}</li>)}</ul>{preview.generated_st && <details className="tw-generated"><summary>Generated DUT Structured Text</summary><pre>{preview.generated_st}</pre></details>}<label className="tw-confirm"><input type="checkbox" checked={reviewed} disabled={Boolean(preview.errors?.length)} onChange={e => setReviewed(e.target.checked)}/>I reviewed this preview and want to create the type.</label></>}
+      </div>}
+      {error && step !== 5 && <p className="tw-error" role="alert">{error}</p>}
+    </div>
+    <footer className="tw-footer"><button type="button" className="tw-secondary" onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>{step === 0 ? 'Cancel' : 'Back'}</button><span>Step {step + 1} of {steps.length}</span>{step < 5 ? <button type="button" className="tw-primary" disabled={step === 0 && !validIdentity} onClick={next}>Continue</button> : <button type="button" className="tw-primary" disabled={!preview?.token || !reviewed || busy || Boolean(preview.errors?.length)} onClick={() => void apply()}>{busy ? 'Creating…' : 'Create type'}</button>}</footer>
+  </section>
+}
