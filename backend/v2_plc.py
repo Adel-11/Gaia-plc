@@ -495,6 +495,15 @@ def _new_project(template_root, state):
     file_header=copy.deepcopy(template_root.find(NS + "fileHeader"))
     content_header=copy.deepcopy(template_root.find(NS + "contentHeader"))
     snapshot=state.get("snapshot") or {}
+    raw = snapshot.get('xml')
+    if raw:
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+        known = etree.fromstring(raw.encode('utf-8') if isinstance(raw, str) else raw, parser)
+        known_file, known_content = known.find(NS + 'fileHeader'), known.find(NS + 'contentHeader')
+        if known_file is not None:
+            file_header = copy.deepcopy(known_file)
+        if known_content is not None and known_content.find(NS + 'coordinateInfo') is not None:
+            content_header = copy.deepcopy(known_content)
     if file_header is not None: file_header.attrib.update(snapshot.get("file_header",{}))
     if content_header is not None: content_header.attrib.update(snapshot.get("content_header",{}))
     root.append(file_header); root.append(content_header)
@@ -521,8 +530,8 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str]) -> 
         elif obj["kind"] == "GVL":
             data=etree.SubElement(add,NS+"data",name=GVL_DATA,handleUnknown="implementation")
             data.append(el)
-        snapshot_obj=next((o for o in (state.get("snapshot") or {}).get("objects",[]) if o.get("name")==name and o.get("folder")),None)
-        paths[name]=(snapshot_obj or {}).get("folder") or obj.get("folder","")
+        snapshot_obj=next((o for o in (state.get("snapshot") or {}).get("objects",[]) if o.get("name")==name),None)
+        paths[name]=snapshot_obj.get("folder", "") if snapshot_obj is not None else obj.get("folder","")
     psdata=etree.SubElement(add,NS+"data",name=STRUCT,handleUnknown="discard")
     ps=etree.SubElement(psdata,NS+"ProjectStructure")
     for name in selected_names:

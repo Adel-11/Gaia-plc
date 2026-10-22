@@ -147,3 +147,13 @@ def test_partial_gfc_export_includes_new_exchange_function_dependency():
     chosen = plan_export(state, objects, mode='partial', focus='object:GFC_EXC', selected=['GFC_EXC'])
     assert any(new in message and 'missing required dependency' in message for message in chosen['errors'])
 
+
+def test_unresolved_codesys_difference_blocks_only_affected_exports():
+    state = copy.deepcopy(load_pack())
+    state['codesys_conflicts'] = {'GFC_EXC': {'status': 'conflict'}}
+    objects = build_program(state)
+    full = plan_export(state, objects, mode='full')
+    assert any('GFC_EXC has an unresolved' in message for message in full['errors'])
+    partial = plan_export(state, objects, mode='partial', focus='object:DUT_IO_DIP1500', selected=['DUT_IO_DIP1500'])
+    assert partial['errors'] == []
+

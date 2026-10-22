@@ -118,9 +118,31 @@ For an application rollback to stage 1, redeploy commit `1bb367d`; stage 2 adds 
 database migration. Keep the current data volume. The earlier v1 rollback procedure
 above still applies when reverting before the v2 schema.
 
-Graphical authoring, ST editors, CODESYS snapshot refresh and device configuration
-pages are later stages. This release does not write to the PLC or change its
-devices, channels, tasks, or running parameters.
+## V2 stage 3: import the known CODESYS state
+
+Upload an exported CODESYS PLCopen XML in the snapshot panel. Partial scope merges
+the uploaded objects into the known baseline, retaining unrelated objects. Full
+scope replaces the baseline object inventory and reports missing objects; it does
+not delete engineering types, instances or workbook rows.
+
+Preview the differences between the previous snapshot, incoming CODESYS objects
+and generated program. ObjectIds, headers and folders are refreshed only after
+application. For divergent contents, explicitly retain the generator version or
+adopt a compatible existing FB/FNC body. Structured declarations and generated
+GFC/FC code remain owned by the engineering model. Keeping the generator version
+acknowledges that a later XML export can replace the CODESYS contents shown.
+
+Apply rejects stale/expired previews and unresolved decisions. It records a new
+project revision and invalidates previous XML download previews. Both import
+scopes extract free program objects from an Application wrapper for comparison;
+device/task/library configuration is never included in generated exports.
+
+Stage 3 adds no database migration. Redeploy `e3230f0` for the previous stage,
+keeping the data volume and an export of the current project backup.
+
+Graphical authoring, ST editors and device configuration pages are later stages.
+This release does not write to the PLC or change its devices, channels, tasks,
+or running parameters.
 
 ## V1 archive and previous prototype limits
 

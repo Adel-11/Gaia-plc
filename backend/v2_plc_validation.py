@@ -244,6 +244,8 @@ def plan_export(state: dict, objects: dict[str, dict], mode: str = "full", focus
     elif not full and not candidates and not errors:
         errors.append("No changed objects are required for this export focus.")
     for name in sorted(candidates):
+        if name in (state.get('codesys_conflicts') or {}):
+            errors.append(f'{name} has an unresolved CODESYS import difference; review the import before exporting this object.')
         if name not in by_name:
             errors.append(f"Planned object {name} is absent from generated program.")
             continue

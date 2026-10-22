@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 - 2026-10-22 - V2 stage 3
+
+- Add reviewed CODESYS XML snapshot imports, with partial-merge and full-snapshot
+  scopes, refreshed ObjectIds, headers and folder paths.
+- Compare incoming objects against both the previous CODESYS snapshot and the
+  generator model. Show source/generated ST and require explicit conflict choices.
+- Preserve engineering declarations and workbook data. Adoption of CODESYS bodies
+  is limited to existing FB/FNC objects with compatible interfaces.
+- Protect import previews with CSRF, ownership, expiry and revision checks; keep
+  immutable project revisions and invalidate older PLCopen export previews.
+- Block exports that still contain unresolved CODESYS import differences.
+- Continue to exclude Application, devices, tasks and libraries from generated XML.
+
 ## 0.3.0 - 2026-10-22 - V2 stage 2
 
 - Generate PLCopen free objects from the structured model: DUTs, instance GVLs,
