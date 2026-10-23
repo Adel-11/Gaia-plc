@@ -161,3 +161,4 @@
 @media(max-width:850px){.v2-page-nav{align-items:flex-start}.v2-nav-group{flex:none;margin:0}.v2-nav-group-toggle{font-size:12px;padding:2px 8px 5px}.v2-nav-group>[role="tablist"]{display:flex}.v2-nav-group .v2-page-tab{min-height:42px}.v2-page-nav{max-height:115px}.v2-nav-group .v2-tab-label small{display:none}}
 
 .type-page-actions{display:flex;justify-content:flex-end;margin-bottom:14px}.v2-workspace [hidden]{display:none!important}
+.v2-workspace[data-page="exchanges"]{--page-accent:#a56319;--page-tint:#f3e5d2;--page-ink:#523719;--page-canvas:#f6f2ec}

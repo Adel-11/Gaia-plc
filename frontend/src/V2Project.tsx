@@ -5,6 +5,7 @@ import V2ObjectView from './V2ObjectView'
 import V2Communications from './V2Communications'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
+import V2Exchanges from './V2Exchanges'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -36,6 +37,7 @@ const pages = [
   { id: 'types', label: 'Types', detail: 'Modèles et code ST', icon: '▤', title: 'Types d’équipements', description: 'Ouvrez un type pour explorer ses DUT, modifier les membres et éditer le code de son FB.' },
   { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Déclarez vos instances et personnalisez leurs paramètres PA et leurs adresses IO ou Modbus.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
+  { id: 'exchanges', label: 'Exchanges', detail: 'Connections and conditions', icon: '⇆', title: 'Equipment exchanges', description: 'Connect instances, wire their variables and define conditional copies.' },
   { id: 'workbooks', label: 'Classeurs Excel', detail: 'Lecture et import', icon: '▦', title: 'Les données du projet', description: 'Consultez vos feuilles et prévisualisez chaque import avant de le valider.' },
   { id: 'plc', label: 'Génération PLC', detail: 'Programme et XML', icon: '⌘', title: 'Générer le programme', description: 'Préparez un export PLCopen complet ou partiel et vérifiez ses dépendances.' },
   { id: 'codesys', label: 'Référence CODESYS', detail: 'Comparer et actualiser', icon: '⇄', title: 'Rester en phase avec CODESYS', description: 'Comparez votre dernier XML au générateur et choisissez comment traiter les différences.' },
@@ -49,7 +51,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
   useEffect(() => { const changed = () => setActivePage(pageFromHash()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed) }, [])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true})
   const openPage = (id: PageId) => { setActivePage(id); window.location.hash = id }
-  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','communications'].includes(activePage) ? 'design' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
+  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','communications','exchanges'].includes(activePage) ? 'design' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -150,7 +152,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
         <p className="v2-nav-heading">Espace projet</p>
         {[
           {id: 'project', label: 'Projet', ids: ['overview']},
-          {id: 'design', label: 'Conception', ids: ['types', 'instances', 'communications']},
+          {id: 'design', label: 'Conception', ids: ['types', 'instances', 'communications', 'exchanges']},
           {id: 'data', label: 'Données', ids: ['workbooks']},
           {id: 'delivery', label: 'Livrables', ids: ['plc', 'codesys', 'exports']},
         ].map(group => <section className="v2-nav-group" key={group.id}>
@@ -190,6 +192,9 @@ export default function V2Project({ csrf }: { csrf: string }) {
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-communications" aria-labelledby="tab-communications" hidden={activePage !== 'communications'}>
           {project && <V2Communications project={project} onOpenInstance={()=>openPage('instances')}/>}
+        </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exchanges" aria-labelledby="tab-exchanges" hidden={activePage !== 'exchanges'}>
+          {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-workbooks" aria-labelledby="tab-workbooks" hidden={activePage !== 'workbooks'}>
     <section className="v2-panel workbook-panel"><div className="v2-panel-head"><div><p className="eyebrow">SOURCE WORKBOOKS</p><h2>Workbook reader</h2><p>Inspect source tables without downloading or changing the workbook.</p></div><div className="workbook-pickers"><label><span>Workbook</span><select value={workbookName} onChange={e=>setWorkbookName(e.target.value)}><option value="">Choose workbook</option>{(project?.workbooks||[]).map(book=><option key={book.filename} value={book.filename}>{book.filename}</option>)}</select></label><label><span>Sheet</span><select value={sheetName} onChange={e=>setSheetName(e.target.value)} disabled={!sheetData?.sheets?.length}><option value="">Choose sheet</option>{(sheetData?.sheets||[]).map(sheet=><option key={sheet.name} value={sheet.name}>{sheet.name}</option>)}</select></label></div></div>

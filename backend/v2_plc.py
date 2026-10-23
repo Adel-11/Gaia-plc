@@ -392,16 +392,11 @@ def _generated_objects(objs, state):
     if "GFC_IO_IN" in objs: _pou_text(objs["GFC_IO_IN"], "\n".join(io_in)+"\nGFC_IO_IN := TRUE;")
     if "GFC_IO_OUT" in objs: _pou_text(objs["GFC_IO_OUT"], "\n".join(io_out)+"\nGFC_IO_OUT := TRUE;")
     # Graph-authored exchange detail compiles into FC bodies; calls are per instance pair.
-    detail_by_sheet = {}
-    for row in state.get("exchange_functions_detail", []): detail_by_sheet.setdefault(row.get("sheet"), []).append(row)
     for fn in state.get("exchange_functions", []):
         name = str(fn.get("name") or fn.get("FC") or ""); obj=objs.get(name)
         if not obj: continue
-        lines=[]
-        for row in detail_by_sheet.get(fn.get("sheet") or fn.get("Sheet"), []):
-            src=str(row.get("source") or row.get("Source") or ""); dst=str(row.get("destination") or row.get("Destination") or "")
-            if src and dst: lines.append(f"{dst} := {src};")
-        lines.append(f"{name} := TRUE;"); _pou_text(obj,"\n".join(lines))
+        from backend.v2_exchanges import compile_function
+        _pou_text(obj, compile_function(state, fn))
     call_chunks=[]
     for c in state.get("exchange_calls",[]):
         fn=str(c.get("function_id") or c.get("FC") or ""); a=str(c.get("parameter_a_value") or ""); b=str(c.get("parameter_b_value") or "")

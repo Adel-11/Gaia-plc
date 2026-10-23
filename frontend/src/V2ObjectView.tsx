@@ -41,7 +41,7 @@ const stLanguage = StreamLanguage.define({
   },
 })
 
-function StEditor({ value, onChange, readOnly = false, label }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string }) {
+export function StEditor({ value, onChange, readOnly = false, label }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string }) {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange

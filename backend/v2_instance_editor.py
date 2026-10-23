@@ -332,6 +332,7 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                     else: state[key] = [r for r in state.get(key,[]) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) != name]
                 state["rtu_slaves"] = [r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance",""))) != name]
                 state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id")),str(r.get("instance_b_id"))}]
+                state.get("exchange_layout", {}).get("nodes", {}).pop(name, None)
                 changes.append(f"Delete {name}; release {impact['tcp_points']} TCP points, {impact['rtu_channels']} RTU channels, {impact['io_channels']} I/O assignments, and {impact['pa_values']} PA values")
             elif body.action == "pa":
                 by_member={str(x.get("Member",x.get("member_name"))):x for x in state.get("pa_values",[]) if str(x.get("instance_id",x.get("instance")))==_name(inst)}

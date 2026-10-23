@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 - 2026-10-23 - V2 stage 6
+
+- Add the Exchanges page: instance palette, persistent canvas positions, visible
+  call connections, zoom/pan, and shared FC member wiring in both directions.
+- Reuse compatible existing exchange functions or create a new FC and its
+  GFC_EXC call through a reviewed preview.
+- Author typed conditional copies with all/any terms and an optional Else
+  variable or literal. With no Else, a false condition retains the destination.
+- Keep generated ST read only and custom code separate; preserve it on mapping
+  changes. Conditions and fallbacks round-trip through Excel metadata columns.
+- Validate member types, call parameter types, conditions and PLCopen references;
+  partial exports include the changed exchange and its GFC_EXC caller.
+- Existing reference code and calls remain unchanged until edited. Actual import
+  and compilation of the supplied XML in a CODESYS copy remain manual acceptance.
+
 ## 0.6.0 - 2026-10-22 - V2 stage 5
 
 - Add a reviewed six-step type creation wizard: blank/copy, DUTs, RTU,

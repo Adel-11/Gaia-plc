@@ -208,3 +208,28 @@ authentication, generation or instance editing regresses, redeploy stage 4 commi
 91f6e2771527d2c25ab850d54eb1f1632a15e6cf with the same volume and retain a JSON
 backup of the latest revision. No running PLC configuration is changed. Import
 partial and complete XML into a CODESYS project copy and compile before download.
+
+
+## V2 stage 6: graphical exchanges
+
+Open Exchanges in the Conception menu. Arrange instances on the grid, then
+connect a pair. The preview reuses a compatible FC_EXC for those types, including
+a reversed pair, or creates one and an associated GFC_EXC call. Save layout
+persists node positions and viewport without changing PLC behavior.
+
+Open a shared function to wire DUT_EXC members. Select or drag compatible
+source/destination ports; mappings can run in both directions. A change to that
+function affects every pair using it. Add all/any condition terms and optionally
+an Else variable or literal. With no Else, a false condition leaves the current
+destination unchanged. WORD comparisons use explicit conversions.
+
+Review generated ST before applying. Generated copies are read only; custom
+ST stays separate and is preserved on regeneration. Excel exports retain
+conditions and fallbacks as JSON in Condition/Else columns and retain Custom
+code on FC_EXC. Malformed metadata, incompatible paths or invalid references
+block the operation. The CODESYS compiler remains the final code check.
+
+No database migration or automatic engineering-data replacement is required.
+If authentication, exchange editing or export regresses, redeploy stage 5 commit
+47f17225a590ca792f90b7bacfb7f8ea8c06daea with the same data volume. Keep a JSON
+backup of the latest project revision. No PLC, FUXA or tunnel is changed.

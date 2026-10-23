@@ -175,6 +175,8 @@ def _semantic_scope(names: set[str], objects: dict[str, dict], state: dict) -> s
         out.add("GFB_INST")
     if any(n.startswith("FB_UPI_") for n in names):
         out.add("GFB_UPI")
+    if any(n.startswith("FC_EXC_") for n in names):
+        out.add("GFC_EXC")
     return out
 
 
@@ -509,7 +511,7 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
     # Check qualified paths in ST, after comments and literals were blanked.
     for pou in root.xpath("//*[local-name()='pou']"):
         body = _st_code(pou.xpath("string(./*[local-name()='body']/*[local-name()='ST']/*[local-name()='xhtml'])"))
-        for match in re.finditer(r"\b(GVL_[A-Za-z0-9_]+|COM|EXC|PA|IO|INTERN)((?:\.[A-Za-z0-9_]+(?:\[-?\d+\])?)+)", body):
+        for match in re.finditer(r"\b(GVL_[A-Za-z0-9_]+|EXC_[A-Za-z0-9_]+|COM|EXC|PA|IO|INTERN)((?:\.[A-Za-z0-9_]+(?:\[-?\d+\])?)+)", body):
             root_name = match.group(1)
             parts = match.group(2).lstrip(".").split(".")
             parts = [re.fullmatch(r"([A-Za-z0-9_]+)(?:\[(-?\d+)\])?", part).groups() for part in parts]
@@ -524,6 +526,8 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
                 local_scope = local_by_pou.get(_name(pou), {})
                 local_var = local_scope.get(root_name)
                 if local_var is None:
+                    if root_name.startswith('EXC_'):
+                        errors.append(f"{_name(pou)} references undeclared exchange parameter {root_name}.")
                     continue
                 type_name, _ = variable_type(local_var)
                 scope = None

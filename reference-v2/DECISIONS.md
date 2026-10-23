@@ -48,3 +48,19 @@ conflicting proposals in the supplied prompt/specification.
   and optional Else remain stage 6.
 - A copied type has newly named DUTs. Skip incompatible inherited exchange FC
   calls with a visible warning until a compatible exchange is authored.
+
+
+## Stage 6 decisions (2026-10-23)
+
+- Stage 5 imports were accepted by Adel without import errors. This does not
+  establish a CODESYS compilation or runtime test.
+- FC_EXC bodies are generated read-only from typed copy links and conditions.
+  An absent Else retains the current destination; an explicit Else writes its
+  selected typed variable or literal. Conditions support all/any groups of terms.
+- Function edits apply to all instance pairs calling that shared FC. Calls and
+  type-level mappings are separate, reviewed operations.
+- Preserve custom ST verbatim, in a separate section before the BOOL return.
+  Never infer custom behavior from graphical edits.
+- Excel adds Condition and Else JSON columns to mapping sheets and Custom code
+  to FC_EXC. Existing columns retain their meaning. Invalid metadata blocks
+  import rather than silently discarding logic.

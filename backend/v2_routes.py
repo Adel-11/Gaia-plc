@@ -46,6 +46,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     from backend.v2_instance_editor import register_instance_editor_routes
     register_type_creation_routes(app, get_session, current_user, csrf)
     register_instance_editor_routes(app, get_session, current_user, csrf)
+    from backend.v2_exchanges import register_exchange_routes
+    register_exchange_routes(app, get_session, current_user, csrf)
 
     def project_for(session):
         state = store.load_project(session)
@@ -291,7 +293,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 for sheet in workbook.get("sheets", [])]})
         result = {key: value for key, value in state.items()
                   if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files"}}
-        result.update(phase=5, workbooks=workbooks, validation=engine.validate_project(state), counts={
+        result.update(phase=6, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),
             "duts": sum(len(t.get("duts", [])) for t in types),
             "dut_members": sum(len(d.get("members", [])) for t in types for d in t.get("duts", [])),

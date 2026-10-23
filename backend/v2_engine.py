@@ -242,6 +242,7 @@ def _excel_state(state: dict, book: dict) -> None:
         state["exchange_functions"] = [{**r, "id": str(r.get("FC", "")), "name": r.get("FC"),
                                          "type_a_id": r.get("Object type A"), "type_b_id": r.get("Object type B"),
                                          "parameter_a": r.get("Parameter A"), "parameter_b": r.get("Parameter B"),
+                                         "custom_code": r.get("Custom code") or "",
                                          "sheet": r.get("Sheet")} for r in _objects(book, "FC_EXC")]
         state["exchange_calls"] = [{**r, "id": f"{r.get('FC')}:{r.get('Instance A')}:{r.get('Instance B')}",
                                      "function_id": r.get("FC"), "instance_a_id": r.get("Instance A"),
@@ -257,6 +258,8 @@ def _excel_state(state: dict, book: dict) -> None:
                     row["source_member"] = str(row.get("Source", "")).split(".")[-1]
                     row["destination_member"] = str(row.get("Destination", "")).split(".")[-1]
                     row["direction"] = row.get("Direction"); row["data_type"] = row.get("Type")
+                    from backend.v2_exchanges import normalize_detail
+                    row.update(normalize_detail(row))
                     state["exchange_functions_detail"].append(row)
 
 
@@ -708,16 +711,10 @@ def _validate(state: dict, filename: str) -> dict:
                 value = call.get(field)
                 if value and str(value) not in instances:
                     errors.append(f"Exchange call references unknown instance {value}")
-        for exchange in state.get("exchange_functions_detail", []):
-            for side, key, kind in (("source", "source_member", "type_a_id"), ("destination", "destination_member", "type_b_id")):
-                member = exchange.get(key)
-                if not member:
-                    continue
-                typename = str(exchange.get("sheet", "")).split("-", 1)[0 if side == "source" else -1]
-                typ = types.get(typename)
-                dut = next((d for d in typ.get("duts", []) if d.get("role") == "EXC"), None) if typ else None
-                if dut and member not in {str(m.get("name")) for m in dut.get("members", [])}:
-                    errors.append(f"Exchange {side} member missing from DUT_EXC {typename}: {member}")
+        from backend.v2_exchanges import validate_exchanges
+        exchange_checks = validate_exchanges(state)
+        errors.extend(exchange_checks.get("errors", []))
+        warnings.extend(exchange_checks.get("warnings", []))
     for key, value in state.get("workbooks", {}).items():
         if filename and value.get("filename") != filename: continue
         for sheet in value.get("sheets", []):
@@ -789,8 +786,12 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
     new_state = copy.deepcopy(current)
     new_state.setdefault("workbooks", {})[filename] = changed
     previous_fuxa = copy.deepcopy(current.get("fuxa", {}))
-    project = parse_project(new_state["workbooks"], new_state.get("snapshot"),
-                              base64.b64decode(previous_fuxa["original_b64"]) if previous_fuxa.get("original_b64") else None)
+    try:
+        project = parse_project(new_state["workbooks"], new_state.get("snapshot"),
+                                  base64.b64decode(previous_fuxa["original_b64"]) if previous_fuxa.get("original_b64") else None)
+    except (ValueError, TypeError, KeyError) as exc:
+        return {"state": copy.deepcopy(current), "diff": _rows_diff(previous, changed),
+                "validation": {"errors": [f"Invalid workbook model: {exc}"], "warnings": []}}
     project["fuxa"] = previous_fuxa
     old_types = {str(t.get("id")): t for t in current.get("types", [])}
     for typ in project.get("types", []):
