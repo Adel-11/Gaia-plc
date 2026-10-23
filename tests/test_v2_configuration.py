@@ -87,8 +87,8 @@ def test_io_existing_full_member_path_survives_edit_and_new_assignment_sets_full
 def test_new_empty_io_channel_can_receive_explicit_mapping_and_requires_manual_step():
     state = copy.deepcopy(load_pack())
     channel = next(c for c in state["io_channels"] if not c.get("Instance") and not c.get("GVL_IOMAP variable"))
-    _, manual = apply_changes(state, [{"collection":"io_channels","id":channel["id"],"op":"update","values":{"GVL_IOMAP variable":"Manual_Input_1","IOMAP type":"BOOL"}}])
-    assert channel["GVL_IOMAP variable"] == "Manual_Input_1"
+    _, manual = apply_changes(state, [{"collection":"io_channels","id":channel["id"],"op":"update","values":{"GVL_IOMAP variable":"Manual_Input_1","IOMAP type":"DWORD"}}])
+    assert channel["GVL_IOMAP variable"] == "GVL_IOMAP.Manual_Input_1"
     assert any("Manual_Input_1" in step for step in manual)
     with pytest.raises(ValueError, match="fixed for existing channels"):
         apply_changes(state, [{"collection":"io_channels","id":channel["id"],"op":"update","values":{"GVL_IOMAP variable":"Renamed_Input"}}])
@@ -150,3 +150,15 @@ def test_allocator_respects_ranges_global_occupancy_pairs_and_discrete_client_ad
     assert abs(lsw["Modbus address"] - msw["Modbus address"]) == 1
     assert allocate_tcp_points(state, "NEW_TEST", "HMI") == []
     assert len(free_addresses(state, "FUXA", "coils", 1)) == 1
+
+def test_io_unassign_preserves_physical_mapping_and_rejects_wrong_member_type():
+    state=copy.deepcopy(load_pack())
+    row=next(r for r in state['io_channels'] if r.get('Instance')=='DOSENSOR_1')
+    original=row['GVL_IOMAP variable']
+    apply_changes(state,[{'collection':'io_channels','id':row['id'],'op':'update','values':{'Instance':''}}])
+    assert row['GVL_IOMAP variable']==original
+    assert not row['GVL_IO member']
+    assert not row['member_name']
+    spare=next(r for r in state['io_channels'] if r.get('I/O type')=='AI' and not r.get('GVL_IOMAP variable'))
+    with pytest.raises(ValueError,match='type must match'):
+        apply_changes(state,[{'collection':'io_channels','id':spare['id'],'op':'update','values':{'Instance':'DOSENSOR_1','GVL_IO member':'INPUT_SIGNAL','GVL_IOMAP variable':'GVL_IOMAP.NEW_SIGNAL','IOMAP type':'INT'}}])

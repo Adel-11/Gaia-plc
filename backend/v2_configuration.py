@@ -156,6 +156,11 @@ def apply_changes(state, changes):
             if ("GVL_IOMAP variable" in values or "variable" in values or "IOMAP type" in values) and had_io_mapping:
                 raise ValueError("Mapped I/O variables and types are fixed for existing channels")
             instance_name=str(row.get("Instance", "") or ""); member=str(row.get("GVL_IO member", "") or "")
+            if not instance_name:
+                row["GVL_IO member"]=None
+                member=""
+            elif not member:
+                raise ValueError("Choose an I/O member for the selected instance")
             if instance_name and member:
                 leaf=member.split(".")[-1]
                 expected_prefix=f"GVL_IO.IO_{instance_name}."
@@ -170,16 +175,27 @@ def apply_changes(state, changes):
                 io=str(row.get("I/O type", "")).upper(); ft=str(found.get("iec_type", "")).upper()
                 if (io.startswith("D") and ft not in {"BOOL"}) or (io.startswith("A") and ft in {"BOOL"}): raise ValueError("I/O type does not match the selected member type")
                 if not row.get("GVL_IOMAP variable") or not row.get("IOMAP type"): raise ValueError("Set the physical GVL_IOMAP variable and type for this channel")
+                if str(row.get("IOMAP type", "")).upper() != ft:
+                    raise ValueError("Physical IOMAP type must match the selected DUT_IO member type")
                 row["GVL_IO member"]=canonical
             for a,b in (("Range min","Range max"),("Scale min","Scale max")):
                 if row.get(a) not in (None, "") and row.get(b) not in (None, "") and _num(row[a],a) >= _num(row[b],b): raise ValueError("Scale min must be less than Scale max")
             if "Instance" in values or "GVL_IO member" in values or "instance_id" in values or "member_name" in values:
                 manual.append(f"Verify physical channel {row.get('Slot')}:{row.get('Channel')} wiring and the CODESYS mapping for instance {row.get('Instance') or 'unassigned'}.")
-            if ("GVL_IOMAP variable" in values or "variable" in values) and not row.get("Instance"):
+            if "GVL_IOMAP variable" in values or "variable" in values:
                 variable=str(row.get("GVL_IOMAP variable", "")).strip()
                 if not re.fullmatch(r"(?:[A-Za-z_][A-Za-z0-9_]*\.)*[A-Za-z_][A-Za-z0-9_]*", variable): raise ValueError("New I/O mapping variable must be a valid IEC variable path")
+                if not variable.startswith("GVL_IOMAP."):
+                    variable="GVL_IOMAP."+variable
+                    row["GVL_IOMAP variable"]=variable
+                if not re.fullmatch(r"GVL_IOMAP\.[A-Za-z_][A-Za-z0-9_]*", variable): raise ValueError("New I/O mapping must be a member of GVL_IOMAP")
                 if any(other is not row and str(other.get("GVL_IOMAP variable", ""))==variable for other in state.get("io_channels", [])): raise ValueError("I/O mapping variable is already used")
                 if not row.get("IOMAP type"): raise ValueError("Set an IOMAP type for the new physical channel variable")
+                physical=str(row.get("I/O type", "")).upper()
+                mapped_type=str(row["IOMAP type"]).upper()
+                numeric={"BYTE","WORD","DWORD","LWORD","SINT","USINT","INT","UINT","DINT","UDINT","LINT","ULINT","REAL","LREAL"}
+                if (physical.startswith("D") and mapped_type!="BOOL") or (physical.startswith("A") and mapped_type not in numeric):
+                    raise ValueError("Physical I/O channel and IOMAP IEC type are incompatible")
                 manual.append(f"Add and verify {variable} ({row.get('IOMAP type')}) in the physical I/O mapping and CODESYS device configuration.")
         _refresh_aliases(row, coll)
     result=validate_configuration(state)
