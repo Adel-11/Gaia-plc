@@ -162,3 +162,4 @@
 
 .type-page-actions{display:flex;justify-content:flex-end;margin-bottom:14px}.v2-workspace [hidden]{display:none!important}
 .v2-workspace[data-page="exchanges"]{--page-accent:#a56319;--page-tint:#f3e5d2;--page-ink:#523719;--page-canvas:#f6f2ec}
+.v2-workspace[data-page="parameters"]{--page-accent:#675185;--page-tint:#e9e2f2;--page-ink:#403154;--page-canvas:#f4f0f8}

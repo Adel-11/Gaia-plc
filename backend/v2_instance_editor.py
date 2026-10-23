@@ -122,19 +122,8 @@ def _sync_workbooks(state):
 
 
 def _free_addresses(state, client, table, count):
-    bases={"coils":1,"discrete_inputs":10001,"input_registers":1,"holding_registers":1}
-    table=table.casefold(); base=bases.get(table,1)+(1000 if client.upper()=="HMI" else 0); limit=base+999
-    used=set()
-    for p in state.get("tcp_points",[]):
-        if str(p.get("table","")).casefold()!=table: continue
-        try: used.add(int(p.get("Modbus address",p.get("address"))))
-        except (TypeError,ValueError): pass
-    # Find a contiguous block. Global occupancy matters because the PLC serves one map per table.
-    while base+count-1<=limit:
-        block=list(range(base,base+count))
-        if not used.intersection(block): return block
-        base+=1
-    raise ValueError(f"No contiguous {count}-address block remains in the {client} {table} range")
+    from backend.v2_addressing import free_addresses
+    return free_addresses(state, client, table, count)
 
 
 def _tcp_table(row):
@@ -161,7 +150,10 @@ def _tcp_variable(table,address):
     return f"GVL_MODBUS.{base}[{n-1}]"
 
 
-def _tcp_range(client,table):
+def _tcp_range(client,table,state=None):
+    if state is not None:
+        from backend.v2_addressing import client_ranges
+        return client_ranges(state,str(client))[str(table).casefold()]
     lo={"coils":1,"discrete_inputs":10001,"input_registers":1,"holding_registers":1}.get(str(table).casefold(),1)
     return lo+(1000 if str(client).upper()=="HMI" else 0),lo+999+(1000 if str(client).upper()=="HMI" else 0)
 
@@ -197,17 +189,13 @@ def _add_instance(state, name, typ, values, warnings=None):
     tcp_book = state.get("workbooks", {}).get("MODBUS_TCP.xlsx")
     created_tcp=[]
     if tcp_book:
-        templates=[_replace_instance(r,name) for r in _member_rows(typ,"TEMPLATE_TCP")]
-        groups={}
-        for r in templates: groups.setdefault((str(r.get("Client") or "FUXA"),_tcp_table(r)),[]).append(r)
-        for (client,sheet), rows in groups.items():
-            table=sheet.casefold(); addresses=_free_addresses(state,client,table,len(rows))
-            for row,addr in zip(rows,addresses):
-                row["Modbus address"]=addr; row["Client address"]=addr
-                row["GVL_MODBUS variable"]=_tcp_variable(table,addr)
-                row.update(table=table,sheet=sheet,id=f"{table}:{client}:{addr}",address=addr,client_id=client,instance_id=name,member_name=_member_from_var(row.get("GVL_COM variable")))
-                state.setdefault("tcp_points",[]).append(row); created_tcp.append(row)
-                _set_or_append(tcp_book,sheet,row)
+        from backend.v2_addressing import allocate_tcp_points
+        clients = list(dict.fromkeys(str(r.get("Client") or "FUXA") for r in _member_rows(typ,"TEMPLATE_TCP")))
+        for client in clients:
+            added = allocate_tcp_points(state, name, client)
+            created_tcp.extend(added)
+            for row in added:
+                _set_or_append(tcp_book, row["sheet"], row)
     rtu_book = state.get("workbooks", {}).get("MODBUS_RTU.xlsx")
     rtu_tpl = _member_rows(typ, "TEMPLATE_RTU")
     if rtu_tpl:
@@ -291,9 +279,10 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                         edit=submitted[str(row["id"])]
                         try: addr=int(edit.get("address",edit.get("Modbus address")))
                         except (TypeError,ValueError): raise ValueError("TCP addresses must be whole numbers")
-                        lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")))
+                        lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")),state)
                         if not lo<=addr<=hi: raise ValueError(f"TCP address must be between {lo} and {hi} for {row.get('Client',row.get('client_id'))}")
-                        row["Modbus address"]=addr;row["Client address"]=addr;row["address"]=addr
+                        from backend.v2_addressing import client_address_for
+                        row["Modbus address"]=addr;row["Client address"]=client_address_for(row.get("table"),addr,row.get("Client"));row["address"]=addr
                         row["GVL_MODBUS variable"]=_tcp_variable(row.get("table",row.get("sheet")),addr)
                     occupied={}
                     for row in state.get("tcp_points",[]):
@@ -326,7 +315,7 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                         for row in state.get(key,[]):
                             if str(row.get("instance_id",row.get("Instance","")))==name:
                                 prior=row.pop("_assignment_prior_status",None)
-                                for field in ("Instance","instance_id","GVL_IOMAP variable","variable","GVL_IO member","member_name","IOMAP type"):
+                                for field in ("Instance","instance_id","GVL_IO member","member_name"):
                                     row[field]=None
                                 if prior is not None: row["Status"]=prior
                     else: state[key] = [r for r in state.get(key,[]) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) != name]
@@ -378,16 +367,16 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                     if io_type.startswith("D") and "BOOL" not in iec_type: raise ValueError(f"{member} is not compatible with {io_type} channel {cid}")
                     row["Instance"]=_name(inst);row["instance_id"]=_name(inst)
                     row.setdefault("_assignment_prior_status",row.get("Status"))
-                    row["GVL_IO member"]=f"GVL_IO.IO_{_name(inst)}.{member}";row["member_name"]=member;row["IOMAP type"]=members[member].get("iec_type")
+                    row["GVL_IO member"]=f"GVL_IO.IO_{_name(inst)}.{member}";row["member_name"]=member;row["IOMAP type"]=row.get("IOMAP type") or members[member].get("iec_type")
                     existing_map=str(row.get("GVL_IOMAP variable") or row.get("variable") or "")
                     match=re.search(r"IOMAP_[A-Z]+_(.+?)(?:_[A-Z][A-Z0-9_]*_\d+)?$",existing_map)
                     signal=match.group(1) if match else re.sub(r"^(INPUT|OUTPUT)_","",member)
-                    row["GVL_IOMAP variable"]=f"GVL_IOMAP.IOMAP_{io_type}_{signal}_{_name(inst)}";row["variable"]=row["GVL_IOMAP variable"]
+                    row["GVL_IOMAP variable"]=existing_map or f"GVL_IOMAP.IOMAP_{io_type}_{signal}_{_name(inst)}";row["variable"]=row["GVL_IOMAP variable"]
                     row["Status"]="TO CHECK"
                 for cid,row in all_channels.items():
                     if cid not in seen:
                         prior=row.pop("_assignment_prior_status",None)
-                        for field in ("Instance","instance_id","GVL_IOMAP variable","variable","GVL_IO member","member_name","IOMAP type"):
+                        for field in ("Instance","instance_id","GVL_IO member","member_name"):
                             row[field]=None
                         if prior is not None: row["Status"]=prior
                 changes.append(f"Assign {len(chosen)} physical I/O channels to {_name(inst)}")
@@ -404,7 +393,7 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                         try: n=int(v)
                         except (TypeError,ValueError): raise ValueError("Modbus addresses must be whole numbers")
                         if field=="tcp_points":
-                            lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")))
+                            lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")),state)
                             if not lo<=n<=hi: raise ValueError(f"TCP address must be between {lo} and {hi}")
                         if field=="rtu_slaves" and not 1<=n<=247: raise ValueError("RTU slave address must be between 1 and 247")
                         same=[]
@@ -417,7 +406,10 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                         for key in field_names:
                             if key in row: row[key]=n
                         row["address"]=n
-                        if field=="tcp_points": row["GVL_MODBUS variable"]=_tcp_variable(row.get("table",row.get("sheet")),n)
+                        if field=="tcp_points":
+                            from backend.v2_addressing import client_address_for
+                            row["Client address"]=client_address_for(row.get("table"),n,row.get("Client"))
+                            row["GVL_MODBUS variable"]=_tcp_variable(row.get("table",row.get("sheet")),n)
                 for edit in body.rtu_slaves:
                     row=next((r for r in state.get("rtu_slaves",[]) if str(r.get("id"))==str(edit.get("id"))),None)
                     if row:

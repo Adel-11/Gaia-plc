@@ -611,30 +611,14 @@ def _validate(state: dict, filename: str) -> dict:
             if inst and str(inst) not in instances:
                 errors.append(f"TCP point references unknown instance {inst}")
             if address not in (None, "") and client in clients:
-                text_range = str(ranges.get(client) or "")
-                range_labels = {"coils": "coils", "discrete_inputs": "di", "input_registers": "ir", "holding_registers": "hr"}
-                label = range_labels.get(str(table), "")
-                match = re.search(rf"\b{label}\s+(\d+)\s*[-–]\s*(\d+)\b", text_range, re.I) if label else None
-                if not match and "+1000" in text_range.replace(" ", ""):
-                    base = str(ranges.get("FUXA") or "")
-                    match = re.search(rf"\b{label}\s+(\d+)\s*[-–]\s*(\d+)\b", base, re.I) if label else None
-                    if match:
-                        lo, hi = int(match.group(1)) + 1000, int(match.group(2)) + 1000
-                        match = None
-                    else:
-                        lo = hi = None
-                else:
-                    lo = hi = None
-                if match:
-                    range_value = address if client == "FUXA" else client_address
-                    numeric = int(range_value) if str(range_value).isdigit() else None
-                    lo, hi = int(match.group(1)), int(match.group(2))
-                    if numeric is not None and not lo <= numeric <= hi:
-                        errors.append(f"TCP address {address} is outside {client} {label} range {lo}-{hi}")
-                elif lo is not None and hi is not None:
-                    numeric = int(client_address) if str(client_address).isdigit() else None
-                    if numeric is not None and not lo <= numeric <= hi:
-                        errors.append(f"TCP address {address} is outside {client} {label} range {lo}-{hi}")
+                from backend.v2_addressing import client_ranges
+                try:
+                    lo, hi = client_ranges(state, client)[str(table).casefold()]
+                    numeric = int(address)
+                    if isinstance(address, bool) or float(address) != numeric or not lo <= numeric <= hi:
+                        errors.append(f"TCP address {address} is outside {client} {table} range {lo}-{hi}")
+                except (ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"Invalid TCP address/range for {client}: {exc}")
             member_name = row.get("member_name")
             inst = instances.get(str(inst)) if inst else None
             if member_name and inst:
@@ -747,6 +731,11 @@ def _validate(state: dict, filename: str) -> dict:
             key = (str(point.get("memaddress", "")), str(point.get("address", "")), str(point.get("name", "")).casefold())
             if key not in represented:
                 warnings.append(f"Retained FUXA tag is not modeled in MODBUS_TCP: {point.get('name')}")
+    if filename in ("", "MODBUS_TCP.xlsx", "MODBUS_RTU.xlsx", "IO_PHYSICAL.xlsx", "PARAMETERS_PA.xlsx"):
+        from backend.v2_configuration import validate_configuration
+        checks = validate_configuration(state)
+        errors.extend(checks["errors"])
+        warnings.extend(checks["warnings"])
     return {"errors": list(dict.fromkeys(errors)), "warnings": list(dict.fromkeys(warnings))}
 
 

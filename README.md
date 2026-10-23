@@ -233,3 +233,35 @@ No database migration or automatic engineering-data replacement is required.
 If authentication, exchange editing or export regresses, redeploy stage 5 commit
 47f17225a590ca792f90b7bacfb7f8ea8c06daea with the same data volume. Keep a JSON
 backup of the latest project revision. No PLC, FUXA or tunnel is changed.
+
+
+## V2 stage 7: parameters and communications
+
+Open Paramètres PA to edit per-instance overrides. Blank inherits the type
+value; zero and FALSE remain explicit values. Compare equipment of the same type
+and review the effective values before saving. The supervision flag documents the
+existing FB behavior; it does not change its code.
+
+Communications has separate TCP, RTU and physical I/O views. Select a client,
+line or rack slot to inspect its points/channels. Queue edits, review the proposal
+and the manual actions, then save. New TCP allocations use the client's configured
+ranges and the shared PLC address map. Existing mapped variable names are retained.
+Removing an instance releases its points and physical assignments while retaining
+the physical IOMAP declarations used by the CODESYS device mapping.
+
+A saved generator setting does not configure the PLC, serial port, slave, FUXA
+or HMI. Apply the listed device settings manually in CODESYS and on the device.
+For TCP bounds errors: check the requested address and client ranges in the
+generator first. If expansion is intentional, resize the corresponding
+GVL_MODBUS array in CODESYS, adjust the Modbus server/device mapping, compile in
+a project copy, then import that XML as the new reference and regenerate. Keep
+existing variable names and confirm the client addressing convention. The
+generator does not resize these arrays automatically and blocks unsafe XML.
+
+Stage 6 import and compilation were accepted by the user. Stage 7 still requires
+manual import/compilation acceptance for its supplied XML in a CODESYS copy.
+No database migration or project reset is required. Before updating, export a
+JSON backup. Roll back the application to commit
+8ea5689440df9bfacbdb85c83bf7ef7ca4a52214 with the same persistent data volume if
+login, configuration saving or exports regress. Configuration changes remain
+in project revision history. No actual PLC download is part of this release.

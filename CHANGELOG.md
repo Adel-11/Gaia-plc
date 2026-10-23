@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 - 2026-10-23 - V2 stage 7
+
+- Add a dedicated PA page with instance overrides, inherited defaults and comparison by equipment type. Supervision editability remains information only.
+- Add reviewed configuration edits for TCP clients/ranges/points, RTU line/slave/channel settings and physical I/O mappings over the 11-slot rack.
+- Allocate free TCP addresses from configured ranges with shared occupancy; keep existing mapped variable names.
+- Preserve engineering workbooks and custom ST through configuration updates; reject stale or expired review tokens.
+- Show manual CODESYS/device actions; no PLC, FUXA or network configuration is changed automatically.
+- Stage 6 XML import and compilation accepted by the user before this stage.
+
 ## 0.7.0 - 2026-10-23 - V2 stage 6
 
 - Add the Exchanges page: instance palette, persistent canvas positions, visible

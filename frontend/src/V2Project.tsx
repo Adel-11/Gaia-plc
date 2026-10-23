@@ -3,6 +3,7 @@ import V2PlcExport from './V2PlcExport'
 import V2CodesysImport from './V2CodesysImport'
 import V2ObjectView from './V2ObjectView'
 import V2Communications from './V2Communications'
+import V2Parameters from './V2Parameters'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
 import V2Exchanges from './V2Exchanges'
@@ -36,6 +37,7 @@ const pages = [
   { id: 'overview', label: 'Vue d’ensemble', detail: 'État du projet', icon: '◫', title: 'Votre projet, en un regard', description: 'Retrouvez les contrôles, les chiffres clés et la référence CODESYS actuelle.' },
   { id: 'types', label: 'Types', detail: 'Modèles et code ST', icon: '▤', title: 'Types d’équipements', description: 'Ouvrez un type pour explorer ses DUT, modifier les membres et éditer le code de son FB.' },
   { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Déclarez vos instances et personnalisez leurs paramètres PA et leurs adresses IO ou Modbus.' },
+  { id: 'parameters', label: 'Paramètres PA', detail: 'Valeurs et comparaison', icon: '⚙', title: 'Paramètres des équipements', description: 'Personnalisez les valeurs par instance et comparez les équipements du même type.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
   { id: 'exchanges', label: 'Exchanges', detail: 'Connections and conditions', icon: '⇆', title: 'Equipment exchanges', description: 'Connect instances, wire their variables and define conditional copies.' },
   { id: 'workbooks', label: 'Classeurs Excel', detail: 'Lecture et import', icon: '▦', title: 'Les données du projet', description: 'Consultez vos feuilles et prévisualisez chaque import avant de le valider.' },
@@ -51,7 +53,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
   useEffect(() => { const changed = () => setActivePage(pageFromHash()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed) }, [])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true})
   const openPage = (id: PageId) => { setActivePage(id); window.location.hash = id }
-  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','communications','exchanges'].includes(activePage) ? 'design' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
+  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','parameters','communications','exchanges'].includes(activePage) ? 'design' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -152,7 +154,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
         <p className="v2-nav-heading">Espace projet</p>
         {[
           {id: 'project', label: 'Projet', ids: ['overview']},
-          {id: 'design', label: 'Conception', ids: ['types', 'instances', 'communications', 'exchanges']},
+          {id: 'design', label: 'Conception', ids: ['types', 'instances', 'parameters', 'communications', 'exchanges']},
           {id: 'data', label: 'Données', ids: ['workbooks']},
           {id: 'delivery', label: 'Livrables', ids: ['plc', 'codesys', 'exports']},
         ].map(group => <section className="v2-nav-group" key={group.id}>
@@ -190,8 +192,11 @@ export default function V2Project({ csrf }: { csrf: string }) {
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-instances" aria-labelledby="tab-instances" hidden={activePage !== 'instances'}>
           {project && <V2Instances project={project} csrf={csrf} onSaved={()=>void load()}/>}
         </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-parameters" aria-labelledby="tab-parameters" hidden={activePage !== 'parameters'}>
+          {project && <V2Parameters csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} />}
+        </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-communications" aria-labelledby="tab-communications" hidden={activePage !== 'communications'}>
-          {project && <V2Communications project={project} onOpenInstance={()=>openPage('instances')}/>}
+          {project && <V2Communications csrf={csrf} onSaved={() => void load()} project={project} onOpenInstance={()=>openPage('instances')}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exchanges" aria-labelledby="tab-exchanges" hidden={activePage !== 'exchanges'}>
           {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}
