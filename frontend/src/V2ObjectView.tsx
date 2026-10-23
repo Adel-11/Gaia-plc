@@ -45,13 +45,21 @@ export function StEditor({ value, onChange, readOnly = false, label }: { value: 
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const applyingValue = useRef(false)
   useEffect(() => {
     if (!host.current) return
-    const state = EditorState.create({ doc: value, extensions: [lineNumbers(), highlightActiveLine(), highlightSelectionMatches(), history(), stLanguage, syntaxHighlighting(defaultHighlightStyle), keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]), EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly), EditorView.contentAttributes.of({'aria-label': label}), EditorView.updateListener.of(update => { if (update.docChanged) onChangeRef.current?.(update.state.doc.toString()) }), EditorView.theme({ '&': { height: '100%', fontSize: '16px' }, '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }, '.cm-gutters': { backgroundColor: '#f6f8fa', borderRight: '1px solid #e1e5eb', color: '#7a8493' } })] })
+    const state = EditorState.create({ doc: value, extensions: [lineNumbers(), highlightActiveLine(), highlightSelectionMatches(), history(), stLanguage, syntaxHighlighting(defaultHighlightStyle), keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]), EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly), EditorView.contentAttributes.of({'aria-label': label}), EditorView.updateListener.of(update => { if (update.docChanged && !applyingValue.current) onChangeRef.current?.(update.state.doc.toString()) }), EditorView.theme({ '&': { height: '100%', fontSize: '16px' }, '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }, '.cm-gutters': { backgroundColor: '#f6f8fa', borderRight: '1px solid #e1e5eb', color: '#7a8493' } })] })
     editor.current = new EditorView({ state, parent: host.current })
     return () => { editor.current?.destroy(); editor.current = null }
   }, [readOnly])
-  useEffect(() => { const view = editor.current; if (view && view.state.doc.toString() !== value) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } }) }, [value])
+  useEffect(() => {
+    const view = editor.current
+    if (view && view.state.doc.toString() !== value) {
+      applyingValue.current = true
+      try { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } }) }
+      finally { applyingValue.current = false }
+    }
+  }, [value])
   return <div className="ov-editor-wrap" aria-label={label}><div className="ov-editor-toolbar"><span>{label}</span><button type="button" onClick={() => editor.current && openSearchPanel(editor.current)} aria-label="Find in source">Find <kbd>Ctrl F</kbd></button></div><div ref={host} className={`ov-editor ${readOnly ? 'is-readonly' : ''}`} /></div>
 }
 

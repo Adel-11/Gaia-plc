@@ -6,6 +6,7 @@
 - Keep model-generated ST and declarations read only; edit utility function bodies and separate custom sections through reviewed, revisioned previews.
 - Preserve generated-object custom code across regeneration, Excel imports and complete/partial PLCopen exports.
 - Link exchange functions back to their graphical editor; improve French export/reference messages.
+- Keep editor refreshes separate from authored changes so saving or selecting an object does not create an empty draft.
 - Stage 7 XML import and compilation accepted by the user. Stage 8 still requires manual import/compile acceptance in a CODESYS project copy.
 
 ## 0.8.0 - 2026-10-23 - V2 stage 7
