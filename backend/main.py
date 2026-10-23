@@ -368,6 +368,14 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         https_only=cookie_is_secure,
     )
 
+    @app.middleware("http")
+    async def refresh_application_shell(request: Request, call_next):
+        response = await call_next(request)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            # The HTML selects the current hashed assets after each deployment.
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     def get_session():
         factory = getattr(app.state, "session_factory", None)
         if factory is None:

@@ -14,6 +14,7 @@
   partial exports include the changed exchange and its GFC_EXC caller.
 - Existing reference code and calls remain unchanged until edited. Actual import
   and compilation of the supplied XML in a CODESYS copy remain manual acceptance.
+- Prevent browser caching of the HTML shell so deployments load current assets.
 
 ## 0.6.0 - 2026-10-22 - V2 stage 5
 
