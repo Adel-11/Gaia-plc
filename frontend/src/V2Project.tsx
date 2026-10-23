@@ -7,6 +7,7 @@ import V2Parameters from './V2Parameters'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
 import V2Exchanges from './V2Exchanges'
+import V2Code from './V2Code'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -40,6 +41,8 @@ const pages = [
   { id: 'parameters', label: 'Paramètres PA', detail: 'Valeurs et comparaison', icon: '⚙', title: 'Paramètres des équipements', description: 'Personnalisez les valeurs par instance et comparez les équipements du même type.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
   { id: 'exchanges', label: 'Exchanges', detail: 'Connections and conditions', icon: '⇆', title: 'Equipment exchanges', description: 'Connect instances, wire their variables and define conditional copies.' },
+  { id: 'generated', label: 'Code généré', detail: 'GFC, GFB et programme', icon: '⌘', title: 'Code généré', description: 'Consultez les objets calculés depuis le modèle et leurs différences avec la référence CODESYS.' },
+  { id: 'functions', label: 'Fonctions', detail: 'Utilitaires et échanges', icon: 'ƒ', title: 'Fonctions du programme', description: 'Consultez et modifiez les fonctions utilitaires ; retrouvez les fonctions d’échange et leur mapping.' },
   { id: 'workbooks', label: 'Classeurs Excel', detail: 'Lecture et import', icon: '▦', title: 'Les données du projet', description: 'Consultez vos feuilles et prévisualisez chaque import avant de le valider.' },
   { id: 'plc', label: 'Génération PLC', detail: 'Programme et XML', icon: '⌘', title: 'Générer le programme', description: 'Préparez un export PLCopen complet ou partiel et vérifiez ses dépendances.' },
   { id: 'codesys', label: 'Référence CODESYS', detail: 'Comparer et actualiser', icon: '⇄', title: 'Rester en phase avec CODESYS', description: 'Comparez votre dernier XML au générateur et choisissez comment traiter les différences.' },
@@ -51,9 +54,12 @@ const pageFromHash = (): PageId => window.location.hash === '#equipment' ? 'type
 export default function V2Project({ csrf }: { csrf: string }) {
   const [activePage, setActivePage] = useState<PageId>(pageFromHash)
   useEffect(() => { const changed = () => setActivePage(pageFromHash()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed) }, [])
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true})
-  const openPage = (id: PageId) => { setActivePage(id); window.location.hash = id }
-  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','parameters','communications','exchanges'].includes(activePage) ? 'design' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true, code: true})
+  const [codeDirty, setCodeDirty] = useState<Record<string, boolean>>({})
+  const [openedCodePages, setOpenedCodePages] = useState<Record<string, boolean>>({})
+  useEffect(() => { if (activePage === 'generated' || activePage === 'functions') setOpenedCodePages(old => old[activePage] ? old : {...old, [activePage]: true}) }, [activePage])
+  const openPage = (id: PageId) => { if (id !== activePage && codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return; setActivePage(id); window.location.hash = id }
+  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','parameters','communications','exchanges'].includes(activePage) ? 'design' : ['generated','functions'].includes(activePage) ? 'code' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -155,6 +161,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
         {[
           {id: 'project', label: 'Projet', ids: ['overview']},
           {id: 'design', label: 'Conception', ids: ['types', 'instances', 'parameters', 'communications', 'exchanges']},
+          {id: 'code', label: 'Programme', ids: ['generated', 'functions']},
           {id: 'data', label: 'Données', ids: ['workbooks']},
           {id: 'delivery', label: 'Livrables', ids: ['plc', 'codesys', 'exports']},
         ].map(group => <section className="v2-nav-group" key={group.id}>
@@ -200,6 +207,12 @@ export default function V2Project({ csrf }: { csrf: string }) {
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exchanges" aria-labelledby="tab-exchanges" hidden={activePage !== 'exchanges'}>
           {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}
+        </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-generated" aria-labelledby="tab-generated" hidden={activePage !== 'generated'}>
+          {project && (activePage === 'generated' || openedCodePages.generated) && <V2Code category="generated" csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.generated === dirty ? old : {...old, generated: dirty})} />}
+        </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-functions" aria-labelledby="tab-functions" hidden={activePage !== 'functions'}>
+          {project && (activePage === 'functions' || openedCodePages.functions) && <V2Code category="functions" csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.functions === dirty ? old : {...old, functions: dirty})} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-workbooks" aria-labelledby="tab-workbooks" hidden={activePage !== 'workbooks'}>
     <section className="v2-panel workbook-panel"><div className="v2-panel-head"><div><p className="eyebrow">SOURCE WORKBOOKS</p><h2>Workbook reader</h2><p>Inspect source tables without downloading or changing the workbook.</p></div><div className="workbook-pickers"><label><span>Workbook</span><select value={workbookName} onChange={e=>setWorkbookName(e.target.value)}><option value="">Choose workbook</option>{(project?.workbooks||[]).map(book=><option key={book.filename} value={book.filename}>{book.filename}</option>)}</select></label><label><span>Sheet</span><select value={sheetName} onChange={e=>setSheetName(e.target.value)} disabled={!sheetData?.sheets?.length}><option value="">Choose sheet</option>{(sheetData?.sheets||[]).map(sheet=><option key={sheet.name} value={sheet.name}>{sheet.name}</option>)}</select></label></div></div>

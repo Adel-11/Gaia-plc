@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 - 2026-10-23 - V2 stage 8
+
+- Add separate generated-code and function tables with search, CODESYS comparison and calculation timestamps.
+- Keep model-generated ST and declarations read only; edit utility function bodies and separate custom sections through reviewed, revisioned previews.
+- Preserve generated-object custom code across regeneration, Excel imports and complete/partial PLCopen exports.
+- Link exchange functions back to their graphical editor; improve French export/reference messages.
+- Stage 7 XML import and compilation accepted by the user. Stage 8 still requires manual import/compile acceptance in a CODESYS project copy.
+
 ## 0.8.0 - 2026-10-23 - V2 stage 7
 
 - Add a dedicated PA page with instance overrides, inherited defaults and comparison by equipment type. Supervision editability remains information only.

@@ -265,3 +265,29 @@ JSON backup. Roll back the application to commit
 8ea5689440df9bfacbdb85c83bf7ef7ca4a52214 with the same persistent data volume if
 login, configuration saving or exports regress. Configuration changes remain
 in project revision history. No actual PLC download is part of this release.
+
+
+## V2 stage 8: generated code and functions
+
+The Programme menu contains Code généré and Fonctions. Generated GFC/GFB and
+PLC_PRG bodies are recalculated from the current model and displayed read only.
+Each table shows its calculation time and semantic status against the latest
+imported CODESYS reference; the comparison also exposes textual differences.
+A comment-only or formatting change can therefore have a textual diff while the
+semantic status remains unchanged. A calculation time records this request,
+not a PLC execution time or a new database revision.
+
+Utility FNC bodies may be edited while declarations remain structured/read only.
+Generated objects can receive a separate custom section; changing model-generated
+content never replaces that section. Exchange functions link to their graphical
+mapping editor. Preview validates the final PLCopen objects and references before
+saving. This is not a CODESYS ST compiler: import and compile in a project copy
+remain the final acceptance check.
+
+Custom sections are stored in immutable project revisions and JSON backups.
+Excel imports preserve them, but Excel files alone are not a complete backup of
+free ST code. Use the complete JSON project backup when moving the project.
+No database migration, account reset, PLC download or FUXA change is required.
+If code browsing/editing or exports regress, redeploy stage 7 commit
+8f91d2e4eb5b4db0370bc02ce0cc3546bca3db8e with the same persistent data volume.
+The previous application retains unknown metadata; export a JSON backup first.

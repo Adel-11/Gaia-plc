@@ -458,6 +458,11 @@ def build_program(state) -> dict:
             if body is not None: body.text=fn["body"]
         if name in objs: _append_custom(objs[name],code,name)
     _generated_objects(objs, state)
+    # Generated sections remain owned by the model; authored additions survive regeneration.
+    for name, code in (state.get("generated_custom_code") or {}).items():
+        if name in {"GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC", "GFB_INST", "GFB_UPI", "PLC_PRG"} and name in objs:
+            _append_custom(objs[name], code)
+
     for fn in state.get("exchange_functions",[]):
         name=str(fn.get("name") or fn.get("FC") or "")
         if name in objs: _append_custom(objs[name],fn.get("custom_code"),name)

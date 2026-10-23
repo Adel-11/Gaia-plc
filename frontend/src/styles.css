@@ -163,3 +163,6 @@
 .type-page-actions{display:flex;justify-content:flex-end;margin-bottom:14px}.v2-workspace [hidden]{display:none!important}
 .v2-workspace[data-page="exchanges"]{--page-accent:#a56319;--page-tint:#f3e5d2;--page-ink:#523719;--page-canvas:#f6f2ec}
 .v2-workspace[data-page="parameters"]{--page-accent:#675185;--page-tint:#e9e2f2;--page-ink:#403154;--page-canvas:#f4f0f8}
+
+.v2-workspace[data-page="generated"]{--page-accent:#3b657f;--page-tint:#ddeaf2;--page-ink:#243e50;--page-canvas:#eff4f8}
+.v2-workspace[data-page="functions"]{--page-accent:#795044;--page-tint:#efdfd7;--page-ink:#50352e;--page-canvas:#f8f1ed}
