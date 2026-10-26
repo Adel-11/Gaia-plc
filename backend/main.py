@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from backend import db
 from backend.db import ImportPreview, User
+from backend import v2_workspace
 
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 PREVIEW_TTL_HOURS = 2
@@ -80,6 +82,34 @@ def _backup_legacy_before_v2(engine, data_dir: Path):
                     continue
                 archive.add(child, arcname=child.name)
         temporary.replace(archive_path)
+
+
+def _backup_before_schema_upgrade(engine, data_dir: Path):
+    """Snapshot SQLite before a pending upgrade, including accounts and all projects."""
+    import sqlite3
+    from sqlalchemy import inspect
+    from alembic.script import ScriptDirectory
+    config = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+    target_revision = ScriptDirectory.from_config(config).get_current_head()
+    tables = inspect(engine).get_table_names()
+    if engine.dialect.name != "sqlite" or "users" not in tables:
+        return
+    with engine.connect() as connection:
+        current = connection.execute(text("SELECT version_num FROM alembic_version")).scalar() if "alembic_version" in tables else None
+    if current == target_revision:
+        return
+    folder = data_dir / "backups"
+    folder.mkdir(exist_ok=True)
+    destination = folder / f"before-{target_revision}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.sqlite3"
+    raw = engine.raw_connection()
+    try:
+        with sqlite3.connect(destination) as backup:
+            raw.driver_connection.backup(backup)
+            if backup.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RuntimeError("Pre-migration database backup failed integrity verification")
+    finally:
+        raw.close()
+    logging.getLogger("uvicorn.error").info("Verified pre-migration database backup: %s", destination.name)
 
 
 class Credentials(BaseModel):
@@ -307,10 +337,12 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
             from backend import v2_store
             if seed:
                 _backup_legacy_before_v2(engine, resolved_data)
+            _backup_before_schema_upgrade(engine, resolved_data)
             config = Config(str(alembic_path))
             config.set_main_option("sqlalchemy.url", resolved_db_url.replace("%", "%%"))
             command.upgrade(config, "head")
             with app.state.session_factory() as session:
+                v2_workspace.ensure_workspace(session)
                 db.bootstrap_admin(session, os.environ.get("ADMIN_USERNAME"), os.environ.get("ADMIN_PASSWORD"))
                 session.flush()
                 if session.scalar(select(User.id).limit(1)) is None:
@@ -347,7 +379,7 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                     from backend.v2_fb_flow import convert_project
                     convert_project(v2_initial)
                     v2_store.initialize(session, v2_initial)
-                # Automatically annotate FB sections without changing their source or behavior.
+                # Move legacy handwritten INPUTS/OUTPUTS text into the editable PROCESSING section.
                 from backend.v2_fb_flow import convert_project
                 v2_existing = v2_store.load_project(session)
                 if v2_existing is not None and convert_project(v2_existing):
@@ -376,11 +408,12 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
             response.headers["Cache-Control"] = "no-store"
         return response
 
-    def get_session():
+    def get_session(request: Request):
         factory = getattr(app.state, "session_factory", None)
         if factory is None:
             raise HTTPException(503, "Database is not ready")
         with factory() as session:
+            session.info["workspace_id"] = int(request.session.get("project_id", 1))
             yield session
 
     def current_user(request: Request, session: Session = Depends(get_session)) -> User:
@@ -436,7 +469,7 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         request.session.clear()
         token = secrets.token_urlsafe(32)
         request.session.update({"user_id": user.id, "csrf_token": token})
-        return {"username": user.username, "csrf_token": token}
+        return {"username": user.username, "csrf_token": token, "is_admin": user.is_admin}
 
     @app.post("/api/logout")
     def logout(request: Request, user: User = Depends(current_user), _: None = Depends(csrf)):
@@ -445,7 +478,7 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
 
     @app.get("/api/me")
     def me(request: Request, user: User = Depends(current_user)):
-        return {"username": user.username, "csrf_token": request.session["csrf_token"]}
+        return {"username": user.username, "csrf_token": request.session["csrf_token"], "is_admin": user.is_admin}
 
     @app.get("/api/state")
     def get_state(session: Session = Depends(get_session), user: User = Depends(current_user)):

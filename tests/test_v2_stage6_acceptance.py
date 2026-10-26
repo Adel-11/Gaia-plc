@@ -65,6 +65,12 @@ def test_condition_else_custom_layout_and_new_call_survive_excel_and_xml(tmp_pat
         assert after['layout'] == layout
         assert any(c['function_id'] == fn['id'] for c in after['calls'])
 
+        before_exports = graph()
+        workspace_before_exports = client.get('/api/v2/workspace')
+        assert workspace_before_exports.status_code == 200, workspace_before_exports.text
+        version_before_exports = workspace_before_exports.json()['version']
+        major, minor, _patch = (int(part) for part in version_before_exports.split('.'))
+
         for mode in ('full', 'partial'):
             payload = {'mode': mode}
             if mode == 'partial': payload['focus'] = 'object:' + fn['name']
@@ -79,6 +85,14 @@ def test_condition_else_custom_layout_and_new_call_survive_excel_and_xml(tmp_pat
             assert 'IF ' in body and 'ELSE' in body and 'END_IF;' in body
             assert custom in body and body.count('Preserve this custom section') == 1
 
+            # Each successful download records an internal project revision. The
+            # first export of this program advances the semantic minor version;
+            # an unchanged second export records activity without another bump.
+            current = client.get('/api/v2/workspace')
+            assert current.status_code == 200, current.text
+            expected_version = f'{major}.{minor + 1}.0'
+            assert current.json()['version'] == expected_version
+
         # Malformed graph metadata is an import error, never silently discarded.
         column = next(c.column for c in wb[fn['sheet']][1] if c.value == 'Condition')
         wb[fn['sheet']].cell(2, column).value = '{broken json'
@@ -87,4 +101,8 @@ def test_condition_else_custom_layout_and_new_call_survive_excel_and_xml(tmp_pat
                              files={'file': ('EXCHANGES_EXC.xlsx', invalid.getvalue())}, data={'mode': 'replace'})
         assert result.status_code == 200, result.text
         assert result.json()['validation']['errors']
-        assert graph()['revision'] == after['revision']
+        final = graph()
+        assert final['revision'] == before_exports['revision'] + 2
+        assert final['functions'] == before_exports['functions']
+        assert final['calls'] == before_exports['calls']
+        assert final['layout'] == before_exports['layout']

@@ -30,6 +30,7 @@ class TypeCreate(BaseModel):
     rtu_default: dict | None = None
     rtu: dict | None = None
     supervision: list | None = None
+    upi_bindings: list[dict] | None = None
 
 
 class ApplyTypeCreate(BaseModel):
@@ -90,6 +91,38 @@ def _book_for_type(engine, typ, filename):
         headers = sh["headers"]
         sh["rows"] = [[row.get(h) for h in headers] for row in (typ.get("templates") or {}).get(sheet, [])]
     return book
+
+
+def _sync_type_dut_sheet(state, typ, role):
+    """Refresh one DUT sheet without disturbing other workbook content."""
+    from backend import v2_engine as engine
+    filename = str(typ.get("source_file") or f"TYPE_{typ.get('name')}.xlsx")
+    workbooks = state.setdefault("workbooks", {})
+    book = workbooks.get(filename)
+    if book is None:
+        book = _book_for_type(engine, typ, filename)
+        workbooks[filename] = book
+    sheet_name = f"DUT_{role}"
+    sheet = engine._sheet_map(book).get(sheet_name)
+    if sheet is None:
+        generated = engine._sheet_map(_book_for_type(engine, typ, filename)).get(sheet_name)
+        if generated is None:
+            return
+        sheet = copy.deepcopy(generated)
+        book.setdefault("sheets", []).append(sheet)
+    headers = [str(h or "") for h in sheet.get("headers", [])]
+    indexes = {header: index for index, header in enumerate(headers)}
+    members = next((d.get("members", []) for d in typ.get("duts", []) if d.get("role") == role), [])
+    sheet["rows"] = []
+    for member in sorted(members, key=lambda item: item.get("position", 0)):
+        row = [None] * len(headers)
+        values = {"Section": member.get("section"), "Member": member.get("name"), "Type": member.get("iec_type"),
+                  "Default value": member.get("default_value"), "Unit": member.get("unit"),
+                  "Comment": member.get("comment"), "Exchange": member.get("exchange")}
+        for key, value in values.items():
+            if key in indexes:
+                row[indexes[key]] = value
+        sheet["rows"].append(row)
 
 
 def _pa_templates(typ):
@@ -160,6 +193,176 @@ def _rtu_templates(typ):
     return rows
 
 
+def _prepare_upi_bindings(state, equipment, requested):
+    """Validate explicit EXC transfers and materialize any named EXC leaves."""
+    errors, bindings = [], []
+    if not requested:
+        return errors, bindings
+    if equipment.get("kind") != "Equipment":
+        return ["UPI bindings can only be defined for Equipment types."], bindings
+
+    from backend.v2_fb_flow import variable_options
+    from backend.v2_exchanges import validate_mappings, _sync as sync_exchanges
+
+    def exc_dut(typ):
+        return next((d for d in typ.get("duts", []) if d.get("role") == "EXC"), None)
+
+    def leaves(typ):
+        dut = exc_dut(typ)
+        return {o["path"].removeprefix("EXC."): o["iec_type"] for o in variable_options({"duts": [dut] if dut else []}, state)}
+
+    def ensure_leaf(typ, path, iec_type):
+        if path in leaves(typ):
+            return True
+        dut = exc_dut(typ)
+        if not dut or not _identifier(path) or not iec_type:
+            return False
+        if any(str(m.get("name", "")).casefold() == path.casefold() for m in dut.get("members", [])):
+            return False
+        position = max((int(m.get("position", i)) for i, m in enumerate(dut.get("members", []))), default=-1) + 1
+        dut.setdefault("members", []).append({"id": f"{typ.get('id', typ.get('name'))}:EXC:{position}", "position": position,
+                                               "name": path, "iec_type": iec_type})
+        return True
+
+    modified_types = {}
+
+    def add_leaf(typ, path, iec_type):
+        added = ensure_leaf(typ, path, iec_type)
+        if added:
+            modified_types[str(typ.get("id", typ.get("name")))] = typ
+        return added
+
+    scalar_types = {"BOOL", "BYTE", "WORD", "DWORD", "LWORD", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "TIME", "DATE", "TIME_OF_DAY", "DATE_AND_TIME", "STRING", "WSTRING", "DUT_UNION_REAL_WORD"}
+    derived_types = {str(t.get("name")) for t in state.get("types", [])}
+    derived_types.update(str(d.get("name")) for t in state.get("types", []) for d in t.get("duts", []))
+    derived_types.update(str(o.get("name")) for o in (state.get("snapshot") or {}).get("objects", []))
+
+    def supported_type(value):
+        text = re.sub(r"\s+", "", str(value or ""))
+        array = re.fullmatch(r"ARRAY\[(-?\d+)\.\.(-?\d+)\]OF([A-Za-z_][A-Za-z0-9_]*)", text, re.I)
+        if array:
+            base = array.group(3).upper()
+            return int(array.group(1)) <= int(array.group(2)) and (base in scalar_types or array.group(3) in derived_types)
+        return text.upper() in scalar_types or text in derived_types
+
+    for binding in requested:
+        upi_ident = str(binding.get("upi_type_id") or "")
+        upi = next((t for t in state.get("types", []) if str(t.get("id")) == upi_ident or str(t.get("name")) == upi_ident), None)
+        if not upi or "UPI" not in str(upi.get("kind", "")).upper():
+            errors.append(f"UPI binding type {upi_ident} was not found.")
+            continue
+        if exc_dut(upi) is None:
+            errors.append(f"UPI type {upi.get('name')} has no DUT_EXC.")
+            continue
+        raw_mappings = binding.get("mappings") or []
+        if not raw_mappings:
+            errors.append(f"UPI binding to {upi.get('name')} needs at least one explicit member mapping.")
+            continue
+        planned = []
+        for mapping in raw_mappings:
+            if not isinstance(mapping, dict):
+                errors.append("UPI binding mapping must be an object.")
+                continue
+            source, destination = str(mapping.get("source") or ""), str(mapping.get("destination") or "")
+            source_prefix, destination_prefix = source.split(".", 1)[0] if "." in source else "", destination.split(".", 1)[0] if "." in destination else ""
+            if {source_prefix, destination_prefix} != {"equipment", "upi"}:
+                errors.append("UPI binding mappings must connect one equipment.MEMBER and one upi.MEMBER path.")
+                continue
+            source_member, destination_member = source.split(".", 1)[1], destination.split(".", 1)[1]
+            source_side, destination_side = source_prefix, destination_prefix
+            if "." in source_member or "." in destination_member:
+                errors.append("UPI binding members must name direct DUT_EXC members.")
+                continue
+            source_type = leaves(equipment if source_side == "equipment" else upi).get(source_member)
+            destination_type = leaves(equipment if destination_side == "equipment" else upi).get(destination_member)
+            supplied_type = str(mapping.get("iec_type") or mapping.get("type") or "")
+            if supplied_type and not supported_type(supplied_type):
+                errors.append(f"Unsupported IEC type {supplied_type!r} for UPI binding members.")
+                continue
+            if not source_type and destination_type:
+                source_type_obj = equipment if source_side == "equipment" else upi
+                if add_leaf(source_type_obj, source_member, supplied_type or destination_type): source_type = leaves(source_type_obj).get(source_member)
+            if not destination_type and source_type:
+                destination_type_obj = equipment if destination_side == "equipment" else upi
+                if add_leaf(destination_type_obj, destination_member, supplied_type or source_type): destination_type = leaves(destination_type_obj).get(destination_member)
+            if not source_type and supplied_type:
+                source_type_obj = equipment if source_side == "equipment" else upi
+                if add_leaf(source_type_obj, source_member, supplied_type): source_type = leaves(source_type_obj).get(source_member)
+            if not destination_type and supplied_type:
+                destination_type_obj = equipment if destination_side == "equipment" else upi
+                if add_leaf(destination_type_obj, destination_member, supplied_type): destination_type = leaves(destination_type_obj).get(destination_member)
+            if not source_type:
+                errors.append(f"{source_prefix.title()} EXC member {source_member} does not exist; supply an IEC type to create it.")
+                continue
+            if not destination_type:
+                errors.append(f"{destination_prefix.title()} EXC member {destination_member} does not exist; supply an IEC type to create it.")
+                continue
+            if re.sub(r"\s+", "", str(source_type)).upper() != re.sub(r"\s+", "", str(destination_type)).upper():
+                errors.append(f"Incompatible UPI binding types: {source} → {destination}.")
+                continue
+            planned.append({"source": source, "destination": destination})
+        if not planned:
+            continue
+        function_name = f"FC_EXC_{equipment['name']}_{upi['name']}"
+        fn = next((f for f in state.setdefault("exchange_functions", []) if str(f.get("name") or f.get("FC")) == function_name), None)
+        if fn is None:
+            fn = {"id": function_name, "name": function_name, "FC": function_name,
+                  "type_a_id": equipment.get("id", equipment["name"]), "type_b_id": upi.get("id", upi["name"]),
+                  "Object type A": equipment["name"], "Object type B": upi["name"],
+                  "parameter_a": f"EXC_{equipment['name']}", "parameter_b": f"EXC_{upi['name']}",
+                  "Parameter A": f"EXC_{equipment['name']}", "Parameter B": f"EXC_{upi['name']}",
+                  "sheet": f"{equipment['name']}-{upi['name']}"[:31], "custom_code": "", "mappings": []}
+            state["exchange_functions"].append(fn)
+        elif str(fn.get("type_a_id")) not in {str(equipment.get("id")), str(equipment.get("name"))} or str(fn.get("type_b_id")) not in {str(upi.get("id")), str(upi.get("name"))}:
+            errors.append(f"Exchange function name {function_name} is already used by different types.")
+            continue
+        parameter_a, parameter_b = fn.get("parameter_a") or fn.get("Parameter A"), fn.get("parameter_b") or fn.get("Parameter B")
+        generated = []
+        for mapping in planned:
+            source_prefix, source_member = mapping["source"].split(".", 1)
+            destination_prefix, destination_member = mapping["destination"].split(".", 1)
+            source_parameter = parameter_a if source_prefix == "equipment" else parameter_b
+            destination_parameter = parameter_a if destination_prefix == "equipment" else parameter_b
+            generated.append({"source": f"{source_parameter}.{source_member}",
+                              "destination": f"{destination_parameter}.{destination_member}"})
+        existing_mappings = fn.get("mappings")
+        if existing_mappings is None:
+            from backend.v2_exchanges import _normal_mappings
+            existing_mappings = _normal_mappings(state, fn)
+        # A persisted binding may be rehydrated in another project that has
+        # shared types but a project-local EXCHANGE workbook. Replaying it must
+        # materialize the same function without duplicating its mappings.
+        generated = [*copy.deepcopy(existing_mappings), *generated]
+        unique_generated, seen_generated = [], set()
+        for row in generated:
+            key = (str(row.get("source") or ""), str(row.get("destination") or ""))
+            if key not in seen_generated:
+                seen_generated.add(key)
+                unique_generated.append(row)
+        generated = unique_generated
+        try:
+            validate_mappings(fn, generated, state)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        fn["mappings"] = generated
+        bindings.append({"upi_type_id": upi.get("id", upi["name"]), "mappings": planned,
+                         "exchange_function_id": function_name})
+        template_row = {
+            "FC": function_name, "Instance A": "<INSTANCE>", "Instance B": "<UPI_INSTANCE>",
+            "Parameter A value": "GVL_EXC.EXC_<INSTANCE>", "Parameter B value": "GVL_EXC.EXC_<UPI_INSTANCE>",
+            "Comment": f"Automatic UPI binding to {upi.get('name')}"}
+        templates = equipment.setdefault("templates", {}).setdefault("TEMPLATE_EXC", [])
+        if not any(str(row.get("FC")) == function_name for row in templates):
+            templates.append(template_row)
+    for typ in modified_types.values():
+        if str(typ.get("id", typ.get("name"))) != str(equipment.get("id", equipment.get("name"))):
+            _sync_type_dut_sheet(state, typ, "EXC")
+    if state.get("exchange_functions"):
+        sync_exchanges(state)
+    return errors, bindings
+
+
 def register_type_creation_routes(app, get_session, current_user, csrf):
     from backend import v2_engine as engine, v2_store as store, v2_plc as plc
     from backend.db import ImportPreview
@@ -183,6 +386,8 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         old = str(src.get("name")) if src else ""
         fb_old = str((src or {}).get("fb", {}).get("name") or "")
         typ.update(id=request.name, name=request.name, kind=request.kind, description=request.description, communication=request.communication, folder=request.folder or (src or {}).get("folder", ""))
+        if request.upi_bindings is not None:
+            typ["upi_bindings"] = copy.deepcopy(request.upi_bindings)
         if request.supervision is not None:
             typ["supervision"] = copy.deepcopy(request.supervision)
         typ["source_file"] = f"TYPE_{request.name}.xlsx"
@@ -315,17 +520,23 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
             normalized["fb"]["interface_xml"] = typ["fb"]["interface_xml"]
         normalized["supervision"] = copy.deepcopy(typ.get("supervision", []))
         normalized["templates"] = copy.deepcopy(typ.get("templates", normalized.get("templates", {})))
+        normalized["upi_bindings"] = copy.deepcopy(typ.get("upi_bindings", []))
         normalized["fb"]["body"] = typ["fb"].get("body", "")
         normalized["fb"]["custom_code"] = typ["fb"].get("custom_code", "")
         from backend.v2_fb_flow import ensure_flow
         ensure_flow(normalized["fb"])
         state["types"][-1] = normalized
+        if request.upi_bindings is not None:
+            binding_errors, bindings = _prepare_upi_bindings(state, normalized, request.upi_bindings)
+            errors.extend(binding_errors)
+            normalized["upi_bindings"] = bindings
         if request.processing_code is not None:
             from backend.v2_fb_flow import update_flow
             code = request.processing_code
             if code and not code.endswith(("\n", "\r")): code += "\n"
             flow_errors = update_flow(normalized, state, processing_code=code)
             errors.extend(flow_errors)
+        state.setdefault("workbooks", {})[normalized["source_file"]] = _book_for_type(engine, normalized, normalized["source_file"])
         return state, errors, warnings
 
     @app.post("/api/v2/types/preview")

@@ -421,7 +421,7 @@ def synchronize_workbooks(state):
 
 
 def _get_configuration(state):
-    result={"revision":state.get("revision",0)}
+    result={"revision":state.get("revision",0), "virtual_io":copy.deepcopy(state.get("virtual_io",[]))}
     for coll in COLLECTIONS: result[coll]=copy.deepcopy(state.get(coll,[]))
     for coll, key in (("io_modules","modules"),):
         if key in state: result[coll]=copy.deepcopy(state[key])

@@ -782,9 +782,17 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
         return {"state": copy.deepcopy(current), "diff": _rows_diff(previous, changed),
                 "validation": {"errors": [f"Invalid workbook model: {exc}"], "warnings": []}}
     project["fuxa"] = previous_fuxa
+    # An unrelated Excel workbook does not own the exchange graph. Preserve its
+    # stable identities, mappings and custom code instead of reparsing old rows.
+    if filename != "EXCHANGES_EXC.xlsx":
+        for key in ("exchange_functions", "exchange_calls", "exchange_functions_detail"):
+            if key in current:
+                project[key] = copy.deepcopy(current[key])
     old_types = {str(t.get("id")): t for t in current.get("types", [])}
     for typ in project.get("types", []):
         old = old_types.get(str(typ.get("id")))
+        if old and "upi_bindings" in old:
+            typ["upi_bindings"] = copy.deepcopy(old["upi_bindings"])
         if old and old.get("fb"):
             typ["fb"].update({k: copy.deepcopy(old["fb"].get(k, typ["fb"].get(k)))
                               for k in ("declaration", "body", "custom_code", "flow", "interface_xml") if k in old["fb"]})

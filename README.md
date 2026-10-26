@@ -1,6 +1,6 @@
 # Gaia IO Generator
 
-A single-project workspace for Gaia Refinery equipment, PLC/SCADA exchange points, FUXA CSV and IO List Excel generation. English interface, FastAPI + React, SQLite, SQLAlchemy and Alembic.
+A multi-project workspace with a shared type library for Gaia Refinery equipment, PLC/SCADA exchange points, FUXA CSV and IO List Excel generation. English interface, FastAPI + React, SQLite, SQLAlchemy and Alembic.
 
 ## Local development (without Docker)
 
@@ -291,3 +291,56 @@ No database migration, account reset, PLC download or FUXA change is required.
 If code browsing/editing or exports regress, redeploy stage 7 commit
 8f91d2e4eb5b4db0370bc02ce0cc3546bca3db8e with the same persistent data volume.
 The previous application retains unknown metadata; export a JSON backup first.
+
+
+## Shared projects, accounts and version history
+
+All authenticated users can edit all named projects and the shared type library.
+Administrators create accounts from the overview. Existing accounts keep their
+passwords and become administrators on migration; newly created accounts have
+only the role selected by an administrator. A project selection belongs to the
+browser session. Switching projects closes local drafts after confirmation.
+
+Types, member catalogs and TYPE Excel workbooks are shared. Instances, PA values,
+addresses, exchanges, custom generated code and the CODESYS snapshot belong to
+the selected project. A new project starts without instances; the copy option
+copies the current project. Shared changes are checked against every project and
+rejected if they introduce model errors elsewhere. They create new immutable
+revisions and patch history in every affected project. Stale previews cannot be
+applied after a project switch or shared catalog change.
+
+The displayed semantic version is separate from the internal concurrency revision:
+- Saved engineering changes increment z with an automatic comment.
+- A changed program import/export increments y and resets z. Canonical object
+  fingerprints ignore XML root timestamps; repeating the same import or export
+  does not create another semantic version. Import and export track their own
+  previous program fingerprint.
+- A manual major version increments x and resets y/z; a comment is mandatory.
+
+The overview provides activity dates/names, history, full reviewed PLCopen export,
+all Excel workbooks in one ZIP, and JSON backup/restore with review. JSON backups
+contain the selected project and shared type data, not accounts or uploaded
+source files. Restoring may update shared types after compatibility checks; it
+never rewinds the project's semantic history. Keep the data volume for complete
+recovery including users.
+
+The type graph supports confined wheel zoom, panning and viewport expansion with
+DUT/FB editor dialogs. Member order and comment groups appear in generated DUTs.
+Reusable prefixes are joined with an underscore. Existing handwritten INPUTS and
+OUTPUTS move into editable PROCESSING; generated assignments remain in INPUTS
+and OUTPUTS. This conversion can change execution order and requires compilation
+and functional review in a CODESYS project copy before PLC use.
+
+New types can define bidirectional generic EXC links to UPI types. Creating either
+instance later connects compatible UPI instances automatically. Communications
+includes virtual raw I/O creation and a colored connection graph; reviewed links
+generate GVL_IOMAP declarations and GFC_IO copies. Exchanges shows only the
+selected block's incident connections, each with its own color.
+
+Migration 0003 preserves project data/accounts and creates a SQLite snapshot in
+`/data/backups/before-0003_workspaces-<timestamp>.sqlite3` before schema changes.
+The snapshot's integrity is checked before upgrading. If startup, login, project
+isolation or saving fails, stop writes and restore that snapshot together with
+stage 8 application commit `780591fb241cd0418a45996253b599c1574fdb4a`.
+Do not run the older application against the migrated database as a rollback.
+The application update does not download code to the PLC or change FUXA.

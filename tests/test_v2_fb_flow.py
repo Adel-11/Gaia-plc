@@ -7,27 +7,40 @@ from backend.v2_plc_validation import validate_xml
 from backend.main import create_app
 
 
-def test_auto_conversion_retains_every_existing_fb_exactly():
-    state = load_pack()
+def test_auto_conversion_moves_legacy_section_code_once_and_is_idempotent():
+    state = copy.deepcopy(load_pack())
     original = {t['name']: t['fb']['body'] for t in state['types']}
     assert convert_project(state)
     assert not convert_project(state)
     for typ in state['types']:
-        assert render_flow(typ['fb']['flow']) == original[typ['name']]
+        expected = convert_body(original[typ['name']])
+        assert typ['fb']['flow']['processing_code'] == expected['processing_code']
+        assert render_flow(typ['fb']['flow']) == typ['fb']['body']
         assert flow_view(typ['fb'])['mappings']
         assert update_flow(typ, state, mappings=flow_view(typ['fb'])['mappings']) == []
-        assert typ['fb']['body'] == original[typ['name']]
+        if expected.get('legacy_migrated'):
+            assert typ['fb']['body'] != original[typ['name']]
+            assert typ['fb']['flow'].get('legacy_migrated')
+        else:
+            assert typ['fb']['body'] == original[typ['name']]
     program = build_program(state)
     assert validate_xml(serialize_program(program, state, list(program)), state, program)['errors'] == []
 
 
-def test_conditions_comments_and_calculations_are_preserved_not_extracted_as_wires():
-    source = '// INPUTS\n(*\nINTERN.A := COM.A;\n*)\nIF COM.EN THEN\n INTERN.A := COM.A;\nEND_IF\nINTERN.A := COM.A + 1;\nINTERN.B := COM.B;\n// PROCESSING\nINTERN.A := 3;\n// OUTPUTS\nCOM.B := INTERN.B;\n'
+def test_legacy_conditions_comments_and_calculations_move_into_processing_once():
+    source = '// INPUTS\n(*\nINTERN.A := COM.A;\n*)\nIF COM.EN THEN\n INTERN.A := COM.A;\nEND_IF\nINTERN.A := COM.A + 1;\nINTERN.B := COM.B;\n// PROCESSING\nINTERN.A := 3;\n// OUTPUTS\nCOM.B := INTERN.B;\nINTERN.D := INTERN.C + 1;\n'
     flow = convert_body(source)
-    assert render_flow(flow) == source
+    body = render_flow(flow)
     fb = {'body': source, 'flow': flow}
     assert len(flow_view(fb)['mappings']) == 2
-    assert 'IF COM.EN' in flow_view(fb)['preserved_sections']['inputs']
+    view = flow_view(fb)
+    assert 'preserved_sections' not in view
+    assert 'IF COM.EN' in view['processing_code']
+    assert 'INTERN.A := COM.A + 1;' in view['processing_code']
+    assert 'INTERN.D := INTERN.C + 1;' in view['processing_code']
+    assert view['processing_code'].count('INTERN.A := COM.A + 1;') == 1
+    assert body.count('INTERN.A := COM.A + 1;') == 1
+    assert view['migrations']
 
 
 def test_mapping_and_processing_edits_reach_generated_xml_without_touching_custom_code(tmp_path, monkeypatch):

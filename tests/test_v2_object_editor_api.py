@@ -7,6 +7,7 @@ import openpyxl
 from fastapi.testclient import TestClient
 
 from backend.main import create_app
+from backend.v2_fb_flow import flow_view
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ def test_object_editor_preview_apply_and_type_workbook_roundtrip(tmp_path, monke
         edited.append({"name": "INTERNAL_EDITOR_FLAG", "iec_type": "BOOL", "default_value": False,
                        "section": "Editor", "unit": "", "comment": "Added in object editor"})
         fb = dict(typ["fb"])
+        original_flow = flow_view(fb)
         fb["body"] = str(fb.get("body", "")) + "\n(* editor body *)"
         fb["custom_code"] = "(* preserve this exactly\r\nincluding CRLF *)"
         payload = {"revision": project["revision"], "duts": [
@@ -59,7 +61,10 @@ def test_object_editor_preview_apply_and_type_workbook_roundtrip(tmp_path, monke
         dut_after = next(d for d in after["duts"] if d["role"] == "INT")
         assert [m["name"] for m in dut_after["members"]] == [m["name"] for m in members] + ["INTERNAL_EDITOR_FLAG"]
         assert after["fb"]["custom_code"] == fb["custom_code"]
-        assert after["fb"]["body"] == fb["body"]
+        assert "(* editor body *)" in after["fb"]["processing_code"]
+        assert after["fb"]["body"] != fb["body"]
+        mapping_signature = lambda rows: [(row.get("source"), row.get("destination"), row.get("section")) for row in rows]
+        assert mapping_signature(after["fb"]["mappings"]) == mapping_signature(original_flow["mappings"])
         exported = client.get("/api/v2/exports/TYPE_DIP1500.xlsx")
         assert exported.status_code == 200
         workbook = openpyxl.load_workbook(io.BytesIO(exported.content), data_only=True)

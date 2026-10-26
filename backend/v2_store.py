@@ -24,6 +24,7 @@ def _now() -> datetime:
 class V2Project(Base):
     __tablename__ = "v2_project"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, default="Gaia", server_default="Gaia")
     current_revision_id: Mapped[int | None] = mapped_column(ForeignKey("v2_project_revision.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
@@ -32,6 +33,7 @@ class V2Project(Base):
 class V2ProjectRevision(Base):
     __tablename__ = "v2_project_revision"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1", index=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
     username: Mapped[str] = mapped_column(String(128), nullable=False, default="admin")
     state_payload: Mapped[str] = mapped_column(Text, nullable=False)
@@ -555,40 +557,13 @@ def _replace_relational(session: Session, state: dict[str, Any]) -> None:
 
 
 def load_project(session: Session) -> dict[str, Any] | None:
-    """Return the exact latest committed V2 state, including unknown fields."""
-    project = session.get(V2Project, 1)
-    if not project or project.current_revision_id is None:
-        return None
-    revision = session.get(V2ProjectRevision, project.current_revision_id)
-    return json.loads(revision.state_payload) if revision else None
+    from backend.v2_workspace import load_workspace_project
+    return load_workspace_project(session)
 
 
 def save_project(session: Session, state: dict[str, Any], username: str = "admin", expected_revision: int | None = None) -> dict[str, Any]:
-    """Persist one immutable snapshot plus normalized rows; caller owns commit."""
-    if not isinstance(state, dict):
-        raise TypeError("V2 project state must be an object")
-    project = session.get(V2Project, 1)
-    current_id = project.current_revision_id if project else None
-    current = session.get(V2ProjectRevision, current_id) if current_id is not None else None
-    current_number = current.revision if current else 0
-    if expected_revision is not None and int(expected_revision) != current_number:
-        raise ValueError(f"Project revision conflict: expected {expected_revision}, current is {current_number}")
-    new_state = copy.deepcopy(state)
-    new_revision = current_number + 1
-    new_state["revision"] = new_revision
-    payload = _json(new_state)
-    _replace_relational(session, new_state)
-    revision = V2ProjectRevision(revision=new_revision, username=username or "admin", state_payload=payload)
-    session.add(revision)
-    session.flush()
-    if project is None:
-        project = V2Project(id=1, current_revision_id=revision.id, created_at=_now(), updated_at=_now())
-        session.add(project)
-    else:
-        project.current_revision_id = revision.id
-        project.updated_at = _now()
-    session.flush()
-    return new_state
+    from backend.v2_workspace import save_workspace_project
+    return save_workspace_project(session, state, username, expected_revision)
 
 
 def initialize(session: Session, state: dict[str, Any]) -> dict[str, Any]:
@@ -598,3 +573,6 @@ def initialize(session: Session, state: dict[str, Any]) -> dict[str, Any]:
         return existing
     return save_project(session, state, username="system", expected_revision=0)
 
+
+# Register workspace tables whenever the shared persistence metadata is imported.
+from backend import v2_workspace as _workspace_models  # noqa: E402,F401

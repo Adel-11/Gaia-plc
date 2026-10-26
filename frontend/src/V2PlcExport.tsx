@@ -35,7 +35,7 @@ function errorText(value: unknown): string {
   return ''
 }
 
-export default function V2PlcExport({ csrf, projectRevision }: { csrf: string; projectRevision?: number }) {
+export default function V2PlcExport({ csrf, projectRevision, onExported }: { csrf: string; projectRevision?: number; onExported?: () => void }) {
   const [options, setOptions] = useState<Options | null>(null)
   const [mode, setMode] = useState<'full' | 'partial'>('full')
   const [focus, setFocus] = useState('')
@@ -77,7 +77,7 @@ export default function V2PlcExport({ csrf, projectRevision }: { csrf: string; p
       const disposition = response.headers.get('content-disposition') || ''
       const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i)
       const filename = match?.[1] ? decodeURIComponent(match[1].replaceAll('\"', '')) : kind === 'report' ? 'plcopen-export-summary.txt' : 'gaia-plcopen.xml'
-      saveBlob(blob, filename); setNotice(kind === 'report' ? 'Résumé de l’export téléchargé' : 'Fichier XML PLCopen téléchargé')
+      saveBlob(blob, filename); if (kind === 'download') onExported?.(); setNotice(kind === 'report' ? 'Résumé de l’export téléchargé' : 'Fichier XML PLCopen téléchargé')
     } catch (e) { setError(e instanceof Error ? e.message : 'Échec du téléchargement') } finally { setBusy(false) }
   }
 

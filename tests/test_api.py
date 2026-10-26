@@ -45,7 +45,7 @@ def test_health_and_auth_protection(tmp_path, monkeypatch):
         assert client.get("/api/state").status_code == 401
         assert client.get("/api/me").status_code == 401
         token = login(client)
-        assert client.get("/api/me").json() == {"username": "admin", "csrf_token": token}
+        assert client.get("/api/me").json() == {"username": "admin", "csrf_token": token, "is_admin": True}
         assert client.get("/api/state").status_code == 200
 
 

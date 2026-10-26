@@ -163,10 +163,25 @@ def _st(e):
                 return simple.get('value', '')
             values = node.findall('p:structValue/p:value', NS)
             return '(' + ', '.join(f"{v.get('member')} := {initial(v)}" for v in values) + ')' if values else ''
+        def documentation(var):
+            node = var.find('p:documentation', NS)
+            if node is None:
+                return []
+            text = ''.join(node.itertext())
+            lines = []
+            for line in text.splitlines():
+                if not line.strip():
+                    continue
+                # Render documentation as IEC line comments. This keeps
+                # arbitrary user text inert while allowing section headings
+                # already authored as // comments to retain their exact form.
+                lines.append('\t' + (line if line.lstrip().startswith('//') else '// ' + line.strip()))
+            return lines
         variables = e.findall('p:baseType/p:struct/p:variable', NS) if _local(e) == 'dataType' else e.findall('p:variable', NS)
         lines = []
         for var in variables:
             value = initial(var.find('p:initialValue', NS))
+            lines.extend(documentation(var))
             lines.append(f"\t{var.get('name')} : {type_text(var.find('p:type/*', NS))}" + (f' := {value}' if value else '') + ';')
         if _local(e) == 'dataType':
             return f"TYPE {_name(e)} :\nSTRUCT\n" + '\n'.join(lines) + '\nEND_STRUCT\nEND_TYPE'

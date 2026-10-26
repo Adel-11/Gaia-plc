@@ -52,6 +52,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
     register_configuration_routes(app, get_session, current_user, csrf)
     from backend.v2_code import register_code_routes
     register_code_routes(app, get_session, current_user, csrf)
+    from backend.v2_workspace_routes import register_workspace_routes
+    from backend.v2_catalog import register_catalog_routes
+    register_workspace_routes(app, get_session, current_user, csrf)
+    register_catalog_routes(app, get_session, current_user, csrf)
 
     def project_for(session):
         state = store.load_project(session)
@@ -237,6 +241,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if body.body is not None and body.body != original.get("fb", {}).get("body"): changes.append("Updated FB body")
         if body.custom_code is not None and body.custom_code != original.get("fb", {}).get("custom_code"): changes.append("Updated FB custom code")
         if body.processing_code is not None and body.processing_code != original.get("fb", {}).get("flow", {}).get("processing_code"): changes.append("Updated PROCESSING source")
+        if typ.get("fb", {}).get("flow", {}).get("legacy_migrated"): changes.append("Legacy handwritten INPUTS / OUTPUTS code is now editable in PROCESSING.")
         if body.mappings is not None: changes.append("Reviewed INPUTS / OUTPUTS mappings")
         token = secrets.token_urlsafe(32)
         session.add(ImportPreview(token=token, owner_id=user.id, state_payload=json.dumps(state, ensure_ascii=False),
@@ -404,6 +409,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if metadata.get("kind") != "v2-workbook":
             raise HTTPException(404, "Import preview not found or expired")
         state = json.loads(preview.state_payload)
+        session.info['version_event']={'kind':'excel_import','name':metadata.get('filename','Classeur Excel')}
         current = project_for(session)
         if current.get("revision", 0) != metadata.get("base_revision"):
             raise HTTPException(409, "Project changed after preview; create a new preview")

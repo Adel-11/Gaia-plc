@@ -36,10 +36,20 @@ def convert_body(body):
     heads = [HEAD(name).search(body) for name in ('INPUTS','PROCESSING','OUTPUTS')]
     if all(heads) and heads[0].end() <= heads[1].start() < heads[2].start():
         a,b,c = heads
+        input_segments = _segments(body[a.end():b.start()], 'inputs')
+        output_segments = _segments(body[c.end():], 'outputs')
+        # Old workbooks sometimes put handwritten behavior beside the copied
+        # interface assignments. Keep that text, in its original order, in
+        # the one editable processing area. Mapping assignments remain in the
+        # generated interface sections.
+        input_legacy = ''.join(s.get('code', '') for s in input_segments if s.get('kind') == 'preserved')
+        output_legacy = ''.join(s.get('code', '') for s in output_segments if s.get('kind') == 'preserved')
+        processing = input_legacy + body[b.end():c.start()] + output_legacy
         return {'version':1,'prefix':body[:a.start()], 'input_header':a.group(),
-                'input_segments':_segments(body[a.end():b.start()], 'inputs'),
-                'processing_header':b.group(), 'processing_code':body[b.end():c.start()],
-                'output_header':c.group(), 'output_segments':_segments(body[c.end():], 'outputs')}
+                'input_segments':[s for s in input_segments if s.get('kind') == 'mapping'],
+                'processing_header':b.group(), 'processing_code':processing,
+                'output_header':c.group(), 'output_segments':[s for s in output_segments if s.get('kind') == 'mapping'],
+                'legacy_migrated':bool(input_legacy or output_legacy)}
     return {'version':1,'prefix':'','input_header':'','input_segments':[], 'processing_header':'',
             'processing_code':body,'output_header':'','output_segments':[]}
 
@@ -53,15 +63,25 @@ def render_flow(flow):
 def ensure_flow(fb):
     if not isinstance(fb.get('flow'), dict) or render_flow(fb['flow']) != str(fb.get('body') or ''):
         fb['flow'] = convert_body(fb.get('body',''))
-    return fb['flow']
+    flow = fb['flow']
+    legacy_input = ''.join(s.get('code', '') for s in flow.get('input_segments', []) if s.get('kind') == 'preserved')
+    legacy_output = ''.join(s.get('code', '') for s in flow.get('output_segments', []) if s.get('kind') == 'preserved')
+    if legacy_input or legacy_output:
+        flow['input_segments'] = [s for s in flow.get('input_segments', []) if s.get('kind') == 'mapping']
+        flow['output_segments'] = [s for s in flow.get('output_segments', []) if s.get('kind') == 'mapping']
+        flow['processing_code'] = legacy_input + flow.get('processing_code', '') + legacy_output
+        flow['legacy_migrated'] = True
+    if flow.get('legacy_migrated'):
+        fb['body'] = render_flow(flow)
+    return flow
 
 
 def flow_view(fb):
     flow = ensure_flow(fb)
     mappings = [{**{k:s[k] for k in ('id','source','destination')}, 'section':section}
                 for section in ('inputs','outputs') for s in flow.get(section[:-1] + '_segments',[]) if s.get('kind') == 'mapping']
-    preserved = {section: ''.join(s.get('code','') for s in flow.get(section[:-1]+'_segments',[]) if s.get('kind')=='preserved') for section in ('inputs','outputs')}
-    return {'processing_code':flow['processing_code'], 'mappings':mappings, 'preserved_sections':preserved,
+    migration = ['Moved legacy handwritten INPUTS / OUTPUTS code into PROCESSING.'] if flow.get('legacy_migrated') else []
+    return {'processing_code':flow['processing_code'], 'mappings':mappings, 'migrations':migration,
             'generated_body':render_flow(flow)}
 
 
@@ -128,8 +148,12 @@ def update_flow(typ, state, mappings=None, processing_code=None):
 
 
 def convert_project(state):
-    changed=False
+    changed = False
     for typ in state.get('types',[]):
-        fb=typ.get('fb',{})
-        if not isinstance(fb.get('flow'),dict) or render_flow(fb['flow']) != str(fb.get('body') or ''): ensure_flow(fb); changed=True
+        fb = typ.get('fb', {})
+        old_flow = copy.deepcopy(fb.get('flow'))
+        old_body = str(fb.get('body') or '')
+        ensure_flow(fb)
+        if old_flow != fb.get('flow') or old_body != str(fb.get('body') or ''):
+            changed = True
     return changed

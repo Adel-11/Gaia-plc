@@ -105,6 +105,11 @@ def register_codesys_routes(app, get_session, current_user, csrf):
             'filename': metadata.get('filename'), 'scope': metadata.get('scope'),
             'resolutions': choices, 'reviewed_at': now.isoformat(), 'reviewed_by': user.username,
         }
+        from backend import v2_workspace as workspace
+        from backend.v2_plc_validation import _snapshot_nodes
+        from lxml import etree
+        fingerprint=workspace.digest({name:etree.tostring(node,method='c14n').decode() for name,node in sorted(_snapshot_nodes(state).items())})
+        session.info['version_event']={'kind':'program_import','name':metadata.get('filename') or 'programme.xml','digest':fingerprint}
         try:
             saved = store.save_project(session, state, username=user.username,
                                        expected_revision=metadata['base_revision'])

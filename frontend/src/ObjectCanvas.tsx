@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import './object-canvas.css'
 
 type Dut = { name: string; role?: string; members?: unknown[] }
@@ -33,12 +33,19 @@ export default function ObjectCanvas({ duts, fbName, active, onSelect, objectKey
     return { x: local.x, y: local.y }
   }
   const fit = () => setView({ x: 0, y: 0, zoom: 1 })
+  useEffect(() => {
+    const element = svg.current
+    if (!element) return
+    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); const point = toCanvas(event); zoomAt(event.deltaY < 0 ? 1.1 : 1 / 1.1, point.x, point.y) }
+    element.addEventListener('wheel', wheel, { passive: false })
+    return () => element.removeEventListener('wheel', wheel)
+  }, [view])
   return <section className="object-canvas" aria-label="Object connection canvas" data-object-key={objectKey}>
     <div className="oc-toolbar"><span>Connections</span><div className="oc-controls">
       <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1 / 1.2)}>−</button><output aria-live="polite">{Math.round(view.zoom * 100)}%</output>
       <button type="button" aria-label="Zoom in" onClick={() => zoomAt(1.2)}>+</button><button type="button" onClick={fit}>Fit</button>
     </div></div>
-    <svg ref={svg} className="oc-svg" viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Pan and zoom object connections" onPointerDown={e => { if ((e.target as Element).closest?.('.oc-node')) return; const p = toCanvas(e); drag.current = { ...p, vx: view.x, vy: view.y }; e.currentTarget.setPointerCapture(e.pointerId) }} onPointerMove={e => { if (!drag.current) return; const p = toCanvas(e); setView(v => ({ ...v, x: drag.current!.vx + p.x - drag.current!.x, y: drag.current!.vy + p.y - drag.current!.y })) }} onPointerUp={e => { drag.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) }} onPointerCancel={() => { drag.current = null }} onWheel={e => { e.preventDefault(); const p = toCanvas(e); zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, p.x, p.y) }} onKeyDown={e => { if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomAt(1.2) } else if (e.key === '-') { e.preventDefault(); zoomAt(1 / 1.2) } else if (e.key === '0') fit(); else if (e.key.startsWith('Arrow')) { e.preventDefault(); setView(v => ({ ...v, x: v.x + (e.key === 'ArrowLeft' ? 30 : e.key === 'ArrowRight' ? -30 : 0), y: v.y + (e.key === 'ArrowUp' ? 30 : e.key === 'ArrowDown' ? -30 : 0) })) } }} tabIndex={0}>
+    <svg ref={svg} className="oc-svg" viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Pan and zoom object connections" onPointerDown={e => { if ((e.target as Element).closest?.('.oc-node')) return; const p = toCanvas(e); drag.current = { ...p, vx: view.x, vy: view.y }; e.currentTarget.setPointerCapture(e.pointerId) }} onPointerMove={e => { if (!drag.current) return; const p = toCanvas(e); setView(v => ({ ...v, x: drag.current!.vx + p.x - drag.current!.x, y: drag.current!.vy + p.y - drag.current!.y })) }} onPointerUp={e => { drag.current = null; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) }} onPointerCancel={() => { drag.current = null }} onKeyDown={e => { if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomAt(1.2) } else if (e.key === '-') { e.preventDefault(); zoomAt(1 / 1.2) } else if (e.key === '0') fit(); else if (e.key.startsWith('Arrow')) { e.preventDefault(); setView(v => ({ ...v, x: v.x + (e.key === 'ArrowLeft' ? 30 : e.key === 'ArrowRight' ? -30 : 0), y: v.y + (e.key === 'ArrowUp' ? 30 : e.key === 'ArrowDown' ? -30 : 0) })) } }} tabIndex={0}>
       <defs><pattern id={`${uid}-grid`} width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#e8edf3" strokeWidth="1"/></pattern><marker id={`${uid}-arrow`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#647e9b"/></marker></defs>
       <g transform={`translate(${view.x} ${view.y}) translate(${W / 2} ${H / 2}) scale(${view.zoom}) translate(${-W / 2} ${-H / 2})`}>
         <rect x={-5000} y={-5000} width={11000} height={10520} fill={`url(#${uid}-grid)`} pointerEvents="none"/>

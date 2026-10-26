@@ -17,6 +17,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export default function App() {
   const [csrf, setCsrf] = useState('')
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -48,6 +49,6 @@ export default function App() {
   if (!csrf) return <main className="login-shell"><section className="login-panel"><div className="brand"><span className="brand-mark">G</span><span>Gaia <b>IO Generator</b></span></div><div className="login-copy"><p className="eyebrow">CONTROL SYSTEMS · GAIA REFINERY</p><h1>Project data, in one place.</h1><p>Sign in to review PLC types, instances, source workbooks, and exports.</p></div><form onSubmit={login} className="login-form"><label>Username<input autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label><button className="button primary wide" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>{error && <p className="inline-error" role="alert">{error}</p>}</form><p className="login-foot">Private workspace · Session protected</p></section><aside className="login-art"><div className="schematic-grid"/><div className="art-content"><div className="live-chip"><span/> PROJECT ACCESS</div><h2>Industrial signals,<br/>clearly in sync.</h2><p>Modbus exchange management for the Gaia carbon capture skid.</p><div className="art-lines"><span/><span/><span/><i>PLC · MODBUS TCP</i></div></div><div className="art-footer"><span>GAIA REFINERY</span><span>OTTAWA · CANADA</span></div></aside></main>
 
   return <div className="app-shell v2-shell v2-tabbed-shell">
-    <main className="main-area"><header className="topbar"><div className="breadcrumbs"><span className="brand-mark">G</span><span>Gaia Refinery</span><span className="crumb-sep">/</span><b>PLC Generator</b></div><div className="top-actions"><span className="save-indicator"><span/> Signed in</span><span className="avatar small">{(username || 'A').slice(0, 1).toUpperCase()}</span><button className="button secondary" onClick={() => void logout()}>Déconnexion</button></div></header><V2Project csrf={csrf}/></main>
+    <main className="main-area"><header className="topbar"><div className="breadcrumbs"><span className="brand-mark">G</span><span>Gaia Refinery</span><span className="crumb-sep">/</span><b>PLC Generator</b></div><div className="top-actions"><span className="save-indicator"><span/> Signed in</span><span className="avatar small">{(username || 'A').slice(0, 1).toUpperCase()}</span><button className="button secondary" onClick={() => void logout()}>Déconnexion</button></div></header><V2Project key={workspaceEpoch} csrf={csrf} onWorkspaceChanged={() => setWorkspaceEpoch(old => old + 1)}/></main>
   </div>
 }

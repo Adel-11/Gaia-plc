@@ -163,6 +163,71 @@ def _type(state, type_id):
                  or str(t.get("name")) == str(type_id)), None)
 
 
+def _connect_bound_upis(state):
+    """Materialize local bound functions, then create each exchange call once."""
+    types = {str(t.get("id", t.get("name"))): t for t in state.get("types", [])}
+    types.update({str(t.get("name")): t for t in state.get("types", [])})
+    instances = state.get("instances", [])
+    existing = {(str(c.get("function_id") or c.get("FC")), str(c.get("instance_a_id") or c.get("Instance A")),
+                 str(c.get("instance_b_id") or c.get("Instance B"))) for c in state.get("exchange_calls", [])}
+    calls = []
+    for equipment in instances:
+        equipment_type = types.get(str(equipment.get("type_id")))
+        if not equipment_type or "UPI" in str(equipment_type.get("kind", "")).upper():
+            continue
+        equipment_name = _name(equipment)
+        type_bindings = equipment_type.get("upi_bindings", [])
+        if type_bindings:
+            # Type definitions are shared across projects, while exchange
+            # functions and their workbook rows belong to the active project.
+            # Rebuild/upsert each function locally from the canonical binding
+            # mapping before creating calls that reference it.
+            from backend.v2_type_creation import _prepare_upi_bindings
+            errors, materialized = _prepare_upi_bindings(state, equipment_type, type_bindings)
+            if errors:
+                state.setdefault("validation_errors", []).extend(errors)
+                continue
+            if materialized:
+                equipment_type["upi_bindings"] = materialized
+                type_bindings = materialized
+        for binding in type_bindings:
+            upi_type_id = str(binding.get("upi_type_id", ""))
+            function_id = str(binding.get("exchange_function_id") or f"FC_EXC_{equipment_type.get('name')}_{types.get(upi_type_id, {}).get('name', upi_type_id)}")
+            upi_type = types.get(upi_type_id)
+            if not upi_type:
+                continue
+            for upi in instances:
+                if str(upi.get("type_id")) not in {str(upi_type.get("id", upi_type.get("name"))), str(upi_type.get("name"))}:
+                    continue
+                upi_name = _name(upi)
+                key = (function_id, equipment_name, upi_name)
+                if key in existing:
+                    continue
+                call = {"id": f"{function_id}:{equipment_name}:{upi_name}", "function_id": function_id,
+                        "instance_a_id": equipment_name, "instance_b_id": upi_name, "FC": function_id,
+                        "Instance A": equipment_name, "Instance B": upi_name,
+                        "parameter_a_value": f"GVL_EXC.EXC_{equipment_name}",
+                        "parameter_b_value": f"GVL_EXC.EXC_{upi_name}"}
+                calls.append(call); existing.add(key)
+    if calls:
+        state.setdefault("exchange_calls", []).extend(calls)
+        try:
+            from backend.v2_exchanges import _sync as sync_exchanges
+            sync_exchanges(state)
+        except (KeyError, ValueError, TypeError):
+            # The call rows remain in the normalized model; project validation
+            # will report malformed exchange metadata during the preview.
+            pass
+
+
+def _clear_virtual_io_for_instance(state, name):
+    """Keep virtual channels but clear links when their target instance is removed."""
+    for row in state.get("virtual_io", []):
+        if str(row.get("instance_id", row.get("Instance", ""))) == str(name):
+            for field in ("instance_id", "Instance", "member_name", "GVL_IO member"):
+                row.pop(field, None)
+
+
 def _add_instance(state, name, typ, values, warnings=None):
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
         raise ValueError("Instance name must start with a letter and contain only letters, numbers, and underscores")
@@ -234,6 +299,7 @@ def _add_instance(state, name, typ, values, warnings=None):
                    parameter_a_value=row.get("Parameter A value"),parameter_b_value=row.get("Parameter B value"))
         state.setdefault("exchange_calls",[]).append(row)
         if exc_book: _set_or_append(exc_book,"CALLS",row)
+    _connect_bound_upis(state)
     return created_tcp
 
 
@@ -320,6 +386,7 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                                 if prior is not None: row["Status"]=prior
                     else: state[key] = [r for r in state.get(key,[]) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) != name]
                 state["rtu_slaves"] = [r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance",""))) != name]
+                _clear_virtual_io_for_instance(state, name)
                 state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id")),str(r.get("instance_b_id"))}]
                 state.get("exchange_layout", {}).get("nodes", {}).pop(name, None)
                 changes.append(f"Delete {name}; release {impact['tcp_points']} TCP points, {impact['rtu_channels']} RTU channels, {impact['io_channels']} I/O assignments, and {impact['pa_values']} PA values")

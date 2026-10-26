@@ -8,6 +8,7 @@ import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
 import V2Exchanges from './V2Exchanges'
 import V2Code from './V2Code'
+import ProjectHome from './ProjectHome'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -51,7 +52,7 @@ const pages = [
 type PageId = typeof pages[number]['id']
 const pageFromHash = (): PageId => window.location.hash === '#equipment' ? 'types' : pages.find(page => `#${page.id}` === window.location.hash)?.id || 'overview'
 
-export default function V2Project({ csrf }: { csrf: string }) {
+export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; onWorkspaceChanged?: () => void }) {
   const [activePage, setActivePage] = useState<PageId>(pageFromHash)
   useEffect(() => { const changed = () => setActivePage(pageFromHash()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed) }, [])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true, code: true})
@@ -109,18 +110,8 @@ export default function V2Project({ csrf }: { csrf: string }) {
 
   const currentSheet = sheetData?.sheets?.find(sheet => sheet.name === sheetName)
   const errors = list(project?.validation?.errors)
-  const warnings = list(project?.validation?.warnings)
   const allErrors = list(preview?.validation?.errors)
   const allWarnings = list(preview?.validation?.warnings)
-  const counts = project?.counts || {}
-  const summary = [
-    ['Equipment types', counts.types ?? counts.equipment_types ?? types.length, '▤'],
-    ['Instances', counts.instances ?? counts.equipment_instances ?? instances.length, '⌂'],
-    ['DUT members', counts.dut_members ?? counts.members ?? types.reduce((n, type) => n + (type.duts || []).reduce((m, dut) => m + (dut.members?.length || 0), 0), 0), '≋'],
-    ['FUXA CSV tags', counts.fuxa_signals ?? counts.signals ?? '—', '⌁'],
-    ['Exchange functions', counts.exchange_functions ?? counts.exchange ?? '—', '⇄'],
-  ] as [string, number | string, string][]
-
   const download = async (path: string, fallbackName: string) => {
     setError(''); setNotice('')
     try {
@@ -178,16 +169,14 @@ export default function V2Project({ csrf }: { csrf: string }) {
         <div className="v2-nav-foot">Gaia Refinery<span>Révision {project?.revision ?? '—'}</span></div>
       </nav>
       <div className="v2-page-body">
-        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools"><button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
+        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{activePage === 'overview' ? project?.project_name || active.title : active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools"><button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
         {error && <div className="v2-alert error" role="alert"><b>Could not complete request</b><span>{error}</span></div>}{notice && <div className="v2-alert success" role="status">{notice}</div>}
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-overview" aria-labelledby="tab-overview" hidden={activePage !== 'overview'}>
-    <section className="v2-metrics" aria-label="Project counts">{summary.map(([label,value,icon]) => <article className="v2-metric" key={label}><span className="v2-metric-icon">{icon}</span><div><b>{value}</b><span>{label}</span></div></article>)}</section>
-
-    <section className="v2-meta-grid"><article className="v2-panel"><div className="v2-panel-head compact"><div><p className="eyebrow">VALIDATION</p><h2>Project checks</h2></div><span className={`validation-pill ${errors.length?'bad':''}`}>{errors.length?'Needs attention':'Current'}</span></div><div className="validation-summary"><div><b className={errors.length?'error-text':''}>{errors.length}</b><span>Errors</span></div><div><b>{warnings.length}</b><span>Warnings</span></div></div>{[...errors.map(item=>({item,kind:'error'})),...warnings.map(item=>({item,kind:'warning'}))].slice(0,8).map((entry,index)=><p className={`issue ${entry.kind==='error'?'error-text':'warning-text'}`} key={index}>{asText(entry.item)}</p>)}{!errors.length&&!warnings.length&&<p className="v2-empty">No project validation issues reported.</p>}</article><article className="v2-panel"><div className="v2-panel-head compact"><div><p className="eyebrow">SOURCE SNAPSHOT</p><h2>Import status</h2></div></div><dl className="snapshot-list"><dt>Snapshot</dt><dd>{project?.snapshot?.filename || '—'}</dd><dt>Imported</dt><dd>{project?.snapshot?.imported_at ? new Date(project.snapshot.imported_at).toLocaleString() : '—'}</dd><dt>Objects</dt><dd>{asText(project?.snapshot?.object_count)}</dd><dt>Legacy backup</dt><dd>{asText(project?.migration?.legacy_backup || project?.migration?.legacy_backup_filename)}</dd><dt>Revision</dt><dd>{asText(project?.revision)}</dd></dl></article></section>
+          {project && <ProjectHome csrf={csrf} project={project} onChanged={() => void load()} beforeProjectChange={() => (!typeDraftDirty && !wizardOpen && !Object.values(codeDirty).some(Boolean)) || window.confirm('Changer de projet ferme les formulaires et brouillons non enregistrés. Continuer ?')} onSelectProject={() => onWorkspaceChanged?.()} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-types" aria-labelledby="tab-types" hidden={activePage !== 'types'}>
           <div className="type-page-actions"><button className="button primary" onClick={()=>{if(!typeDraftDirty || window.confirm('Discard unsaved type changes and create a new type?')) setWizardOpen(true)}}>＋ Create type</button></div>
-          {wizardOpen && project && <V2TypeWizard project={project} csrf={csrf} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
+          {wizardOpen && project && <V2TypeWizard project={project} csrf={csrf} onChanged={()=>void load()} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
           <div hidden={wizardOpen}>
           <section className="v2-panel object-catalogue">
             <div className="v2-panel-head"><div><h2>Equipment types</h2><p>Select a model to open its object view.</p></div><div className="catalogue-filters"><label className="v2-filter"><span>Kind</span><select aria-label="Filter types by kind" value={typeKind} onChange={e=>setTypeKind(e.target.value)}><option value="all">All kinds</option>{typeKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><input aria-label="Search types" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search types"/><select aria-label="Sort names" value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></div></div>
@@ -226,7 +215,7 @@ export default function V2Project({ csrf }: { csrf: string }) {
 
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-plc" aria-labelledby="tab-plc" hidden={activePage !== 'plc'}>
-    <V2PlcExport csrf={csrf} projectRevision={project?.revision}/>
+    <V2PlcExport onExported={() => void load()} csrf={csrf} projectRevision={project?.revision}/>
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-codesys" aria-labelledby="tab-codesys" hidden={activePage !== 'codesys'}>
 

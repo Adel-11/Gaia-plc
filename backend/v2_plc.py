@@ -81,7 +81,8 @@ def _member_variable(member, section_start=False):
         etree.SubElement(initial, NS + "simpleValue", value=str(value))
     comment = member.get("comment")
     if section_start and member.get("section"):
-        comment = f"[{member['section']}] {comment or ''}".rstrip()
+        heading = f"//----------------------------{member['section']}"
+        comment = f"{heading}\n{comment}" if comment else heading
     if comment:
         doc = etree.SubElement(v, NS + "documentation"); etree.SubElement(doc, HNS + "xhtml", nsmap={None: HTML}).text = str(comment)
     return v
@@ -245,6 +246,10 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
         match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
         if match and iomap is not None: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("Type") or "BOOL")
+    for row in state.get("virtual_io",[]):
+        raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
+        match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
+        if match and iomap is not None: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("iec_type") or "BOOL")
 
 
 def _mapped_name(value):
@@ -383,7 +388,8 @@ def _generated_objects(objs, state):
     if "GFC_COM_IN" in objs: _pou_text(objs["GFC_COM_IN"], "\n".join(com_in)+"\nGFC_COM_IN := TRUE;")
     if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;")
     io_in, io_out = [], []
-    for p in sorted((row for row in state.get("io_channels",[]) if not (row.get("Instance") or row.get("instance_id")) or str(row.get("Instance") or row.get("instance_id")) in valid_instances), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
+    io_rows = list(state.get("io_channels",[])) + list(state.get("virtual_io",[]))
+    for p in sorted((row for row in io_rows if not (row.get("Instance") or row.get("instance_id")) or str(row.get("Instance") or row.get("instance_id")) in valid_instances), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
         iomap, iovar = str(p.get("GVL_IOMAP variable") or ""), str(p.get("GVL_IO member") or "")
         if not iomap or not iovar: continue
         iomap=iomap.removeprefix("GVL_IOMAP."); iovar=iovar.removeprefix("GVL_IO.")

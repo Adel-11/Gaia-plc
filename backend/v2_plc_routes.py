@@ -65,6 +65,7 @@ def register_plc_routes(app, get_session, current_user, csrf):
         objects = program(state)
         plan = v2_plc_validation.plan_export(state, objects, mode=body.mode, focus=body.focus, selected=body.selected)
         plan['revision'] = state.get('revision', 0)
+        plan['mode'] = body.mode
         model_validation = v2_engine.validate_project(state)
         plan['errors'] = list(dict.fromkeys([*model_validation.get('errors', []), *plan.get('errors', [])]))
         plan['warnings'] = list(dict.fromkeys([*model_validation.get('warnings', []), *plan.get('warnings', [])]))
@@ -116,8 +117,20 @@ def register_plc_routes(app, get_session, current_user, csrf):
         validation = v2_plc_validation.validate_xml(xml, state, program(state))
         if validation.get('errors'):
             raise HTTPException(409, detail=validation)
+        from backend import v2_workspace as workspace
+        import re
+        fingerprint=workspace.program_digest(state)
+        major,minor,patch=[int(x) for x in state.get('version','1.0.0').split('.')]
+        version=f'{major}.{minor+1}.0' if fingerprint!=state.get('_program_digests',{}).get('program_export') else state.get('version','1.0.0')
+        filename=(re.sub(r'[^A-Za-z0-9_-]+','-',state.get('project_name','Gaia')).strip('-') or 'Gaia')+'-'+version+'-'+payload['plan'].get('mode','program')+'.xml'
+        try: saved=workspace.record_event(session,state,user.username,'program_export',filename,fingerprint)
+        except ValueError as exc: raise HTTPException(409,str(exc)) from exc
+        row=session.get(ImportPreview,token); metadata=json.loads(row.diff_payload)
+        metadata['base_revision']=saved['revision']; row.diff_payload=json.dumps(metadata)
+        payload['plan']['revision']=saved['revision']; row.state_payload=json.dumps(payload,ensure_ascii=False)
+        session.commit()
         return Response(xml, media_type='application/xml', headers={
-            'Content-Disposition': 'attachment; filename="Gaia-program.xml"', 'Cache-Control': 'no-store'})
+            'Content-Disposition': f'attachment; filename="{filename}"', 'Cache-Control':'no-store'})
 
     @app.get('/api/v2/plc/report/{token}')
     def download_report(token: str, session=Depends(get_session), user=Depends(current_user)):
