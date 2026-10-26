@@ -77,11 +77,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                  "io_channels": related("io_channels", instance_id=instance_name) if instance_name else [],
                  "pa_values": related("pa_values", instance_id=instance_name) if instance_name else [],
                  "exchange_calls": [copy.deepcopy(c) for c in state.get("exchange_calls", []) if instance_name and instance_name in {str(c.get("instance_a_id")), str(c.get("instance_b_id"))}]}
-        if kind == "type":
-            instance_names = {str(i.get("name")) for i in state.get("instances", []) if str(i.get("type_id")) in {str(typ.get("id")), str(typ.get("name"))}}
-            for key, collection in (("tcp_points", "tcp_points"), ("rtu_slaves", "rtu_slaves"), ("rtu_channels", "rtu_channels"), ("io_channels", "io_channels"), ("pa_values", "pa_values")):
-                links[key] = [copy.deepcopy(x) for x in state.get(collection, []) if str(x.get("instance_id", x.get("instance", x.get("Instance", "")))) in instance_names]
-            links["exchange_calls"] = [copy.deepcopy(c) for c in state.get("exchange_calls", []) if str(c.get("instance_a_id")) in instance_names or str(c.get("instance_b_id")) in instance_names]
+        if kind == "type": links = {key: [] for key in links}
         duts = copy.deepcopy(typ.get("duts", []))
         for dut in duts:
             lines = [f"TYPE {dut.get('name')} :", "STRUCT"]
@@ -99,10 +95,28 @@ def register_v2_routes(app, get_session, current_user, csrf):
             dut["st"] = "\n".join(lines)
         fb = copy.deepcopy(typ.get("fb", {}))
         # Render the real generated interface, including timers and extra locals.
-        from backend.v2_plc import build_program, NS as XML_NS
+        from backend.v2_plc import build_program, _new_fb, NS as XML_NS
         from backend.v2_codesys import _st
-        generated = build_program(state)
-        pou = generated.get(fb.get("name"), {}).get("element")
+        if kind == "type":
+            pou = _new_fb(fb.get("name") or f"FB_{typ.get('name')}", typ)
+            if not fb.get("interface_xml"):
+                raw = (state.get("snapshot") or {}).get("xml")
+                if raw:
+                    try:
+                        from lxml import etree
+                        parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
+                        snapshot_root = etree.fromstring(raw.encode("utf-8") if isinstance(raw, str) else raw, parser)
+                        snapshot_pou = snapshot_root.xpath(".//*[local-name()='pou' and @name=$name]", name=fb.get("name"))
+                        if snapshot_pou:
+                            old_interface = snapshot_pou[0].find(XML_NS + "interface")
+                            if old_interface is not None:
+                                existing = pou.find(XML_NS + "interface")
+                                if existing is not None: pou.replace(existing, copy.deepcopy(old_interface))
+                    except (ValueError, TypeError):
+                        pass
+        else:
+            generated = build_program(state)
+            pou = generated.get(fb.get("name"), {}).get("element")
         declaration = []
         if pou is not None:
             interface = pou.find(XML_NS + "interface")
@@ -151,6 +165,11 @@ def register_v2_routes(app, get_session, current_user, csrf):
             submitted = [{**old, **incoming, "role": incoming.get("role", old.get("role")), "name": incoming.get("name", old.get("name"))}
                          for old, incoming in zip(typ.get("duts", []), submitted)]
         errors, warnings, changes = [], [], []
+        from backend.v2_type_creation import _iec_type_error, _identifier
+        known_types = {str(t.get("name")) for t in current.get("types", []) if t.get("name")}
+        known_types.update(str(d.get("name")) for t in current.get("types", []) for d in t.get("duts", []) if d.get("name"))
+        known_types.update(str(o.get("name")) for o in (current.get("snapshot") or {}).get("objects", []) if o.get("name"))
+        known_types.update(str(d.get("name")) for d in typ.get("duts", []) if d.get("name"))
         if [str(d.get("role")) for d in submitted] != [str(d.get("role")) for d in typ.get("duts", [])]: errors.append("DUT roles and order are fixed")
         old_by_role = {str(d.get("role")): d for d in typ.get("duts", [])}
         for dut in submitted:
@@ -162,7 +181,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
             for member_index, member in enumerate(dut.get("members", [])):
                 name = str(member.get("name", ""))
                 if name.upper() in {"INT", "BOOL", "REAL", "WORD", "BYTE", "ARRAY", "STRUCT", "END_STRUCT", "VAR", "END_VAR", "IF", "THEN", "ELSE", "TRUE", "FALSE", "FOR", "WHILE", "FUNCTION", "PROGRAM", "FUNCTION_BLOCK"}: errors.append(f"Reserved IEC keyword {name!r} cannot be a member name")
-                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name): errors.append(f"Invalid IEC member name {name!r} in DUT_{role}")
+                if not _identifier(name): errors.append(f"Invalid IEC member name {name!r} in DUT_{role}")
                 if name.casefold() in seen: errors.append(f"Duplicate member {name} in DUT_{role}")
                 seen.add(name.casefold())
                 prior = old_members.get(name)
@@ -171,16 +190,11 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 else:
                     member["id"] = f"{typ.get('id')}:{role}:{name}"
                 member["position"] = member_index
-                if not re.fullmatch(r"(?:BOOL|BYTE|WORD|DWORD|LWORD|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL|TIME|DATE|TIME_OF_DAY|DATE_AND_TIME|STRING(?:\(\d+\))?|WSTRING(?:\(\d+\))?|ARRAY\s*\[[^]]+\]\s*OF\s*[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*)", str(member.get("iec_type", "")), re.I): errors.append(f"Unsupported IEC type {member.get('iec_type')!r} for {role}.{name}")
                 iec_type = str(member.get("iec_type", "")).strip()
+                type_error = _iec_type_error(iec_type, known_types)
+                if type_error: errors.append(f"{role}.{name}: {type_error}")
                 array_bounds = re.fullmatch(r"ARRAY\s*\[\s*(-?\d+)\s*\.\.\s*(-?\d+)\s*\]\s*OF\s*([A-Za-z_][A-Za-z0-9_]*)", iec_type, re.I)
                 if array_bounds and int(array_bounds[1]) > int(array_bounds[2]): errors.append(f"Array lower bound exceeds upper bound for {role}.{name}")
-                if re.fullmatch(r"ARRAY\s*\[", iec_type, re.I): errors.append(f"Invalid array type {iec_type!r} for {role}.{name}")
-                elif re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", iec_type) and iec_type.upper() not in {"BOOL", "BYTE", "WORD", "DWORD", "LWORD", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "TIME", "DATE", "TIME_OF_DAY", "DATE_AND_TIME", "STRING", "WSTRING"}:
-                    known = {str(t.get("name")) for t in state.get("types", [])}
-                    known.update(str(d.get("name")) for t in state.get("types", []) for d in t.get("duts", []))
-                    known.update(str(o.get("name")) for o in (state.get("snapshot") or {}).get("objects", []))
-                    if iec_type not in known: errors.append(f"Unknown derived type {iec_type!r} for {role}.{name}")
                 default = member.get("default_value")
                 if default not in (None, ""):
                     base = re.sub(r"\s*\[.*", "", iec_type).upper()
@@ -198,11 +212,14 @@ def register_v2_routes(app, get_session, current_user, csrf):
                             if not limits[base][0] <= value <= limits[base][1]: errors.append(f"{base} default {default!r} is out of range for {role}.{name}")
             deleted = {str(m.get("name")) for m in old.get("members", [])} - {str(m.get("name")) for m in dut.get("members", [])}
             for name in sorted(deleted):
-                instance_names = {str(i.get("name")) for i in current.get("instances", []) if str(i.get("type_id")) in {str(typ.get("id")), str(typ.get("name"))}}
-                ref_collections = ("tcp_points", "rtu_channels", "pa_values", "io_channels")
-                mapped = any(str(x.get("member_name", x.get("member", ""))) == name and str(x.get("instance_id", x.get("instance", ""))) in instance_names for collection in ref_collections for x in current.get(collection, []))
-                code = str(typ.get("fb", {}).get("body", "")) + "\n" + str(typ.get("fb", {}).get("custom_code", ""))
-                if mapped or re.search(rf"\b{re.escape(name)}\b", code): errors.append(f"Cannot delete referenced member {role}.{name}; update its mapping or FB code first")
+                fb = typ.get("fb", {})
+                flow = fb.get("flow", {})
+                code = "\n".join((str(fb.get("body", "")), str(fb.get("custom_code", "")), str(flow.get("processing_code", "")), str(body.processing_code or "")))
+                mappings = body.mappings if body.mappings is not None else []
+                if body.mappings is None:
+                    mappings = [segment for section in ("input_segments", "output_segments") for segment in flow.get(section, []) if segment.get("kind") == "mapping"]
+                mapping_reference = any(re.search(rf"\b{re.escape(name)}\b", str(mapping.get(field, ""))) for mapping in mappings for field in ("source", "destination"))
+                if mapping_reference or re.search(rf"\b{re.escape(name)}\b", code): errors.append(f"Cannot delete referenced member {role}.{name}; update its own FB code or mapping first")
         if errors: return {"token": None, "errors": errors, "warnings": warnings, "changes": []}
         typ["duts"] = submitted
         if body.body is not None: typ.setdefault("fb", {})["body"] = body.body
@@ -217,13 +234,39 @@ def register_v2_routes(app, get_session, current_user, csrf):
         try:
             from backend.v2_plc import build_program, serialize_program
             from backend.v2_plc_validation import validate_xml
-            built = build_program(state)
-            checked = validate_xml(serialize_program(built, state, list(built)), state, built)
-            old_built = build_program(current)
-            old_checked = validate_xml(serialize_program(old_built, current, list(old_built)), current, old_built)
-            old_errors = set(old_checked.get("errors", []))
-            errors.extend(e for e in checked.get("errors", []) if e not in old_errors)
-            warnings.extend(checked.get("warnings", []))
+            # Validate this type's PLC blocks in isolation. Project-wide builds
+            # can fail on unrelated communications and GFC work in progress.
+            validation_state = copy.deepcopy(state)
+            all_types = list(state.get("types", []))
+            selected_types = [typ]
+            available_names = {str(d.get("name")): candidate for candidate in all_types
+                               for d in candidate.get("duts", []) if d.get("name")}
+            selected_dut_names = {str(d.get("name")) for d in typ.get("duts", [])}
+            referenced = set()
+            scanned = set()
+            while len(scanned) < len(selected_types):
+                candidate = next(item for item in selected_types if id(item) not in scanned)
+                scanned.add(id(candidate))
+                for dut in candidate.get("duts", []):
+                    for member in dut.get("members", []):
+                        ref = re.sub(r"^ARRAY\s*\[[^]]+\]\s*OF\s*", "", str(member.get("iec_type", "")), flags=re.I).strip()
+                        dependency = available_names.get(ref)
+                        if dependency is not None and dependency not in selected_types:
+                            selected_types.append(dependency)
+                            referenced.update(str(d.get("name")) for d in dependency.get("duts", []))
+            validation_state["types"] = selected_types
+            validation_state["instances"] = []
+            for collection in ("exchange_functions", "exchange_calls", "exchange_functions_detail",
+                               "tcp_points", "rtu_slaves", "rtu_channels", "io_channels",
+                               "virtual_io", "pa_values", "functions", "generated_custom_code"):
+                validation_state[collection] = []
+            built = build_program(validation_state)
+            checked = validate_xml(serialize_program(built, validation_state, list(built)), validation_state, built)
+            scoped_names = {str(typ.get("name")), str(typ.get("fb", {}).get("name")),
+                            *selected_dut_names, *referenced}
+            errors.extend(message for message in checked.get("errors", [])
+                          if any(name and name in str(message) for name in scoped_names))
+            warnings.extend(message for message in checked.get("warnings", []) if any(name and name in str(message) for name in scoped_names))
         except (ValueError, KeyError, TypeError) as exc:
             errors.append(f"PLC consistency check failed: {exc}")
         if errors: return {"token": None, "errors": errors, "warnings": warnings, "changes": []}

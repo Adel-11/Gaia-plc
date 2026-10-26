@@ -15,6 +15,7 @@ class PreviewCode(BaseModel):
     name: str
     body: str | None = None
     custom_code: str | None = None
+    included_instances: list[str] | None = None
 
 class ApplyCode(BaseModel): token: str
 
@@ -51,6 +52,11 @@ def _decl(obj):
 
 def _objects(state):
     from backend import v2_plc, v2_plc_validation, v2_codesys
+    from backend.v2_program_membership import eligible_instances, freeze_membership
+    membership=freeze_membership(state); eligible=eligible_instances(state)
+    types={str(t.get("id")):t for t in state.get("types",[])}
+    types.update({str(t.get("name")):t for t in state.get("types",[])})
+    instance_rows={str(i.get("name") or i.get("id")):i for i in state.get("instances",[])}
     built=v2_plc.build_program(state); snapshot={x.get("name"):x for x in (state.get("snapshot") or {}).get("objects",[]) if x.get("name")}
     semantic_snapshots=v2_plc_validation._snapshot_nodes(state)
     result=[]
@@ -68,9 +74,19 @@ def _objects(state):
         ref=snapshot.get(name,{}).get("body","") or ""
         status="new" if name not in semantic_snapshots else "changed" if v2_plc_validation._changed(name,obj,semantic_snapshots) else "unchanged"
         diff="".join(difflib.unified_diff(ref.splitlines(True),full_body.splitlines(True),fromfile=f"reference/{name}",tofile=f"current/{name}"))
-        result.append({"name":name,"kind":kind,"category":kind,"folder":obj.get("folder",""),"body":body,"custom_code":custom,
+        entry={"name":name,"kind":kind,"category":kind,"folder":obj.get("folder",""),"body":body,"custom_code":custom,
           "declaration":_decl(obj),
-          "full_body":full_body,"changed":status!="unchanged","status":status,"reference_body":ref,"diff":diff,"dependencies":sorted(v2_plc_validation._refs(obj))})
+          "full_body":full_body,"changed":status!="unchanged","status":status,"reference_body":ref,"diff":diff,"dependencies":sorted(v2_plc_validation._refs(obj))}
+        if name in membership:
+            candidates=[]
+            for instance_name in eligible[name]:
+                row=instance_rows.get(instance_name,{})
+                typ=types.get(str(row.get("type_id")),{})
+                candidates.append({"name":instance_name,"type":str(typ.get("name") or row.get("type_id") or ""),"kind":str(typ.get("kind") or "")})
+            included=set(membership[name])
+            entry.update({"membership_block":name,"included_instances":[candidate["name"] for candidate in candidates if candidate["name"] in included],
+              "instance_candidates":candidates,"missing_instances":[candidate for candidate in candidates if candidate["name"] not in included]})
+        result.append(entry)
     return result
 
 def register_code_routes(app,get_session,current_user,csrf):
@@ -91,11 +107,22 @@ def register_code_routes(app,get_session,current_user,csrf):
     def preview(req:PreviewCode,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
         current=project(session)
         if req.revision!=current.get("revision",0): raise HTTPException(409,"Project changed; refresh code and try again")
+        from backend.v2_program_membership import BLOCKS, eligible_instances
+        if req.included_instances is not None:
+            if req.name not in BLOCKS: raise HTTPException(400,"Instance membership can only be changed for generated programs")
+            allowed=set(eligible_instances(current)[req.name])
+            requested=list(dict.fromkeys(str(name) for name in req.included_instances))
+            unknown=[name for name in requested if name not in allowed]
+            if unknown: raise HTTPException(400,"Unknown instance for this program: "+", ".join(unknown))
         isgen=req.name in GENERATED
         fn=next((f for f in current.get("functions",[]) if f.get("name")==req.name),None)
         if not isgen and fn is None: raise HTTPException(404,"Code object is not editable")
         if isgen and req.body is not None: raise HTTPException(400,"Generated code body is read-only")
         state=copy.deepcopy(current)
+        if req.included_instances is not None:
+            from backend.v2_program_membership import freeze_membership
+            membership=freeze_membership(state)
+            membership[req.name]=requested
         if isgen:
             if req.custom_code is not None: state.setdefault("generated_custom_code",{})[req.name]=req.custom_code
         else:
@@ -104,16 +131,20 @@ def register_code_routes(app,get_session,current_user,csrf):
             if req.custom_code is not None: target["custom_code"]=req.custom_code
         try:
             objects=v2_plc.build_program(state); xml=v2_plc.serialize_program(objects,state,list(objects)); checked=v2_plc_validation.validate_xml(xml,state,objects)
-            oldobj=v2_plc.build_program(current); oldxml=v2_plc.serialize_program(oldobj,current,list(oldobj)); baseline=set(v2_plc_validation.validate_xml(oldxml,current,oldobj)["errors"])
+            oldobj=v2_plc.build_program(current); oldxml=v2_plc.serialize_program(oldobj,current,list(oldobj)); previous_check=v2_plc_validation.validate_xml(oldxml,current,oldobj); baseline=set(previous_check["errors"])
             checked["errors"]=[e for e in checked["errors"] if e not in baseline]
+            checked["warnings"]=[w for w in checked["warnings"] if w not in previous_check.get("warnings",[])]
         except Exception as exc: checked={"errors":[str(exc)],"warnings":[]}
         token=secrets.token_urlsafe(24)
-        meta={"kind":"v2-code-edit","base_revision":current.get("revision",0),"name":req.name,"generated":isgen}
+        meta={"kind":"v2-code-edit","base_revision":current.get("revision",0),"name":req.name,"generated":isgen,"membership_changed":req.included_instances is not None}
         item=next((x for x in _objects(state) if x["name"]==req.name),None)
         if checked["errors"]: return {"token":None,"errors":checked["errors"],"warnings":checked["warnings"],"changes":[],"object":item}
         session.add(ImportPreview(token=token,owner_id=user.id,created_at=datetime.now(timezone.utc),expires_at=datetime.now(timezone.utc)+timedelta(minutes=20),diff_payload=json.dumps(meta),state_payload=json.dumps(state,ensure_ascii=False)))
         session.commit()
-        return {"token":token,"errors":checked["errors"],"warnings":checked["warnings"],"changes":[f"Update code in {req.name}"],"object":item}
+        changes=[f"Update code in {req.name}"] if req.body is not None or req.custom_code is not None else []
+        if req.included_instances is not None:
+            changes.append(f"Update instances added to {req.name}: {', '.join(requested) if requested else 'none'}")
+        return {"token":token,"errors":checked["errors"],"warnings":checked["warnings"],"changes":changes,"object":item}
 
     @app.post("/api/v2/code/apply")
     def apply(req:ApplyCode,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):

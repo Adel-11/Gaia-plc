@@ -8,22 +8,23 @@ from backend.v2_engine import load_pack
 from backend.v2_instance_editor import _add_instance, _configuration, _sync_workbooks, _tcp_variable, _tcp_range
 
 
-def test_instance_template_clone_allocates_distinct_tcp_addresses_and_persists_workbooks():
-    state = load_pack()
-    state = __import__("copy").deepcopy(state)
+def test_instance_create_only_appends_declaration_and_reads_pa_defaults_lazily():
+    import copy
+    state = copy.deepcopy(load_pack())
     typ = next(t for t in state["types"] if t["name"] == "DIP1500")
-    existing = {(str(p.get("Client")), str(p.get("table")), int(p["Modbus address"])) for p in state["tcp_points"] if str(p.get("Modbus address", "")).isdigit()}
+    before = {key: copy.deepcopy(state.get(key, [])) for key in (
+        "pa_values", "tcp_points", "rtu_slaves", "rtu_channels", "io_channels", "exchange_calls", "exchange_functions"
+    )}
+    pa_sheets = {sheet["name"] for sheet in state["workbooks"]["PARAMETERS_PA.xlsx"]["sheets"]}
     _add_instance(state, "DIP1500_2", typ, {})
-    added = [p for p in state["tcp_points"] if p.get("Instance") == "DIP1500_2"]
-    assert added
-    assert all((str(p.get("Client")), str(p.get("table")), int(p["Modbus address"])) not in existing for p in added)
-    assert all(p.get("GVL_COM variable", "").find("DIP1500_2") >= 0 for p in added)
-    assert any(p.get("GVL_PA variable", "").find("DIP1500_2") >= 0 for p in state["pa_values"] if p.get("Instance") == "DIP1500_2")
-    _sync_workbooks(state)
-    tcp_sheet = next(s for s in state["workbooks"]["MODBUS_TCP.xlsx"]["sheets"] if s["name"] == added[0]["sheet"])
-    instance_col = tcp_sheet["headers"].index("Instance")
-    assert any(row[instance_col] == "DIP1500_2" for row in tcp_sheet["rows"])
-    assert "DIP1500_2" in {sheet["name"] for sheet in state["workbooks"]["PARAMETERS_PA.xlsx"]["sheets"]}
+    assert state["instances"][-1] == {"id": "DIP1500_2", "name": "DIP1500_2", "type_id": typ["id"]}
+    assert {key: state.get(key, []) for key in before} == before
+    assert {sheet["name"] for sheet in state["workbooks"]["PARAMETERS_PA.xlsx"]["sheets"]} == pa_sheets
+    assert all("DIP1500_2" not in members for members in state["program_membership"].values())
+    config = _configuration(state, state["instances"][-1])
+    expected_members = [m["name"] for m in next(d for d in typ["duts"] if d["role"] == "PA")["members"]]
+    assert [row["Member"] for row in config["pa_values"]] == expected_members
+    assert state["pa_values"] == before["pa_values"]
 
 
 def test_instance_editor_rejects_name_collision():
@@ -41,18 +42,20 @@ def test_configuration_keeps_to_check_slave_marker():
     assert any(r.get("Slave address") == "TO CHECK" for r in data["rtu_slaves"])
 
 
-def test_copied_type_never_calls_exchange_with_incompatible_dut_and_zero_is_preserved():
+def test_copy_with_communication_templates_does_not_materialize_instance_rows():
     import copy
     state = copy.deepcopy(load_pack())
     typ = copy.deepcopy(next(t for t in state["types"] if t["name"] == "DIP1500"))
     typ.update(id="DIP_COPY", name="DIP_COPY")
     state["types"].append(typ)
-    member = typ["templates"]["TEMPLATE_PA"][0]["Member"]
+    before = {key: len(state.get(key, [])) for key in (
+        "pa_values", "tcp_points", "rtu_slaves", "rtu_channels", "io_channels", "exchange_calls", "exchange_functions"
+    )}
     warnings = []
-    _add_instance(state, "DIP_COPY_1", typ, {member: 0}, warnings)
-    assert next(p for p in state["pa_values"] if p.get("Instance") == "DIP_COPY_1" and p.get("Member") == member)["Instance value"] == 0
+    _add_instance(state, "DIP_COPY_1", typ, {"COMMUNICATION_ADDRESS": 0}, warnings)
+    assert {key: len(state.get(key, [])) for key in before} == before
     assert not any(c.get("instance_b_id") == "DIP_COPY_1" or c.get("instance_a_id") == "DIP_COPY_1" for c in state["exchange_calls"])
-    assert warnings
+    assert warnings == []
 
 
 def test_instance_preview_apply_stale_token_and_delete_releases_rows(tmp_path, monkeypatch):
@@ -76,38 +79,42 @@ def test_instance_preview_apply_stale_token_and_delete_releases_rows(tmp_path, m
         preview=client.post("/api/v2/instances/preview",headers=headers,json=payload)
         assert preview.status_code==200 and preview.json()["errors"]==[]
         proposal=preview.json()["configuration"]
-        assert proposal["tcp_points"] and proposal["rtu_slaves"]
-        preview=client.post("/api/v2/instances/preview",headers=headers,json={**payload,"tcp_points":[{"id":r["id"],"address":r["address"]} for r in proposal["tcp_points"]],"rtu_slaves":[{"id":r["id"],"address":r["address"]} for r in proposal["rtu_slaves"]]})
-        assert preview.status_code==200 and not preview.json()["errors"]
+        assert proposal["pa_values"] and proposal["tcp_points"] == [] and proposal["rtu_channels"] == []
+        from backend.db import ImportPreview
+        import json
+        with app.state.session_factory() as session:
+            staged=json.loads(session.get(ImportPreview,preview.json()["token"]).state_payload)
+        assert not any("DIP1500_2" in names for names in staged["program_membership"].values())
         token=preview.json()["token"]
         applied=client.post("/api/v2/instances/apply",headers=headers,json={"token":token})
         assert applied.status_code==200
         assert client.post("/api/v2/instances/apply",headers=headers,json={"token":token}).status_code==404
         after=client.get("/api/v2/project").json()
-        instance=next(i for i in after["instances"] if i["name"]=="DIP1500_2")
-        assert any(p.get("Instance")=="DIP1500_2" for p in after["tcp_points"])
-        config=client.get(f"/api/v2/instances/{instance['id']}/configuration").json()
-        assert config["revision"]==after["revision"]
-        assert all(str(p.get("GVL_MODBUS variable", "")).startswith("GVL_MODBUS.") for p in config["tcp_points"])
+        created_config=client.get("/api/v2/instances/DIP1500_2/configuration").json()
+        assert created_config["tcp_points"] == [] and created_config["rtu_channels"] == []
+
+        # Address, PA, and physical I/O editors still work with project fixture rows.
+        config=client.get("/api/v2/instances/DIP1500_1/configuration").json()
         first=config["tcp_points"][0]
-        occupied=next(p for p in after["tcp_points"] if p.get("table")==first.get("table") and p.get("Client")==first.get("Client") and p.get("Instance")!="DIP1500_2")
-        collision=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"modbus","instance_id":"DIP1500_2","tcp_points":[{"id":first["id"],"address":occupied["address"]}]})
+        occupied=next(p for p in after["tcp_points"] if p.get("table")==first.get("table") and p.get("Client")==first.get("Client") and p.get("Instance")!="DIP1500_1")
+        collision=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"modbus","instance_id":"DIP1500_1","tcp_points":[{"id":first["id"],"address":occupied["address"]}]})
         assert any("already in use" in e for e in collision.json()["errors"])
-        moved_address=_tcp_range(first.get("Client"),first.get("table"))[1]
-        moved=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"modbus","instance_id":"DIP1500_2","tcp_points":[{"id":first["id"],"address":moved_address}]})
+        used={int(p["address"]) for p in after["tcp_points"] if p.get("table")==first.get("table") and p.get("Client")==first.get("Client") and str(p.get("address","")).isdigit() and p["id"]!=first["id"]}
+        lo,hi=_tcp_range(first.get("Client"),first.get("table"))
+        moved_address=next(n for n in range(hi,lo-1,-1) if n not in used)
+        moved=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"modbus","instance_id":"DIP1500_1","tcp_points":[{"id":first["id"],"address":moved_address}]})
         assert moved.status_code==200 and not moved.json()["errors"]
         assert client.post("/api/v2/instances/apply",headers=headers,json={"token":moved.json()["token"]}).status_code==200
         after=client.get("/api/v2/project").json()
         moved_row=next(p for p in after["tcp_points"] if p["id"]==first["id"])
         assert moved_row["address"]==moved_address and moved_row["GVL_MODBUS variable"]==_tcp_variable(moved_row["table"],moved_address)
-        pa=config["pa_values"][0]
-        invalid_pa=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"pa","instance_id":"DIP1500_2","values":{"COMMUNICATION_ADDRESS":"70000"}})
+        invalid_pa=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"pa","instance_id":"DIP1500_1","values":{"COMMUNICATION_ADDRESS":"70000"}})
         assert any("valid WORD" in e for e in invalid_pa.json()["errors"])
-        saved_pa=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"pa","instance_id":"DIP1500_2","values":{"COMMUNICATION_ADDRESS":"17"}})
+        saved_pa=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"pa","instance_id":"DIP1500_1","values":{"COMMUNICATION_ADDRESS":"17"}})
         assert saved_pa.status_code==200 and not saved_pa.json()["errors"]
         assert client.post("/api/v2/instances/apply",headers=headers,json={"token":saved_pa.json()["token"]}).status_code==200
         after=client.get("/api/v2/project").json()
-        channels=config["options"]["io_channels"]
+        channels=client.get("/api/v2/instances/DIP1500_2/configuration").json()["options"]["io_channels"]
         available=next(c for c in channels if not c.get("Instance") and not c.get("instance_id") and str(c.get("I/O type","")).startswith("D"))
         io_preview=client.post("/api/v2/instances/preview",headers=headers,json={"revision":after["revision"],"action":"io","instance_id":"DIP1500_2","io_channels":[{"id":available["id"],"member":"SPARE"}]})
         assert io_preview.status_code==200 and not io_preview.json()["errors"]

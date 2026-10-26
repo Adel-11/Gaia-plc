@@ -100,6 +100,14 @@ def _sync_workbooks(state):
         rtu["sheets"] = [sh for sh in rtu.get("sheets", []) if sh.get("name") in {"README", "LINES", "SLAVES", "LISTS"} or sh.get("name") in alive]
     pa = workbooks.get("PARAMETERS_PA.xlsx")
     if pa:
+        existing_pa_sheets = _sheet_map(pa)
+        for row in state.get("pa_values", []):
+            instance_name = str(row.get("instance", row.get("instance_id", row.get("Instance", ""))))
+            if instance_name and instance_name not in existing_pa_sheets:
+                template = next((sh for sh in pa.get("sheets", []) if sh.get("name") not in {"README", "LISTS"}), None)
+                if template:
+                    pa.setdefault("sheets", []).append({"name": instance_name, "headers": copy.deepcopy(template.get("headers", [])), "rows": []})
+                    existing_pa_sheets[instance_name] = pa["sheets"][-1]
         for sh in list(pa.get("sheets", [])):
             name = sh.get("name")
             if name not in {"README", "LISTS"}:
@@ -228,86 +236,67 @@ def _clear_virtual_io_for_instance(state, name):
                 row.pop(field, None)
 
 
-def _add_instance(state, name, typ, values, warnings=None):
+def _pa_defaults(state, instance):
+    name = _name(instance)
+    typ = _type(state, instance.get("type_id"))
+    dut = next((d for d in (typ or {}).get("duts", []) if d.get("role") == "PA"), None)
+    rows = []
+    for index, member in enumerate((dut or {}).get("members", [])):
+        member_name = str(member.get("name") or "")
+        if not member_name:
+            continue
+        value = member.get("default_value")
+        rows.append({
+            "id": f"{name}:{member_name}", "Instance": name, "instance": name, "instance_id": name,
+            "Member": member_name, "member_name": member_name, "Type": member.get("iec_type"),
+            "data_type": member.get("iec_type"), "Default value": value, "default_value": value,
+            "Instance value": value, "value": value, "Section": member.get("section"),
+            "Unit": member.get("unit"), "Comment": member.get("comment"),
+            "Changed from supervision": False, "position": member.get("position", index),
+        })
+    return rows
+
+
+def _pa_editor_rows(state, instance):
+    name = _name(instance)
+    saved = {str(row.get("Member", row.get("member_name", ""))): row
+             for row in state.get("pa_values", [])
+             if str(row.get("instance_id", row.get("instance", row.get("Instance", "")))) == name}
+    rows = []
+    for default in _pa_defaults(state, instance):
+        member = str(default["Member"])
+        rows.append({**default, **copy.deepcopy(saved.get(member, {}))})
+    return rows
+
+
+def _remove_program_membership(state, name):
+    membership = state.get("program_membership")
+    if not isinstance(membership, dict):
+        return
+    for members in membership.values():
+        if isinstance(members, list):
+            members[:] = [member for member in members if str(member) != str(name)]
+
+
+def _add_instance(state, name, typ, values=None, warnings=None):
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
         raise ValueError("Instance name must start with a letter and contain only letters, numbers, and underscores")
     if any(_name(i).casefold() == name.casefold() for i in state.get("instances", [])):
         raise ValueError(f"Instance {name} already exists")
-    if not typ: raise ValueError("Choose an object type")
+    if not typ:
+        raise ValueError("Choose an object type")
+    from backend.v2_program_membership import freeze_membership
+    freeze_membership(state)
     state.setdefault("instances", []).append({"id": name, "name": name, "type_id": typ.get("id", typ.get("name"))})
-    pa = [_replace_instance(r, name) for r in _member_rows(typ, "TEMPLATE_PA")]
-    for row in pa:
-        row["Instance"] = name
-        value = values.get(str(row.get("Member")))
-        row["Instance value"] = None if value in (None, "") else value
-        row["id"] = f"{name}:{row.get('Member')}"; row["instance"] = name; row["instance_id"] = name
-        row["member_name"] = row.get("Member"); row["data_type"] = row.get("Type"); row["default_value"] = row.get("Default value"); row["value"] = row.get("Instance value")
-    state.setdefault("pa_values", []).extend(pa)
-    pa_book = state.get("workbooks", {}).get("PARAMETERS_PA.xlsx")
-    if pa_book:
-        source = f"{typ.get('name')}_1"
-        template_sheet = _sheet_map(pa_book).get(source) or next((s for s in pa_book.get("sheets",[]) if s.get("name") not in {"README","LISTS"}),None)
-        if template_sheet:
-            sh = {"name": name, "headers": copy.deepcopy(template_sheet["headers"]), "rows": []}
-            pa_book["sheets"].append(sh)
-            for row in pa: sh["rows"].append([row.get(h) for h in sh["headers"]])
-    tcp_book = state.get("workbooks", {}).get("MODBUS_TCP.xlsx")
-    created_tcp=[]
-    if tcp_book:
-        from backend.v2_addressing import allocate_tcp_points
-        clients = list(dict.fromkeys(str(r.get("Client") or "FUXA") for r in _member_rows(typ,"TEMPLATE_TCP")))
-        for client in clients:
-            added = allocate_tcp_points(state, name, client)
-            created_tcp.extend(added)
-            for row in added:
-                _set_or_append(tcp_book, row["sheet"], row)
-    rtu_book = state.get("workbooks", {}).get("MODBUS_RTU.xlsx")
-    rtu_tpl = _member_rows(typ, "TEMPLATE_RTU")
-    if rtu_tpl:
-        if rtu_book:
-            src = _sheet_map(rtu_book).get(f"{typ.get('name')}_1") or next((s for s in rtu_book.get("sheets",[]) if s.get("name") not in {"README","LINES","SLAVES","LISTS"}),None)
-            if src:
-                rtu_book["sheets"].append({"name": name, "headers": copy.deepcopy(src["headers"]), "rows": []})
-        for row in rtu_tpl:
-            row = _replace_instance(row, name)
-            row["Instance"] = name
-            row.update(id=f"{name}:{row.get('Table')}:{row.get('Equipment address')}", instance=name, instance_id=name,
-                       table=row.get("Table"), address=row.get("Equipment address"), channel_offset=row.get("Channel offset"),
-                       member_name=_member_from_var(row.get("GVL_COM variable")), data_type=row.get("Type"), direction=row.get("Direction"))
-            type_prefix=str(typ.get("name"))+"_"
-            row["GVL_MODBUS variable"]=str(row.get("GVL_MODBUS variable","")).replace(type_prefix,name+"_")
-            state.setdefault("rtu_channels", []).append(row)
-            if rtu_book: _set_or_append(rtu_book, name, row)
-        line=str((state.get("rtu_slaves") or [{}])[0].get("Line", "TO CHECK"))
-        used={int(s.get("Slave address")) for s in state.get("rtu_slaves",[]) if str(s.get("Line"))==line and str(s.get("Slave address","")).isdigit()}
-        slave_address=next((a for a in range(1,248) if a not in used),"TO CHECK")
-        state.setdefault("rtu_slaves", []).append({"Instance":name,"Object type":typ.get("name"),"Line":line,
-              "CODESYS slave device":"TO CHECK","Slave address":slave_address,"32-bit word order":"TO CHECK","Comment":"TO CHECK",
-              "id":name,"name":name,"instance_id":name,"type_id":typ.get("id",typ.get("name")),"line_id":line,"address":slave_address})
-    exc_book=state.get("workbooks",{}).get("EXCHANGES_EXC.xlsx")
-    existing_names={_name(i) for i in state.get("instances",[])}
-    for template in _member_rows(typ,"TEMPLATE_EXC"):
-        row=_replace_instance(template,name); a=str(row.get("Instance A","")); b=str(row.get("Instance B",""))
-        if a not in existing_names or b not in existing_names: continue
-        fn = next((f for f in state.get("exchange_functions", []) if str(f.get("id")) == str(row.get("FC"))), None)
-        instances = { _name(i): i for i in state.get("instances", []) }
-        if not fn or any(str(instances[n].get("type_id")) != str(fn.get(f"type_{side}_id")) for side, n in (("a", a), ("b", b))):
-            if warnings is not None:
-                warnings.append(f"Exchange {row.get('FC')} was not connected: its parameter types do not match the instances. Create a compatible exchange before connecting this copied type.")
-            continue
-        row.update(id=f"{row.get('FC')}:{a}:{b}",function_id=row.get("FC"),instance_a_id=a,instance_b_id=b,
-                   parameter_a_value=row.get("Parameter A value"),parameter_b_value=row.get("Parameter B value"))
-        state.setdefault("exchange_calls",[]).append(row)
-        if exc_book: _set_or_append(exc_book,"CALLS",row)
-    _connect_bound_upis(state)
-    return created_tcp
+    return []
 
 
 def _configuration(state, instance):
     name = _name(instance)
     by_instance = lambda key: [copy.deepcopy(r) for r in state.get(key, []) if str(r.get("instance_id", r.get("instance", r.get("Instance", "")))) == name]
+    pa_rows = _pa_editor_rows(state, instance)
     return {"revision": state.get("revision", 0), "instance": copy.deepcopy(instance),
-            "pa_values": by_instance("pa_values"), "io_channels": by_instance("io_channels"),
+            "pa_values": pa_rows, "io_channels": by_instance("io_channels"),
             "tcp_points": by_instance("tcp_points"), "rtu_slaves": [copy.deepcopy(r) for r in state.get("rtu_slaves", []) if str(r.get("instance_id", r.get("Instance", ""))) == name],
             "rtu_channels": by_instance("rtu_channels"),
             "options": {"io_channels": copy.deepcopy(state.get("io_channels", [])), "tcp_clients": copy.deepcopy(state.get("tcp_clients", [])), "rtu_lines": copy.deepcopy(state.get("rtu_lines", [])), "rtu_slaves": copy.deepcopy(state.get("rtu_slaves", [])),
@@ -337,40 +326,9 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
         try:
             inst = next((i for i in state.get("instances", []) if str(i.get("id", i.get("name"))) == str(body.instance_id) or str(i.get("name")) == str(body.instance_id)), None)
             if body.action == "create":
-                typ = _type(state, body.type_id); tcp_new=_add_instance(state, (body.name or "").strip(), typ, body.values, warnings)
-                if body.tcp_points:
-                    submitted={str(r.get("id")):r for r in body.tcp_points}
-                    if set(submitted)!={str(r.get("id")) for r in tcp_new}: raise ValueError("Review every proposed TCP address before saving")
-                    for row in tcp_new:
-                        edit=submitted[str(row["id"])]
-                        try: addr=int(edit.get("address",edit.get("Modbus address")))
-                        except (TypeError,ValueError): raise ValueError("TCP addresses must be whole numbers")
-                        lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")),state)
-                        if not lo<=addr<=hi: raise ValueError(f"TCP address must be between {lo} and {hi} for {row.get('Client',row.get('client_id'))}")
-                        from backend.v2_addressing import client_address_for
-                        row["Modbus address"]=addr;row["Client address"]=client_address_for(row.get("table"),addr,row.get("Client"));row["address"]=addr
-                        row["GVL_MODBUS variable"]=_tcp_variable(row.get("table",row.get("sheet")),addr)
-                    occupied={}
-                    for row in state.get("tcp_points",[]):
-                        key=(str(row.get("table","")),str(row.get("Modbus address",row.get("address",""))))
-                        if key[1].isdigit():
-                            if key in occupied: raise ValueError(f"TCP address {key[1]} is already used in {key[0]}")
-                            occupied[key]=row
-                if body.rtu_slaves:
-                    new_slaves=[r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance","")))==(body.name or "").strip()]
-                    submitted={str(r.get("id")):r for r in body.rtu_slaves}
-                    if set(submitted)!={str(r.get("id")) for r in new_slaves}: raise ValueError("Review every proposed RTU slave address before saving")
-                    for row in new_slaves:
-                        edit=submitted[str(row.get("id"))]; value=edit.get("address",edit.get("Slave address"))
-                        if value in (None,"", "TO CHECK") and str(row.get("Slave address"))=="TO CHECK": continue
-                        try: slave_address=int(value)
-                        except (TypeError,ValueError): raise ValueError("RTU slave address must be a whole number")
-                        if not 1<=slave_address<=247: raise ValueError("RTU slave address must be between 1 and 247")
-                        line=str(row.get("Line",row.get("line_id","")))
-                        if any(other is not row and str(other.get("Line",other.get("line_id","")))==line and str(other.get("Slave address",other.get("address",""))).isdigit() and int(other.get("Slave address",other.get("address")))==slave_address for other in state.get("rtu_slaves",[])):
-                            raise ValueError(f"RTU slave address {slave_address} is already used on {line}")
-                        row["Slave address"]=slave_address;row["address"]=slave_address
-                changes.append(f"Create {(body.name or '').strip()} ({typ.get('name') if typ else body.type_id}) with template PA, TCP and RTU rows")
+                typ = _type(state, body.type_id)
+                _add_instance(state, (body.name or "").strip(), typ, {})
+                changes.append(f"Create instance {(body.name or '').strip()} ({typ.get('name') if typ else body.type_id})")
             elif not inst: raise ValueError("Instance not found")
             elif body.action == "delete":
                 name = _name(inst)
@@ -387,11 +345,14 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                     else: state[key] = [r for r in state.get(key,[]) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) != name]
                 state["rtu_slaves"] = [r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance",""))) != name]
                 _clear_virtual_io_for_instance(state, name)
+                _remove_program_membership(state, name)
                 state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id")),str(r.get("instance_b_id"))}]
                 state.get("exchange_layout", {}).get("nodes", {}).pop(name, None)
                 changes.append(f"Delete {name}; release {impact['tcp_points']} TCP points, {impact['rtu_channels']} RTU channels, {impact['io_channels']} I/O assignments, and {impact['pa_values']} PA values")
             elif body.action == "pa":
-                by_member={str(x.get("Member",x.get("member_name"))):x for x in state.get("pa_values",[]) if str(x.get("instance_id",x.get("instance")))==_name(inst)}
+                existing_rows=[x for x in state.get("pa_values",[]) if str(x.get("instance_id",x.get("instance",x.get("Instance"))))==_name(inst)]
+                saved_by_member={str(x.get("Member",x.get("member_name"))):x for x in existing_rows}
+                by_member={str(x.get("Member",x.get("member_name"))):x for x in _pa_editor_rows(state, inst)}
                 for member,value in body.values.items():
                     if member not in by_member: raise ValueError(f"Unknown PA member {member}")
                     kind=str(by_member[member].get("Type",by_member[member].get("data_type",""))).upper()
@@ -408,7 +369,13 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                                 bounds={"BYTE":(0,255),"USINT":(0,255),"SINT":(-128,127),"WORD":(0,65535),"UINT":(0,65535),"INT":(-32768,32767),"DWORD":(0,4294967295),"UDINT":(0,4294967295),"DINT":(-2147483648,2147483647)}
                                 if kind in bounds and not bounds[kind][0]<=parsed<=bounds[kind][1]: raise ValueError()
                         except (ValueError,OverflowError): raise ValueError(f"{member} must be a valid {kind} value")
-                    by_member[member]["Instance value"]=value if value not in ("",None) else None; by_member[member]["value"]=value if value not in ("",None) else None
+                    row=saved_by_member.get(member)
+                    if row is None:
+                        row=by_member[member]
+                        row=copy.deepcopy(row)
+                        state.setdefault("pa_values",[]).append(row)
+                        saved_by_member[member]=row
+                    row["Instance value"]=value if value not in ("",None) else None; row["value"]=value if value not in ("",None) else None
                 changes.extend([f"{_name(inst)}.{m}: {v}" for m,v in body.values.items()])
             elif body.action == "io":
                 chosen = body.io_channels
@@ -487,15 +454,17 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
             else: raise ValueError("Unsupported instance action")
         except ValueError as exc: errors.append(str(exc))
         if errors: return {"token":None,"errors":errors,"warnings":warnings,"changes":changes}
-        _sync_workbooks(state)
-        from backend.v2_engine import validate_project
-        baseline_errors=set(validate_project(current).get("errors",[]))
-        validation=validate_project(state)
-        added_errors=[e for e in validation.get("errors",[]) if e not in baseline_errors]
-        if added_errors: return {"token":None,"errors":added_errors,"warnings":validation.get("warnings",[]),"changes":changes}
-        warnings.extend(validation.get("warnings",[]))
+        if body.action != "create":
+            _sync_workbooks(state)
+        if body.action != "create":
+            from backend.v2_engine import validate_project
+            baseline_errors=set(validate_project(current).get("errors",[]))
+            validation=validate_project(state)
+            added_errors=[e for e in validation.get("errors",[]) if e not in baseline_errors]
+            if added_errors: return {"token":None,"errors":added_errors,"warnings":validation.get("warnings",[]),"changes":changes}
+            warnings.extend(validation.get("warnings",[]))
         token=secrets.token_urlsafe(32)
-        session.add(ImportPreview(token=token,owner_id=user.id,state_payload=json.dumps(state,ensure_ascii=False),diff_payload=json.dumps({"kind":"v2-instance-edit","base_revision":current.get("revision",0)},ensure_ascii=False),expires_at=datetime.now(timezone.utc)+timedelta(hours=2)))
+        session.add(ImportPreview(token=token,owner_id=user.id,state_payload=json.dumps(state,ensure_ascii=False),diff_payload=json.dumps({"kind":"v2-instance-edit","action":body.action,"base_revision":current.get("revision",0)},ensure_ascii=False),expires_at=datetime.now(timezone.utc)+timedelta(hours=2)))
         session.commit()
         return {"token":token,"errors":errors,"warnings":warnings,"changes":changes,"configuration": _configuration(state, next((i for i in state.get("instances",[]) if _name(i)==(body.name or body.instance_id)),{})) if body.action!="delete" else None}
 
@@ -510,7 +479,8 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
         current=project_for(session)
         if current.get("revision",0)!=metadata.get("base_revision"): raise HTTPException(409,"Project changed after preview; create a new preview")
         state=json.loads(preview.state_payload)
-        _sync_workbooks(state)
+        if metadata.get("action") != "create":
+            _sync_workbooks(state)
         try: saved=store.save_project(session,state,username=user.username,expected_revision=metadata["base_revision"])
         except ValueError as exc: raise HTTPException(409,str(exc)) from exc
         session.delete(preview); session.commit()

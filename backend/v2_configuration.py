@@ -56,12 +56,18 @@ def _type_for(state, instance):
 def apply_changes(state, changes):
     """Apply declarative edits to a copy; return warnings and required manual work."""
     warnings, manual = [], []
+    baseline_errors=set(validate_configuration(state)["errors"])
     for change in changes:
         coll, op = change.get("collection"), change.get("op")
         if coll not in COLLECTIONS or op not in {"update", "create", "delete"}: raise ValueError("Unknown collection or operation")
         rows = state.setdefault(coll, []); ident = str(change.get("id", "")); values = change.get("values") or {}
         if not isinstance(values, dict): raise ValueError("values must be an object")
         row = next((r for r in rows if _ident(r) == ident), None) if ident else None
+        if op == "create" and coll in {"tcp_points", "rtu_channels"}:
+            from backend.v2_manual_comm import create_point
+            create_point(state, coll, values)
+            manual.append("Point configured. Add the instance explicitly to the matching GFC in Code généré when ready.")
+            continue
         if op == "create":
             if coll not in {"tcp_clients", "rtu_slaves"}: raise ValueError(f"Creating {coll} rows is not supported")
             row = copy.deepcopy(values)
@@ -199,7 +205,8 @@ def apply_changes(state, changes):
                 manual.append(f"Add and verify {variable} ({row.get('IOMAP type')}) in the physical I/O mapping and CODESYS device configuration.")
         _refresh_aliases(row, coll)
     result=validate_configuration(state)
-    if result["errors"]: raise ValueError(result["errors"][0])
+    new_errors=[e for e in result["errors"] if e not in baseline_errors]
+    if new_errors: raise ValueError(new_errors[0])
     return list(dict.fromkeys(warnings+result["warnings"])), list(dict.fromkeys(manual))
 
 
@@ -431,7 +438,8 @@ def _get_configuration(state):
             client["ranges"]=client_ranges(state,str(client.get("Client",client.get("id",""))))
         except (ImportError,TypeError,ValueError,KeyError): client["ranges"]={}
     result["instances"]=copy.deepcopy(state.get("instances",[])); result["types"]=copy.deepcopy(state.get("types",[]))
-    result["options"]={"lists":{},"io_members":[]}
+    from backend.v2_manual_comm import members_for
+    result["options"]={"lists":{},"io_members":[],"communication_members":{str(i.get("name") or i.get("id")):members_for(state,i) for i in state.get("instances",[])}}
     for filename,book in state.get("workbooks",{}).items():
         sh=_sheet_map(book).get("LISTS")
         if sh: result["options"]["lists"][filename]=copy.deepcopy(sh.get("rows",[]))
@@ -490,9 +498,10 @@ def register_configuration_routes(app,get_session,current_user,csrf):
             synchronize_workbooks(state)
             validation=v2_engine.validate_project(state); baseline=set(v2_engine.validate_project(current).get("errors",[]))
             errors=[e for e in validation.get("errors",[]) if e not in baseline]
-            errors.extend(e for e in validate_configuration(state)["errors"] if e not in errors)
-            warnings.extend(validation.get("warnings",[]))
-            capacity_notes=_capacity_warnings(state)
+            errors.extend(e for e in validate_configuration(state)["errors"] if e not in errors and e not in set(validate_configuration(current)["errors"]))
+            # Unrelated TO CHECK fields belong to their own configuration view.
+            # Do not turn this focused action into a project-wide warning list.
+            capacity_notes=[n for n in _capacity_warnings(state) if n not in _capacity_warnings(current)]
             warnings.extend(capacity_notes)
             if capacity_notes: manual.append("Resize the CODESYS GVL_MODBUS/server ranges, import refreshed XML references, and regenerate declarations before exporting or deploying these points.")
             if errors: return {"token":None,"errors":list(dict.fromkeys(errors)),"warnings":list(dict.fromkeys(warnings)),"changes":changes,"manual_actions":manual}

@@ -35,7 +35,7 @@ class VersionEvent(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now,nullable=False)
 
 SHARED=('types','catalog_options')
-COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges'}
+COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme'}
 
 def _catalog(state):
     result={k:copy.deepcopy(state.get(k,[] if k=='types' else {})) for k in SHARED}
@@ -158,6 +158,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     if not isinstance(state,dict):raise TypeError('Project state must be an object')
     pid=int(session.info.get('workspace_id',1))
     if state.get('project_id') not in (None,pid):raise ValueError('Le projet a changé depuis la préparation de cette action')
+    blocks_only=session.info.pop('type_blocks_only',False)
     revision=_lock(session)
     project=session.get(store.V2Project,pid)
     if project:session.refresh(project)
@@ -172,8 +173,12 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     if changed:
         for other in session.scalars(select(store.V2Project).where(store.V2Project.id!=pid)).all():
             _,old=_raw(session,other.id);before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
-            baseline_errors=set(_compatibility_errors(before))
-            errors=[e for e in _compatibility_errors(proposed) if e not in baseline_errors]
+            if blocks_only:
+                known={str(t.get('id')) for t in proposed.get('types',[])} | {str(t.get('name')) for t in proposed.get('types',[])}
+                errors=[f"Type {i.get('type_id')} is still used by {i.get('name')}" for i in proposed.get('instances',[]) if str(i.get('type_id')) not in known]
+            else:
+                baseline_errors=set(_compatibility_errors(before))
+                errors=[e for e in _compatibility_errors(proposed) if e not in baseline_errors]
             if errors:raise ValueError(f"Catalogue incompatible avec le projet {other.name} : {errors[0]}")
             affected.append((other.id,before,proposed))
     event=session.info.pop('version_event',None)

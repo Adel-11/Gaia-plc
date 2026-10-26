@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 IEC_RESERVED = {"ACTION", "ARRAY", "AT", "BOOL", "CASE", "CONFIGURATION", "CONSTANT", "DATE", "DINT", "ELSE", "ELSIF", "END_ACTION", "END_CASE", "END_CONFIGURATION", "END_FOR", "END_FUNCTION", "END_FUNCTION_BLOCK", "END_IF", "END_PROGRAM", "END_REPEAT", "END_RESOURCE", "END_STRUCT", "END_TYPE", "END_VAR", "END_WHILE", "EXIT", "FALSE", "FOR", "FUNCTION", "FUNCTION_BLOCK", "IF", "INT", "LREAL", "PROGRAM", "REAL", "REPEAT", "RESOURCE", "RETURN", "STRING", "STRUCT", "TIME", "TRUE", "TYPE", "UDINT", "UINT", "VAR", "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_TEMP", "VAR_EXTERNAL", "WHILE", "WORD"}
 ROLES = {"Equipment": ["PA", "COM", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "EXC", "INT"]}
+IEC_SCALARS = {"BOOL", "BYTE", "WORD", "DWORD", "LWORD", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "TIME", "DATE", "TIME_OF_DAY", "DATE_AND_TIME", "STRING", "WSTRING"}
 
 
 class TypeCreate(BaseModel):
@@ -39,6 +40,41 @@ class ApplyTypeCreate(BaseModel):
 
 def _identifier(value):
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(value or ""))) and str(value).upper() not in IEC_RESERVED
+
+
+def _iec_type_error(value, known_types):
+    text = re.sub(r"\s+", "", str(value or ""))
+    if re.fullmatch(r"(?:W?STRING)\(\d+\)", text, re.I):
+        return None
+    array = re.fullmatch(r"ARRAY\[(-?\d+)\.\.(-?\d+)\]OF([A-Za-z_][A-Za-z0-9_]*)", text, re.I)
+    if array:
+        if int(array.group(1)) > int(array.group(2)):
+            return f"Invalid array bounds in IEC type {value!r}."
+        text = array.group(3)
+    if text.upper() in IEC_SCALARS or text in known_types or text in {"TON", "TOF", "TP", "R_TRIG", "F_TRIG", "CTU", "CTD", "CTUD", "DUT_Union_Real_Word"}:
+        return None
+    return f"Unknown IEC type {value!r}."
+
+
+def _type_validation_closure(root_type, existing_types):
+    """Select the root type and only existing types needed by its DUT members."""
+    selected = [root_type]
+    available = {str(dut.get("name")): candidate
+                 for candidate in existing_types
+                 for dut in candidate.get("duts", []) if dut.get("name")}
+    scanned = set()
+    referenced_names = set()
+    while len(scanned) < len(selected):
+        candidate = next(item for item in selected if id(item) not in scanned)
+        scanned.add(id(candidate))
+        for dut in candidate.get("duts", []):
+            for member in dut.get("members", []):
+                ref = re.sub(r"^ARRAY\s*\[[^]]+\]\s*OF\s*", "", str(member.get("iec_type", "")), flags=re.I).strip()
+                dependency = available.get(ref)
+                if dependency is not None and dependency not in selected:
+                    selected.append(dependency)
+                    referenced_names.update(str(item.get("name")) for item in dependency.get("duts", []) if item.get("name"))
+    return selected, referenced_names
 
 
 def _replace_st_identifiers(text, mapping):
@@ -375,6 +411,8 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
 
     def construct(current, request):
         errors, warnings = [], []
+        if request.rtu or request.rtu_default or request.supervision or request.upi_bindings:
+            warnings.append("Communication recipes are not created with a type; add RTU, TCP, I/O, or UPI configuration after the type exists.")
         if request.kind not in ROLES: errors.append("Kind must be Equipment or Functional unit (UPI).")
         if not _identifier(request.name): errors.append("Name must be a valid non-reserved IEC identifier.")
         if any(str(t.get("name", "")).casefold() == request.name.casefold() for t in current.get("types", [])):
@@ -386,10 +424,13 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         old = str(src.get("name")) if src else ""
         fb_old = str((src or {}).get("fb", {}).get("name") or "")
         typ.update(id=request.name, name=request.name, kind=request.kind, description=request.description, communication=request.communication, folder=request.folder or (src or {}).get("folder", ""))
-        if request.upi_bindings is not None:
-            typ["upi_bindings"] = copy.deepcopy(request.upi_bindings)
-        if request.supervision is not None:
-            typ["supervision"] = copy.deepcopy(request.supervision)
+        # New types define an isolated PLC object. Communication recipes are
+        # configured later through the dedicated project editors.
+        for key in ("upi_bindings", "supervision"):
+            typ.pop(key, None)
+        typ["rtu"] = {k: [] for k in ("RTU_COILS", "RTU_DI", "RTU_IR", "RTU_HR")}
+        typ["rtu_default"] = {}
+        typ["templates"] = {}
         typ["source_file"] = f"TYPE_{request.name}.xlsx"
         typ["fb"] = copy.deepcopy(typ.get("fb") or {})
         typ["fb"]["name"] = f"{'FB_INST' if request.kind == 'Equipment' else 'FB'}_{request.name}"
@@ -460,56 +501,20 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
                 target["members"] = copy.deepcopy(provided.get("members", []))
                 for i, m in enumerate(target["members"]):
                     m.update(position=i, id=f"{request.name}:{target['role']}:{i}")
-        if request.standard_modes_from:
-            modes_type = next((t for t in current.get("types", []) if str(t.get("name")) == request.standard_modes_from or str(t.get("id")) == request.standard_modes_from), None)
-            if modes_type is None:
-                errors.append("Source type for standard modes was not found.")
-            elif "UPI" not in str(modes_type.get("kind", "")).upper():
-                errors.append("Standard modes must be copied from a Functional unit (UPI) type.")
-            else:
-                for role in ("COM", "EXC"):
-                    destination = next((d for d in typ["duts"] if d.get("role") == role), None)
-                    source_dut = next((d for d in modes_type.get("duts", []) if d.get("role") == role), None)
-                    if destination and source_dut:
-                        def is_mode_member(member):
-                            name = str(member.get("name", "")).upper()
-                            return any(part in name for part in ("LOCAL", "AUTO"))
-                        selected = [copy.deepcopy(m) for m in source_dut.get("members", []) if is_mode_member(m)]
-                        have = {str(m.get("name", "")).casefold() for m in destination.get("members", [])}
-                        for member in selected:
-                            if str(member.get("name", "")).casefold() not in have:
-                                member["position"] = len(destination["members"])
-                                destination["members"].append(member)
-                # UPI mode FBs contain the complete local/auto behavior and
-                # only use the shared COM, EXC, and INT roles.
-                typ["fb"]["body"] = _replace_st_identifiers(modes_type.get("fb", {}).get("body", ""), {
-                    str(modes_type.get("name")): request.name,
-                    str(modes_type.get("fb", {}).get("name", "")): typ["fb"]["name"],
-                })
         if request.body is not None: typ["fb"]["body"] = request.body
         if request.custom_code is not None: typ["fb"]["custom_code"] = request.custom_code
-        if request.rtu_default is not None: typ["rtu_default"] = copy.deepcopy(request.rtu_default)
-        if request.rtu is not None: typ["rtu"] = copy.deepcopy(request.rtu)
-        # PA import rows always follow the finalized DUT_PA members. Keep any
-        # richer source comments by member name while refreshing type/default.
-        previous_pa = {r.get("Member"): r for r in (typ.get("templates") or {}).get("TEMPLATE_PA", [])}
-        typ.setdefault("templates", {})["TEMPLATE_PA"] = _pa_templates(typ)
-        for row in typ["templates"]["TEMPLATE_PA"]:
-            old_row = previous_pa.get(row.get("Member"), {})
-            for key in ("Comment", "Changed from supervision"):
-                if old_row.get(key) not in (None, ""): row[key] = old_row[key]
-        if request.rtu is not None:
-            typ.setdefault("templates", {})["TEMPLATE_RTU"] = _rtu_templates(typ)
-        if request.supervision is not None:
-            typ["supervision"] = copy.deepcopy(request.supervision)
-            tcp_rows, tcp_errors = _tcp_templates(typ, request.supervision)
-            typ.setdefault("templates", {})["TEMPLATE_TCP"] = tcp_rows
-            errors.extend(tcp_errors)
+        # Do not synthesize PA/RTU/TCP/IO/EXC instance recipes during type creation.
+        typ["templates"] = {}
         if not any(d.get("role") == "INT" for d in typ["duts"]):
             typ["duts"].append({"id": f"{request.name}:DUT_INT", "name": f"DUT_INT_{request.name}", "role": "INT", "members": [{"id": f"{request.name}:INT:0", "position": 0, "name": "SPARE", "iec_type": "BOOL"}]})
+        known_types = {str(name) for existing in current.get("types", [])
+                       for name in [existing.get("name"), *(dut.get("name") for dut in existing.get("duts", []))] if name}
+        known_types.update(str(d.get("name")) for d in typ["duts"] if d.get("name"))
         for d in typ["duts"]:
             for m in d.get("members", []):
                 if not _identifier(m.get("name")): errors.append(f"Invalid member name in {d['name']}: {m.get('name')}")
+                type_error = _iec_type_error(m.get("iec_type"), known_types)
+                if type_error: errors.append(f"{d['name']}.{m.get('name')}: {type_error}")
         state = copy.deepcopy(current)
         state["types"].append(typ)
         state.setdefault("workbooks", {})[typ["source_file"]] = _book_for_type(engine, typ, typ["source_file"])
@@ -518,18 +523,13 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         normalized["fb"].update(body=typ["fb"].get("body", ""), custom_code=typ["fb"].get("custom_code", ""))
         if typ["fb"].get("interface_xml"):
             normalized["fb"]["interface_xml"] = typ["fb"]["interface_xml"]
-        normalized["supervision"] = copy.deepcopy(typ.get("supervision", []))
-        normalized["templates"] = copy.deepcopy(typ.get("templates", normalized.get("templates", {})))
-        normalized["upi_bindings"] = copy.deepcopy(typ.get("upi_bindings", []))
+        normalized["templates"] = {}
+        normalized.pop("upi_bindings", None)
         normalized["fb"]["body"] = typ["fb"].get("body", "")
         normalized["fb"]["custom_code"] = typ["fb"].get("custom_code", "")
         from backend.v2_fb_flow import ensure_flow
         ensure_flow(normalized["fb"])
         state["types"][-1] = normalized
-        if request.upi_bindings is not None:
-            binding_errors, bindings = _prepare_upi_bindings(state, normalized, request.upi_bindings)
-            errors.extend(binding_errors)
-            normalized["upi_bindings"] = bindings
         if request.processing_code is not None:
             from backend.v2_fb_flow import update_flow
             code = request.processing_code
@@ -547,12 +547,27 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         program_objects = {}
         if state and not errors:
             try:
-                program_objects = plc.build_program(state)
-                xml = plc.serialize_program(program_objects, state, list(program_objects))
+                typ = state["types"][-1]
+                validation_state = copy.deepcopy(state)
+                selected_types, referenced_names = _type_validation_closure(typ, current.get("types", []))
+                validation_state["types"] = selected_types
+                validation_state["instances"] = []
+                for collection in ("exchange_functions", "exchange_calls", "exchange_functions_detail",
+                                  "tcp_points", "rtu_channels", "io_channels", "virtual_io"):
+                    validation_state[collection] = []
+                program_objects = plc.build_program(validation_state)
+                xml = plc.serialize_program(program_objects, validation_state, list(program_objects))
                 from backend.v2_plc_validation import validate_xml
-                checked = validate_xml(xml, state, program_objects)
-                errors.extend(checked.get("errors", [])); warnings.extend(checked.get("warnings", []))
-            except Exception as exc: errors.append(f"PLCopen validation failed: {exc}")
+                checked = validate_xml(xml, validation_state, program_objects)
+                scoped_names = {str(typ.get("name")), str(typ.get("fb", {}).get("name")),
+                                *(str(d.get("name")) for d in typ.get("duts", [])), *referenced_names}
+                scoped_errors = [message for message in checked.get("errors", [])
+                                 if any(name and name in str(message) for name in scoped_names)]
+                errors.extend(scoped_errors)
+                warnings.extend(message for message in checked.get("warnings", [])
+                                if any(name and name in str(message) for name in scoped_names))
+            except Exception as exc:
+                errors.append(f"New type PLC blocks could not be built: {exc}")
         if errors: return {"token": None, "errors": errors, "warnings": warnings, "changes": [], "objects": [], "generated_st": ""}
         typ = state["types"][-1]
         changes = [f"Create type {typ['name']}", f"Create workbook {typ['source_file']}"]
@@ -590,6 +605,10 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         current = project_for(session)
         if current.get("revision", 0) != meta.get("base_revision"): raise HTTPException(409, "Project changed after preview; create a new preview")
         state = json.loads(preview.state_payload)
-        saved = store.save_project(session, state, username=getattr(user, "username", "admin"), expected_revision=current.get("revision", 0))
+        session.info["type_blocks_only"] = True
+        try:
+            saved = store.save_project(session, state, username=getattr(user, "username", "admin"), expected_revision=current.get("revision", 0))
+        finally:
+            session.info.pop("type_blocks_only", None)
         session.delete(preview); session.commit()
         return {"revision": saved.get("revision"), "type": next(t for t in saved["types"] if t.get("source_file") and t["source_file"] not in current.get("workbooks", {}))}

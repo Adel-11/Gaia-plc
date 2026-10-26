@@ -50,8 +50,9 @@ def test_new_equipment_is_reviewed_then_applied_and_excel_roundtrips(tmp_path, m
         created = next(t for t in project["types"] if t["name"] == "NEW_PUMP")
         assert {d["role"] for d in created["duts"]} == {"PA", "COM", "EXC", "IO", "INT"}
         assert created["fb"]["body"].startswith("// INPUTS") and "INTERN.ACTIVE := TRUE" in created["fb"]["body"]
-        assert created["templates"]["TEMPLATE_PA"][0]["Default value"] == 12.5
-        assert created["templates"]["TEMPLATE_TCP"][0]["GVL_COM variable"].endswith("SCADA_INPUT_TEST")
+        assert created["templates"] == {}
+        assert created.get("supervision", []) == []
+        assert len(result["warnings"]) == 1 and "Communication recipes" in result["warnings"][0]
         assert not any(i["type_id"] == "NEW_PUMP" for i in project["instances"])
         workbook_response = client.get("/api/v2/exports/TYPE_NEW_PUMP.xlsx")
         assert workbook_response.status_code == 200
@@ -89,8 +90,11 @@ def test_copy_and_upi_defaults_and_invalid_duplicate_name(tmp_path, monkeypatch)
         assert equipment_copy["errors"] == [], equipment_copy["errors"]
         copied_equipment = client.post("/api/v2/types/apply", headers=headers, json={"token": equipment_copy["token"]}).json()["type"]
         dip = next(t for t in project["types"] if t["name"] == "DIP1500")
-        assert {key: len(value) for key, value in copied_equipment["rtu"].items()} == {key: len(value) for key, value in dip["rtu"].items()}
-        assert len(copied_equipment["templates"]["TEMPLATE_RTU"]) == len(dip["templates"]["TEMPLATE_RTU"])
+        assert set(copied_equipment["rtu"]) == set(dip["rtu"])
+        assert all(not rows for rows in copied_equipment["rtu"].values())
+        assert copied_equipment["templates"] == {}
+        assert copied_equipment.get("rtu_default") in (None, {})
+        assert copied_equipment.get("upi_bindings", []) == []
         assert "TON_PULSE" in copied_equipment["fb"].get("interface_xml", "")
         latest_revision = client.get("/api/v2/project").json()["revision"]
         duplicate = client.post("/api/v2/types/preview", headers=headers, json={"revision": latest_revision,

@@ -215,6 +215,8 @@ def _excel_state(state: dict, book: dict) -> None:
                     row["table"] = row.get("Table"); row["address"] = row.get("Equipment address")
                     row["channel_offset"] = row.get("Channel offset"); row["member_name"] = _member_from_var(row.get("GVL_COM variable") or row.get("DUT_COM member"))
                     row["data_type"] = row.get("Type"); row["direction"] = row.get("Direction")
+                    if re.fullmatch(r"GVL_MODBUS\.[A-Za-z_][A-Za-z0-9_]*", str(row.get("GVL_MODBUS variable") or "")):
+                        row["manual_scalar"] = True
                     state["rtu_channels"].append(row)
     elif filename == "IO_PHYSICAL.xlsx":
         state["io_modules"] = [{**r, "id": str(r.get("Slot", "")), "slot": r.get("Slot"),
@@ -773,6 +775,8 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
     previous = copy.deepcopy(current.get("workbooks", {}).get(filename, {"filename": filename, "sheets": []}))
     changed = _merge_books(previous, incoming, "replace" if mode == "replace" else "merge")
     new_state = copy.deepcopy(current)
+    from backend.v2_program_membership import freeze_membership
+    freeze_membership(new_state)
     new_state.setdefault("workbooks", {})[filename] = changed
     previous_fuxa = copy.deepcopy(current.get("fuxa", {}))
     try:

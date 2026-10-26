@@ -6,6 +6,7 @@ from lxml import etree
 from backend.v2_engine import load_pack
 from backend.v2_plc import PLC, build_program, serialize_program
 from backend.v2_plc_validation import validate_xml
+from backend.v2_program_membership import freeze_membership
 
 
 def _state():
@@ -87,6 +88,7 @@ def test_pa_override_and_exchange_call_values_are_model_driven():
 
 def test_new_instance_has_gvl_and_gfb_declarations_and_pa_override():
     state = _state()
+    membership = freeze_membership(state)
     state["instances"].append({"id": "DIP1500_2", "name": "DIP1500_2", "type_id": "DIP1500"})
     row = copy.deepcopy(next(p for p in state["pa_values"] if p.get("instance") == "DIP1500_1"))
     row.update({"instance": "DIP1500_2", "instance_id": "DIP1500_2", "value": 222})
@@ -96,7 +98,11 @@ def test_new_instance_has_gvl_and_gfb_declarations_and_pa_override():
     assert objects["GVL_PA"]["element"].xpath("./p:variable[@name='PA_DIP1500_2']//p:simpleValue[@value='222']", namespaces={"p": PLC})
     gfb = objects["GFB_INST"]["element"]
     assert gfb.xpath("./p:interface/p:localVars/p:variable[@name='FB_DIP1500_2']", namespaces={"p": PLC})
-    assert "FB_DIP1500_2(" in gfb.xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
+    body = gfb.xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
+    assert "FB_DIP1500_2(" not in body
+    membership["GFB_INST"].append("DIP1500_2")
+    objects = build_program(state)
+    assert "FB_DIP1500_2(" in objects["GFB_INST"]["element"].xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
     xml = serialize_program(objects, state, list(objects))
     assert validate_xml(xml, state, objects)["errors"] == []
 
@@ -140,6 +146,7 @@ def test_new_persistent_list_keeps_qualified_only_and_drops_internal_checksums()
 
 def test_new_explicit_modbus_and_iomap_names_get_inferred_declarations():
     state = _state()
+    membership = freeze_membership(state)
     state["instances"].append({"id": "DIP1500_2", "name": "DIP1500_2", "type_id": "DIP1500"})
     rtu = copy.deepcopy(next(p for p in state["rtu_channels"] if p.get("instance") == "DIP1500_1" and p.get("Direction") == "PLC to Equipment"))
     rtu.update({"instance": "DIP1500_2", "instance_id": "DIP1500_2", "GVL_MODBUS variable": "GVL_MODBUS.DIP1500_2_Coils", "GVL_COM variable": "GVL_COM.COM_DIP1500_2.COM_OUTPUT_COILS"})
@@ -152,5 +159,14 @@ def test_new_explicit_modbus_and_iomap_names_get_inferred_declarations():
     iomap = objects["GVL_IOMAP"]["element"]
     assert modbus.xpath("./p:variable[@name='DIP1500_2_Coils']/p:type/p:array/p:baseType/p:BOOL", namespaces={"p": PLC})
     assert iomap.xpath("./p:variable[@name='IOMAP_NEW_ANALOG']/p:type/p:DWORD", namespaces={"p": PLC})
+    com_body = objects["GFC_COM_OUT"]["element"].xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
+    io_block = "GFC_IO_IN" if str(io.get("I/O type", "")).upper() in {"AI", "DI"} else "GFC_IO_OUT"
+    io_body = objects[io_block]["element"].xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
+    assert "GVL_MODBUS.DIP1500_2_Coils := GVL_COM.COM_DIP1500_2.COM_OUTPUT_COILS;" not in com_body
+    assert "GVL_IOMAP.IOMAP_NEW_ANALOG" not in io_body
+    membership["GFC_COM_OUT"].append("DIP1500_2")
+    membership[io_block].append("DIP1500_2")
+    objects = build_program(state)
     assert "GVL_MODBUS.DIP1500_2_Coils := GVL_COM.COM_DIP1500_2.COM_OUTPUT_COILS;" in objects["GFC_COM_OUT"]["element"].xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
+    assert "GVL_IOMAP.IOMAP_NEW_ANALOG" in objects[io_block]["element"].xpath("string(.//p:body/p:ST/h:xhtml)", namespaces={"p": PLC, "h": "http://www.w3.org/1999/xhtml"})
 

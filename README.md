@@ -344,3 +344,40 @@ isolation or saving fails, stop writes and restore that snapshot together with
 stage 8 application commit `780591fb241cd0418a45996253b599c1574fdb4a`.
 Do not run the older application against the migrated database as a rollback.
 The application update does not download code to the PLC or change FUXA.
+
+
+## Simplified workflow: blocks first, explicit integration
+
+This workflow supersedes the automatic template/UPI provisioning described above.
+Creating or copying a type creates its DUT and FB blocks only. The three-step
+form contains identity, blocks, and review. It does not create communications,
+addresses, exchanges, UPI recipes, or GFC changes. Type validation covers its own
+blocks and references; unrelated project errors do not block its creation/editing.
+
+Declaring an instance adds only its structured declarations and local FB instance
+block. It creates no PA rows, address reservations, RTU slave, IO assignment,
+exchange pair, or execution call. Parameter defaults come from DUT_PA until
+explicitly overridden. The instance's “Blocs et code” editor edits the shared
+type, with a notice that all instances and projects using that type are affected.
+
+Configure communication points explicitly in Communications after declaring the
+instance. One TCP point maps one BOOL/16-bit COM leaf to a chosen client/table/
+address. For 32-bit union members, choose their individual Word_value leaves.
+RTU requires an explicitly created slave first; each new manual channel maps one
+COM leaf to a unique scalar GVL_MODBUS variable. Existing legacy array mappings
+remain unchanged. Exchanges are configured separately between existing instances.
+
+In Code généré, select each GFC or GFB. Its instance panel lists what has been
+added and what has not, with explicit Add/Remove controls and a preview of the
+resulting ST before saving. GFB membership controls execution calls; local FB
+variables remain declared. GFC_COM/IO membership controls copying; GFC_EXC needs
+both participants to be selected. Declared but unconnected instances are pending
+work, not creation errors. Full export still checks actual code consistency.
+
+The JSON `program_membership` stores these selections per project. Projects
+without it retain their existing calls. Before adding a new instance or importing
+Excel, the existing selections are frozen so new declarations cannot silently
+join the execution program. Existing addresses, calls and data are retained.
+There is no schema migration. Older releases ignore explicit membership, so
+review any generated XML carefully if rolling back to `284626d`; the application
+never downloads a program to the running PLC.

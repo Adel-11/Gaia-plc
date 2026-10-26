@@ -239,7 +239,9 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         parts=com.split("."); typ=types.get(str(instances.get(inst,{}).get("type_id")))
         member_name=re.sub(r"\[.*$","",parts[1]) if len(parts)>1 else ""
         member=next((m for d in (typ or {}).get("duts",[]) if d.get("role")=="COM" for m in d.get("members",[]) if m.get("name")==member_name),None)
-        if member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
+        if row.get("manual_scalar"):
+            _add_gvl_variable(modbus,base,row.get("Type") or "BOOL")
+        elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
     for row in state.get("io_channels",[]):
         inst=str(row.get("Instance") or row.get("instance_id") or "")
         if inst and inst not in valid_instances: continue
@@ -278,6 +280,9 @@ def _tcp_address_expression(point, state):
 
 def _generated_objects(objs, state):
     """Refresh generated calls and copy POUs from current workbook rows."""
+    from backend.v2_program_membership import freeze_membership
+    legacy_membership = not isinstance(state.get("program_membership"), dict)
+    membership = freeze_membership(state)
     types = {str(t.get("name")): t for t in state.get("types", [])}
     instances = state.get("instances", [])
     equips, upis = [], []
@@ -289,6 +294,11 @@ def _generated_objects(objs, state):
     equips.sort(key=lambda pair: (str(pair[1].get("folder", "")), str(pair[0].get("name", ""))))
     upis.sort(key=lambda pair: (str(pair[1].get("folder", "")), str(pair[0].get("name", ""))))
     valid_instances={str(i.get("name") or i.get("id")) for i,_ in equips+upis}
+    instance_name_by_id={str(i.get("id")):str(i.get("name") or i.get("id")) for i,_ in equips+upis}
+    def included(block, identifier):
+        value=str(identifier or "")
+        name=instance_name_by_id.get(value,value)
+        return name in set(membership.get(block, []))
     _ensure_mapped_declarations(objs,state,valid_instances)
     # Keep global variable names and declared types in sync with model instances.
     for gvl, role in (("GVL_COM", "COM"), ("GVL_EXC", "EXC"), ("GVL_IO", "IO"), ("GVL_PA", "PA")):
@@ -343,18 +353,20 @@ def _generated_objects(objs, state):
                 else: order_attr.set("Value",str(order))
     # Regenerate instance FB calls.
     if "GFB_INST" in objs:
-        text = "//==============================================================================\n// GFB_INST\n// Calls every equipment instance\n//==============================================================================\n\n"
+        text = "//==============================================================================\n// GFB_INST\n// Calls selected equipment instances\n//==============================================================================\n\n"
         _sync_gfb_instances(objs["GFB_INST"]["element"], equips, upi=False)
         for inst, typ in equips:
             nm = str(inst.get("name") or inst.get("id")); fb_name = typ.get("fb", {}).get("name", "")
+            if nm not in membership["GFB_INST"]: continue
             # Equipment FB convention is FB_<instance>.
             text += f"//--- {nm}\nFB_{nm}(\n\tPA  := GVL_PA.PA_{nm},\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm},\n\tIO  := GVL_IO.IO_{nm});\n\n"
         _pou_text(objs["GFB_INST"], text)
     if "GFB_UPI" in objs:
-        text = "//==============================================================================\n// GFB_UPI\n// Calls every functional unit (UPI)\n//==============================================================================\n\n"
+        text = "//==============================================================================\n// GFB_UPI\n// Calls selected functional units (UPI)\n//==============================================================================\n\n"
         _sync_gfb_instances(objs["GFB_UPI"]["element"], upis, upi=True)
         for inst, typ in upis:
             nm = str(inst.get("name") or inst.get("id")); fb_name = typ.get("fb", {}).get("name", "FB_" + nm)
+            if nm not in membership["GFB_UPI"]: continue
             text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
         _pou_text(objs["GFB_UPI"], text)
     # TCP copy statements use the exact mapped variable identifiers from Excel.
@@ -362,8 +374,8 @@ def _generated_objects(objs, state):
     tcp_points=[p for p in state.get("tcp_points",[]) if str(p.get("Instance") or p.get("instance_id") or "") in valid_instances]
     in_rank=_reference_com_rank("GFC_COM_IN"); out_rank=_reference_com_rank("GFC_COM_OUT")
     def com_rank(p, ranks): return ranks.get(_com_key(p.get("GVL_COM variable")),10**9)
-    tcp_in_rows=sorted((p for p in tcp_points if p.get("Direction")=="Client to PLC"),key=lambda p:com_rank(p,in_rank))
-    tcp_out_rows=sorted((p for p in tcp_points if p.get("Direction")!="Client to PLC"),key=lambda p:com_rank(p,out_rank))
+    tcp_in_rows=sorted((p for p in tcp_points if p.get("Direction")=="Client to PLC" and included("GFC_COM_IN",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,in_rank))
+    tcp_out_rows=sorted((p for p in tcp_points if p.get("Direction")!="Client to PLC" and included("GFC_COM_OUT",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,out_rank))
     for p in tcp_in_rows+tcp_out_rows:
         mapped = _tcp_address_expression(p, state); com = str(p.get("GVL_COM variable") or "").removeprefix("GVL_COM.")
         if str(p.get("Word", "")).upper() in {"LSW", "MSW"} and ".Word_value[" in com:
@@ -372,14 +384,16 @@ def _generated_objects(objs, state):
         stmt = f"GVL_COM.{com} := GVL_MODBUS.{mapped};" if p.get("Direction") == "Client to PLC" else f"GVL_MODBUS.{mapped} := GVL_COM.{com};"
         (tcp_in if p.get("Direction") == "Client to PLC" else tcp_out).append(stmt)
     # RTU channels are whole arrays, grouped to avoid emitting one copy per register.
-    rtu_rows=[p for p in state.get("rtu_channels",[]) if str(p.get("instance") or p.get("instance_id") or "") in valid_instances]
+    rtu_rows=[p for p in state.get("rtu_channels",[]) if str(p.get("instance") or p.get("instance_id") or "") in valid_instances and included("GFC_COM_IN" if p.get("Direction")=="Equipment to PLC" else "GFC_COM_OUT",p.get("instance") or p.get("instance_id"))]
     rtu_rows=sorted(rtu_rows,key=lambda p:com_rank(p,in_rank if p.get("Direction")=="Equipment to PLC" else out_rank))
     seen_rtu = set()
     for p in rtu_rows:
         a, b = str(p.get("GVL_MODBUS variable") or ""), str(p.get("GVL_COM variable") or "")
         if not a or not b: continue
         a = a.removeprefix("GVL_MODBUS."); b = b.removeprefix("GVL_COM.")
-        a = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", a); b = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", b)
+        a = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", a)
+        if not p.get("manual_scalar"):
+            b = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", b)
         key=(a,b,p.get("Direction"))
         if key in seen_rtu: continue
         seen_rtu.add(key); stmt = f"GVL_COM.{b} := GVL_MODBUS.{a};" if p.get("Direction") == "Equipment to PLC" else f"GVL_MODBUS.{a} := GVL_COM.{b};"
@@ -389,7 +403,7 @@ def _generated_objects(objs, state):
     if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;")
     io_in, io_out = [], []
     io_rows = list(state.get("io_channels",[])) + list(state.get("virtual_io",[]))
-    for p in sorted((row for row in io_rows if not (row.get("Instance") or row.get("instance_id")) or str(row.get("Instance") or row.get("instance_id")) in valid_instances), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
+    for p in sorted((row for row in io_rows if (not (row.get("Instance") or row.get("instance_id")) and legacy_membership) or (str(row.get("Instance") or row.get("instance_id")) in valid_instances and included("GFC_IO_IN" if str(row.get("I/O type", "")).upper() in {"AI", "DI"} else "GFC_IO_OUT",row.get("Instance") or row.get("instance_id")))), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
         iomap, iovar = str(p.get("GVL_IOMAP variable") or ""), str(p.get("GVL_IO member") or "")
         if not iomap or not iovar: continue
         iomap=iomap.removeprefix("GVL_IOMAP."); iovar=iovar.removeprefix("GVL_IO.")
@@ -407,6 +421,7 @@ def _generated_objects(objs, state):
     for c in state.get("exchange_calls",[]):
         fn=str(c.get("function_id") or c.get("FC") or ""); a=str(c.get("parameter_a_value") or ""); b=str(c.get("parameter_b_value") or "")
         if str(c.get("instance_a_id") or c.get("Instance A") or "") not in valid_instances or str(c.get("instance_b_id") or c.get("Instance B") or "") not in valid_instances: continue
+        if not included("GFC_EXC",c.get("instance_a_id") or c.get("Instance A")) or not included("GFC_EXC",c.get("instance_b_id") or c.get("Instance B")): continue
         if fn and a and b:
             function=objs.get(fn,{}).get("element")
             params=function.xpath("./plc:interface/plc:inOutVars/plc:variable/@name",namespaces={"plc":PLC}) if function is not None else []

@@ -3,7 +3,8 @@ import { StEditor } from './V2ObjectView'
 import './code.css'
 
 type Category = 'generated' | 'functions'
-type CodeObject = { name: string; kind: string; category: 'generated' | 'function' | 'exchange'; folder?: string; body?: string; full_body?: string; custom_code?: string; declaration?: string; changed?: boolean; status?: 'new' | 'changed' | 'unchanged'; reference_body?: string; diff?: string; dependencies?: string[] }
+type CandidateInstance = { name: string; type: string; kind: string }
+type CodeObject = { name: string; kind: string; category: 'generated' | 'function' | 'exchange'; folder?: string; body?: string; full_body?: string; custom_code?: string; declaration?: string; changed?: boolean; status?: 'new' | 'changed' | 'unchanged'; reference_body?: string; diff?: string; dependencies?: string[]; membership_block?: string; included_instances?: string[]; instance_candidates?: CandidateInstance[]; missing_instances?: CandidateInstance[] }
 type Data = { revision: number; calculated_at?: string | null; snapshot_imported_at?: string | null; objects: CodeObject[]; validation?: { errors?: unknown[]; warnings?: unknown[] } }
 type Review = { token?: string | null; errors?: unknown[]; warnings?: unknown[]; changes?: unknown[]; object?: CodeObject }
 type Props = { csrf: string; projectRevision?: number; onSaved: () => void; onOpenExchanges: () => void; onDirtyChange?: (dirty: boolean) => void; category: Category }
@@ -35,15 +36,16 @@ function makeDiff(reference = '', current = '') {
 export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges, onDirtyChange, category }: Props) {
   const [data, setData] = useState<Data | null>(null), [selected, setSelected] = useState(''), [filter, setFilter] = useState<'all' | 'new' | 'changed' | 'unchanged'>('all'), [kindFilter, setKindFilter] = useState<'all' | 'function' | 'exchange'>('all'), [query, setQuery] = useState('')
   const [drafts, setDrafts] = useState<Record<string, { body?: string; custom_code?: string }>>({}), [pane, setPane] = useState<'code' | 'compare'>('code')
-  const [review, setReview] = useState<Review | null>(null), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
+  const [review, setReview] = useState<Review | null>(null), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [membershipDrafts,setMembershipDrafts]=useState<Record<string,string[]>>({})
   const isDirty = (o: CodeObject) => { const d = drafts[o.name]; return !!d && ((d.body !== undefined && d.body !== (o.body || '')) || (d.custom_code !== undefined && d.custom_code !== (o.custom_code || ''))) }
   const dirty = data?.objects.filter(isDirty) || []
-  useEffect(() => { onDirtyChange?.(dirty.length > 0) }, [dirty.length, onDirtyChange])
+  const membershipHasChanges = (data?.objects || []).some(o => { const selected=membershipDrafts[o.name]; return !!o.membership_block && !!selected && (selected.length !== (o.included_instances||[]).length || selected.some(name => !(o.included_instances||[]).includes(name))) })
+  useEffect(() => { onDirtyChange?.(dirty.length > 0 || membershipHasChanges) }, [dirty.length, membershipHasChanges, onDirtyChange])
   async function load(force = false) {
     setError('')
     try {
       const fresh = await api<Data>('/api/v2/code')
-      if (!force && data && Number(fresh.revision) !== Number(data.revision) && dirty.length) { setNotice('Le projet a changé ailleurs. Votre brouillon est conservé. Rechargez pour comparer avec la dernière version enregistrée.'); return }
+      if (!force && data && Number(fresh.revision) !== Number(data.revision) && (dirty.length || membershipHasChanges)) { setNotice('Le projet a changé ailleurs. Votre brouillon est conservé. Rechargez pour comparer avec la dernière version enregistrée.'); return }
       setData(fresh); setNotice('')
       setSelected(current => fresh.objects.some(o => o.name === current) ? current : fresh.objects.find(o => category === 'generated' ? o.category === 'generated' : o.category !== 'generated')?.name || '')
     } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de charger le code') }
@@ -58,6 +60,8 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
   const currentComparable = object ? `${currentBody}${currentCustom ? `\n${currentCustom}` : ''}` : ''
   const editable = !!object && object.category === 'function'
   const objectDirty = !!object && isDirty(object)
+  const membershipDraft = object?.membership_block ? membershipDrafts[object.name] ?? object.included_instances ?? [] : []
+  const membershipDirty = !!object?.membership_block && (membershipDraft.length !== (object.included_instances || []).length || membershipDraft.some(name => !(object.included_instances || []).includes(name)))
   function change(field: 'body' | 'custom_code', value: string) { if (!object) return; setDrafts(old => ({ ...old, [object.name]: { ...old[object.name], [field]: value } })); setReview(null); setConfirmed(false); setError('') }
   async function preview() {
     if (!object || !objectDirty || !data) return
@@ -65,10 +69,16 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
     try { setReview(await api<Review>('/api/v2/code/preview', { revision: data.revision, name: object.name, ...(draft.body !== undefined ? { body: draft.body } : {}), ...(draft.custom_code !== undefined ? { custom_code: draft.custom_code } : {}) }, csrf)); setConfirmed(false) }
     catch (e) { setError(e instanceof Error ? e.message : 'Impossible de préparer la revue') } finally { setBusy(false) }
   }
+  async function previewMembership() {
+    if (!object?.membership_block || !membershipDirty || !data) return
+    setBusy(true); setError('')
+    try { setReview(await api<Review>('/api/v2/code/preview', { revision: data.revision, name: object.membership_block, included_instances: membershipDraft }, csrf)); setConfirmed(false) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Impossible de préparer la revue') } finally { setBusy(false) }
+  }
   async function apply() {
     if (!review?.token) return
     setBusy(true); setError('')
-    try { await api('/api/v2/code/apply', { token: review.token }, csrf); const savedName = object?.name; setReview(null); setConfirmed(false); if (savedName) setDrafts(old => { const next = { ...old }; delete next[savedName]; return next }); await load(true); onSaved() }
+    try { await api('/api/v2/code/apply', { token: review.token }, csrf); const savedName = object?.name; setReview(null); setConfirmed(false); if (savedName) { setDrafts(old => { const next = { ...old }; delete next[savedName]; return next }); setMembershipDrafts(old => { const next={...old};delete next[savedName];return next }) } await load(true); onSaved() }
     catch (e) { setError(e instanceof Error ? e.message : 'Impossible d’enregistrer') } finally { setBusy(false) }
   }
   const rows = visible
@@ -90,7 +100,7 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
         {!object ? <div className="code-empty-detail">Sélectionnez un objet pour afficher son code.</div> : <>
           <div className="code-detail-head"><div><span className="code-kicker">{object.kind} · {object.folder || object.category}</span><h2>{object.name}</h2><p>{object.dependencies?.length ? `Dépendances : ${object.dependencies.join(', ')}` : 'Aucune dépendance déclarée'}{objectDirty && <b className="code-dirty">Brouillon non enregistré</b>}</p></div><div className="code-detail-actions">{object.category === 'exchange' ? <button className="code-primary" onClick={onOpenExchanges}>Modifier dans les échanges ↗</button> : <button className="code-primary" disabled={!objectDirty || busy} onClick={() => void preview()}>{busy ? 'Préparation…' : 'Revoir et enregistrer'}</button>}</div></div>
           <div className="code-pane-tabs"><button className={pane === 'code' ? 'active' : ''} onClick={() => setPane('code')}>Code source</button><button className={pane === 'compare' ? 'active' : ''} onClick={() => setPane('compare')}>Comparer à CODESYS</button></div>
-          {pane === 'code' ? <div className="code-editor-stack">{object.declaration && <StEditor value={object.declaration} readOnly label="Déclaration · lecture seule"/>}<StEditor value={currentBody} readOnly={!editable} onChange={object.category === 'function' ? v => change('body', v) : undefined} label={`${object.category === 'generated' ? 'Code généré · lecture seule' : 'Corps ST'} · ${lines(currentBody)} lignes`}/>{object.category !== 'exchange' && <StEditor value={currentCustom} onChange={v => change('custom_code', v)} label="Code personnalisé · modifiable"/>}</div> : <div className="code-diff"><div className="code-diff-head"><div><b>{objectDirty ? 'Brouillon courant' : 'Version du projet'}</b><span>{object.name}</span></div><div><b>Référence CODESYS</b><span>Snapshot {date(data?.snapshot_imported_at)}</span></div></div><pre>{makeDiff(object.reference_body || '', !objectDirty && object.full_body ? object.full_body : currentComparable).map((line, i) => <span key={i} className={`diff-${line.kind}`}>{line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' '} {line.text || ' '}{'\n'}</span>)}</pre></div>}
+          {object.membership_block && <section className="code-membership-panel" aria-label="Instances incluses dans ce programme"><header><div><h3>Instances ajoutées / non ajoutées</h3><p>Les instances déclarées restent disponibles. Choisissez explicitement celles à intégrer dans {object.membership_block}. {object.membership_block === 'GFC_EXC' ? 'Un échange apparaît lorsque ses deux instances sont ajoutées ici et que leur liaison est configurée dans Exchanges.' : object.membership_block.startsWith('GFC_') ? 'Les recopies apparaissent après configuration dans Communications, pour les instances ajoutées ici.' : 'Leurs blocs seront appelés uniquement après cet ajout.'}</p></div><button className="code-primary" disabled={!membershipDirty||busy} onClick={()=>void previewMembership()}>{busy?'Préparation…':'Revoir les modifications'}</button></header><div className="code-membership-columns"><div><h4>Instances ajoutées <span>{membershipDraft.length}</span></h4>{membershipDraft.map(name=>{const candidate=object.instance_candidates?.find(item=>item.name===name);return <div className="code-membership-row" key={name}><span><b>{name}</b><small>{candidate?.type||'Type inconnu'}{candidate?.kind?` · ${candidate.kind}`:''}</small></span><button disabled={busy} onClick={()=>{setMembershipDrafts(old=>({...old,[object.name]:membershipDraft.filter(item=>item!==name)}));setReview(null);setConfirmed(false)}}>Retirer</button></div>})}{!membershipDraft.length&&<p className="code-membership-empty">Aucune instance ne sera appelée.</p>}</div><div><h4>Instances non ajoutées <span>{(object.instance_candidates||[]).filter(candidate=>!membershipDraft.includes(candidate.name)).length}</span></h4>{(object.instance_candidates||[]).filter(candidate=>!membershipDraft.includes(candidate.name)).map(candidate=><div className="code-membership-row" key={candidate.name}><span><b>{candidate.name}</b><small>{candidate.type||'Type inconnu'}{candidate.kind?` · ${candidate.kind}`:''}</small></span><button disabled={busy} onClick={()=>{setMembershipDrafts(old=>({...old,[object.name]:[...membershipDraft,candidate.name]}));setReview(null);setConfirmed(false)}}>Ajouter</button></div>)}</div></div></section>}          {pane === 'code' ? <div className="code-editor-stack">{object.declaration && <StEditor value={object.declaration} readOnly label="Déclaration · lecture seule"/>}<StEditor value={currentBody} readOnly={!editable} onChange={object.category === 'function' ? v => change('body', v) : undefined} label={`${object.category === 'generated' ? 'Code généré · lecture seule' : 'Corps ST'} · ${lines(currentBody)} lignes`}/>{object.category !== 'exchange' && <StEditor value={currentCustom} onChange={v => change('custom_code', v)} label="Code personnalisé · modifiable"/>}</div> : <div className="code-diff"><div className="code-diff-head"><div><b>{objectDirty ? 'Brouillon courant' : 'Version du projet'}</b><span>{object.name}</span></div><div><b>Référence CODESYS</b><span>Snapshot {date(data?.snapshot_imported_at)}</span></div></div><pre>{makeDiff(object.reference_body || '', !objectDirty && object.full_body ? object.full_body : currentComparable).map((line, i) => <span key={i} className={`diff-${line.kind}`}>{line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' '} {line.text || ' '}{'\n'}</span>)}</pre></div>}
         </>}
       </section>
     </section>
