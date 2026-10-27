@@ -115,6 +115,15 @@ def test_dependencies_include_other_dut_and_authored_code_but_ignore_comments():
     assert any('PLC_PRG' in b for b in project_blockers(state, typ))
 
 
+def test_existing_pack_type_reports_instances_then_exchange_signatures():
+    state = copy.deepcopy(load_pack())
+    typ = next(t for t in state['types'] if t['name'] == 'ADM100W')
+    state['types'] = [t for t in state['types'] if t['id'] != typ['id']]
+    assert project_blockers(state, typ) == ['Instance ADM100W_1']
+    state['instances'] = [i for i in state['instances'] if i['type_id'] != typ['id']]
+    assert any('FC_EXC_UPI_LOCAL_FUXA_ADM100W' in b for b in project_blockers(state, typ))
+
+
 def test_delete_linked_instance_releases_rows_and_legacy_exchange_calls(workspace):
     app, client, headers = workspace
     with app.state.session_factory() as session:

@@ -9,6 +9,7 @@ export default function V2TypeDelete({ typeId, typeName, revision, csrf, onClose
   const [error, setError] = useState('')
   async function post(path: string, body: unknown) {
     const response = await fetch(`/api/v2/types/delete/${path}`, { method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf}, body: JSON.stringify(body) })
+    if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Le serveur n’a pas pu préparer la suppression. Actualisez puis réessayez.')
     const result = await response.json()
     if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'Action impossible. Actualisez puis réessayez.')
     return result

@@ -39,9 +39,16 @@ def project_blockers(state, typ):
     aliases = {str(typ.get('id')), str(typ.get('name'))}
     blockers = [f"Instance {i.get('name') or i.get('id')}" for i in state.get('instances', [])
                 if str(i.get('type_id')) in aliases]
+    if blockers:
+        return blockers
     removed = {name.casefold() for name in type_objects(typ)}
     # Build a disposable model: program generation may initialize legacy memberships.
-    objects = plc.build_program(copy.deepcopy(state))
+    analysis = copy.deepcopy(state)
+    # Analyze references while the target declarations still exist. Removing
+    # them first would make existing exchange signatures impossible to render.
+    if not any(str(t.get('id')) == str(typ.get('id')) for t in analysis.get('types', [])):
+        analysis.setdefault('types', []).append(copy.deepcopy(typ))
+    objects = plc.build_program(analysis)
     for name, obj in objects.items():
         if name.casefold() in removed:
             continue
@@ -89,7 +96,10 @@ def register_type_deletion_routes(app, get_session, current_user, csrf):
         state = copy.deepcopy(current)
         state['types'] = [t for t in state['types'] if t.get('id') != typ.get('id')]
         state.get('workbooks', {}).pop(typ.get('source_file'), None)
-        blockers = deletion_blockers(session, state, typ)
+        try:
+            blockers = deletion_blockers(session, state, typ)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise HTTPException(422, f'La vérification du programme n’a pas pu aboutir : {exc}') from exc
         changes = [f"Supprimer le type partagé {typ['name']} de tous les projets",
                    *[f"Supprimer le bloc {name}" for name in sorted(type_objects(typ))]]
         if typ.get('source_file'):
