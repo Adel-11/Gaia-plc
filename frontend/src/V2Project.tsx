@@ -6,6 +6,7 @@ import V2Communications from './V2Communications'
 import V2Parameters from './V2Parameters'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
+import V2TypeDelete from './V2TypeDelete'
 import V2Exchanges from './V2Exchanges'
 import V2Code from './V2Code'
 import ProjectHome from './ProjectHome'
@@ -71,6 +72,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const selectType = (id: string) => { if (!typeDraftDirty || window.confirm('Discard unsaved type changes?')) { setTypeDraftDirty(false); setSelectedTypeId(id) } }
   const [selectedTypeId, setSelectedTypeId] = useState('')
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [deletingType, setDeletingType] = useState<TypeRow | null>(null)
   const [sortOrder, setSortOrder] = useState('asc')
   const [workbookName, setWorkbookName] = useState('')
   const [sheetName, setSheetName] = useState('')
@@ -180,8 +182,9 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
           <div hidden={wizardOpen}>
           <section className="v2-panel object-catalogue">
             <div className="v2-panel-head"><div><h2>Equipment types</h2><p>Select a model to open its object view.</p></div><div className="catalogue-filters"><label className="v2-filter"><span>Kind</span><select aria-label="Filter types by kind" value={typeKind} onChange={e=>setTypeKind(e.target.value)}><option value="all">All kinds</option>{typeKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><input aria-label="Search types" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search types"/><select aria-label="Sort names" value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></div></div>
-            <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Name</th><th>Kind</th><th>Instances</th><th>Members</th></tr></thead><tbody>{filteredTypes.map(type=><tr key={type.id} className={selectedTypeId===type.id?'active':''}><td><button className="object-open-link" onClick={()=>selectType(type.id)}>{type.name}</button><small>{type.description}</small></td><td>{type.kind}</td><td>{instances.filter(instance=>instance.type_id===type.id).length}</td><td>{(type.duts||[]).reduce((n,dut)=>n+(dut.members?.length||0),0)}</td></tr>)}{!filteredTypes.length&&<tr><td colSpan={4}>No matching types.</td></tr>}</tbody></table></div>
+            <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Name</th><th>Kind</th><th>Instances</th><th>Members</th><th>Actions</th></tr></thead><tbody>{filteredTypes.map(type=><tr key={type.id} className={selectedTypeId===type.id?'active':''}><td><button className="object-open-link" onClick={()=>selectType(type.id)}>{type.name}</button><small>{type.description}</small></td><td>{type.kind}</td><td>{instances.filter(instance=>instance.type_id===type.id).length}</td><td>{(type.duts||[]).reduce((n,dut)=>n+(dut.members?.length||0),0)}</td><td><button className="type-delete-button" aria-label={`Supprimer le type ${type.name}`} onClick={()=>{if(!typeDraftDirty || window.confirm('Fermer les modifications non enregistrées pour supprimer un type ?')) setDeletingType(type)}}>Supprimer</button></td></tr>)}{!filteredTypes.length&&<tr><td colSpan={5}>No matching types.</td></tr>}</tbody></table></div>
           </section>
+          {deletingType && project && <V2TypeDelete typeId={deletingType.id} typeName={deletingType.name} revision={project.revision!} csrf={csrf} onClose={()=>setDeletingType(null)} onDeleted={()=>{setDeletingType(null);setTypeDraftDirty(false);setNotice(`Type ${deletingType.name} supprimé du catalogue partagé.`);void load()}}/>}
           {selectedTypeId && <V2ObjectView kind="type" objectId={selectedTypeId} csrf={csrf} projectRevision={project?.revision} onDirtyChange={setTypeDraftDirty} onSaved={()=>void load()}/>}
           </div>
         </div>

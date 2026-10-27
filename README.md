@@ -381,3 +381,9 @@ join the execution program. Existing addresses, calls and data are retained.
 There is no schema migration. Older releases ignore explicit membership, so
 review any generated XML carefully if rolling back to `284626d`; the application
 never downloads a program to the running PLC.
+
+### Removing types and instances
+
+Use **Supprimer** in the Types or Instances table and review the confirmation. A type is shared across projects: removal is blocked while any project instance, DUT declaration or ST block still references its blocks. The dialog identifies those dependencies. Removing an unused type removes its DUTs, FB and TYPE workbook from the shared catalog and future exports. Historical project revisions and CODESYS snapshots remain available as references.
+
+Removing an instance releases its addresses and I/O assignments, removes its exchange calls and GFC/GFB membership, and keeps its shared type. Physical I/O rows remain available for reassignment. Both operations are recorded in project version history.

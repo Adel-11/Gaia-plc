@@ -332,6 +332,8 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
             elif not inst: raise ValueError("Instance not found")
             elif body.action == "delete":
                 name = _name(inst)
+                from backend.v2_program_membership import freeze_membership
+                freeze_membership(state)
                 impact = {k: sum(1 for r in state.get(k, []) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) == name) for k in ("pa_values","io_channels","tcp_points","rtu_channels")}
                 state["instances"] = [i for i in state["instances"] if _name(i) != name]
                 for key in impact:
@@ -346,7 +348,7 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                 state["rtu_slaves"] = [r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance",""))) != name]
                 _clear_virtual_io_for_instance(state, name)
                 _remove_program_membership(state, name)
-                state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id")),str(r.get("instance_b_id"))}]
+                state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id") or r.get("Instance A")),str(r.get("instance_b_id") or r.get("Instance B"))}]
                 state.get("exchange_layout", {}).get("nodes", {}).pop(name, None)
                 changes.append(f"Delete {name}; release {impact['tcp_points']} TCP points, {impact['rtu_channels']} RTU channels, {impact['io_channels']} I/O assignments, and {impact['pa_values']} PA values")
             elif body.action == "pa":

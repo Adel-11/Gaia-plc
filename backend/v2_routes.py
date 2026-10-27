@@ -45,6 +45,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     from backend.v2_type_creation import register_type_creation_routes
     from backend.v2_instance_editor import register_instance_editor_routes
     register_type_creation_routes(app, get_session, current_user, csrf)
+    from backend.v2_type_deletion import register_type_deletion_routes
+    register_type_deletion_routes(app, get_session, current_user, csrf)
     register_instance_editor_routes(app, get_session, current_user, csrf)
     from backend.v2_exchanges import register_exchange_routes
     register_exchange_routes(app, get_session, current_user, csrf)

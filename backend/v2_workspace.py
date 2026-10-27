@@ -171,6 +171,14 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     shared=_catalog(state);changed=catalog is not None and digest(shared)!=digest(json.loads(catalog.payload))
     affected=[]
     if changed:
+        # Recheck deletion under the workspace write lock, including projects
+        # edited after the review was prepared.
+        from backend.v2_type_deletion import deletion_blockers
+        remaining={str(t.get('id')) for t in shared.get('types',[])}
+        for removed in json.loads(catalog.payload).get('types',[]):
+            if str(removed.get('id')) not in remaining:
+                blockers=deletion_blockers(session,state,removed)
+                if blockers:raise ValueError('Type encore utilisé : '+ '; '.join(blockers[:8]))
         for other in session.scalars(select(store.V2Project).where(store.V2Project.id!=pid)).all():
             _,old=_raw(session,other.id);before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
             if blocks_only:
