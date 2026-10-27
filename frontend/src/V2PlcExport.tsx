@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import WorkspacePanel from './WorkspacePanel'
 
 type PlcObject = { name: string; kind: string; reason?: string; changed?: boolean }
 type Options = { focus: { value: string; label: string; kind: string }[]; objects: PlcObject[] }
@@ -87,7 +88,7 @@ export default function V2PlcExport({ csrf, projectRevision, onExported }: { csr
   return <>
     {error && <div className="v2-alert error" role="alert"><b>Export PLCopen</b><span>{error}</span></div>}
     {notice && <div className="v2-alert success" role="status">{notice}</div>}
-    <section className="v2-panel plc-export-panel"><div className="v2-panel-head"><div><p className="eyebrow">EXPORT · PLCOPEN</p><h2>Exporter en XML PLCopen</h2><p>Prévisualisez les objets générés et les étapes manuelles CODESYS avant le téléchargement.</p></div><span className="phase-badge">Export</span></div>
+    <WorkspacePanel id="export:plcopen" title="PLCopen export"><section className="v2-panel plc-export-panel"><div className="v2-panel-head"><div><p className="eyebrow">EXPORT · PLCOPEN</p><h2>Exporter en XML PLCopen</h2><p>Prévisualisez les objets générés et les étapes manuelles CODESYS avant le téléchargement.</p></div><span className="phase-badge">Export</span></div>
       <div className="plc-export-controls">
         <label className="v2-field"><span>Mode d’export</span><select value={mode} onChange={e => { setMode(e.target.value as 'full' | 'partial'); setSelected([]); setSelectionEdited(false); invalidate() }}><option value="full">Projet complet</option><option value="partial">Export partiel</option></select></label>
         {mode === 'partial' && <label className="v2-field"><span>Objet de référence</span><select value={focus} onChange={e => { setFocus(e.target.value); setSelected([]); setSelectionEdited(false); invalidate() }}><option value="">Choisir un objet</option>{(options?.focus || []).map(item => <option key={item.value} value={item.value}>{item.label} · {item.kind}</option>)}</select></label>}
@@ -102,6 +103,6 @@ export default function V2PlcExport({ csrf, projectRevision, onExported }: { csr
         <label className="review-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} disabled={allErrors.length > 0} /><span>J’ai vérifié les objets inclus, les étapes manuelles, les avertissements et les erreurs.</span></label>
         <div className="preview-actions"><button className="button secondary" onClick={() => void download('report')} disabled={busy || !preview.token}>Télécharger le récapitulatif</button><button className="button secondary" onClick={() => { setPreview(null); setReviewed(false); setNotice('') }}>Supprimer l’aperçu</button><button className="button primary" onClick={() => void download('download')} disabled={!canDownload}>{busy ? 'Préparation…' : 'Télécharger le XML PLCopen'}</button></div>
       </div>}
-    </section>
+    </section></WorkspacePanel>
   </>
 }

@@ -1,7 +1,7 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import V2PlcExport from './V2PlcExport'
 import V2CodesysImport from './V2CodesysImport'
-import V2ObjectView from './V2ObjectView'
+import V2ObjectView, { StEditor } from './V2ObjectView'
 import V2Communications from './V2Communications'
 import V2Parameters from './V2Parameters'
 import V2Instances from './V2Instances'
@@ -10,6 +10,8 @@ import V2TypeDelete from './V2TypeDelete'
 import V2Exchanges from './V2Exchanges'
 import V2Code from './V2Code'
 import ProjectHome from './ProjectHome'
+import V2PlcTree, { type PlcTreeObject } from './V2PlcTree'
+import WorkspacePanel, { PanelPreferencesProvider } from './WorkspacePanel'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -55,12 +57,14 @@ const pageFromHash = (): PageId => window.location.hash === '#equipment' ? 'type
 
 export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; onWorkspaceChanged?: () => void }) {
   const [activePage, setActivePage] = useState<PageId>(pageFromHash)
+  const [pageHistory, setPageHistory] = useState<PageId[]>([])
   useEffect(() => { const changed = () => setActivePage(pageFromHash()); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed) }, [])
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({project: true, design: true, data: true, delivery: true, code: true})
   const [codeDirty, setCodeDirty] = useState<Record<string, boolean>>({})
+  const pageScroll = useRef<Record<string, number>>({})
   const [openedCodePages, setOpenedCodePages] = useState<Record<string, boolean>>({})
   useEffect(() => { if (activePage === 'generated' || activePage === 'functions') setOpenedCodePages(old => old[activePage] ? old : {...old, [activePage]: true}) }, [activePage])
-  const openPage = (id: PageId) => { if (id !== activePage && codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return; setActivePage(id); window.location.hash = id }
+  const openPage = (id: PageId) => { if (id !== activePage && codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return; if (id !== activePage && activePage === 'types' && typeDraftDirty && !window.confirm('Le type contient des modifications non enregistrées. Quitter cette page ? Le brouillon restera ouvert.')) return; if (id !== activePage) { pageScroll.current[activePage] = window.scrollY; setPageHistory(old => [...old, activePage]); } setActivePage(id); window.location.hash = id; requestAnimationFrame(() => window.scrollTo({top:pageScroll.current[id] || 0})) }
   useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','parameters','communications','exchanges'].includes(activePage) ? 'design' : ['generated','functions'].includes(activePage) ? 'code' : activePage === 'workbooks' ? 'data' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,9 +73,21 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [query, setQuery] = useState('')
   const [typeKind, setTypeKind] = useState('all')
   const [typeDraftDirty, setTypeDraftDirty] = useState(false)
-  const selectType = (id: string) => { if (!typeDraftDirty || window.confirm('Discard unsaved type changes?')) { setTypeDraftDirty(false); setSelectedTypeId(id) } }
+  const selectType = (id: string) => { if (!typeDraftDirty || window.confirm('Discard unsaved type changes?')) { if (selectedTypeId && selectedTypeId !== id) setTypeSelectionHistory(old => [...old, selectedTypeId]); setTypeDraftDirty(false); setSelectedTypeId(id); return true } return false }
   const [selectedTypeId, setSelectedTypeId] = useState('')
+  const [typeSelectionHistory, setTypeSelectionHistory] = useState<string[]>([])
+  const [treeInstanceName, setTreeInstanceName] = useState('')
+  const [treeCodeSelection, setTreeCodeSelection] = useState<{ category: 'generated' | 'functions'; name: string } | null>(null)
+  const [treeCodeRequestVersion, setTreeCodeRequestVersion] = useState(0)
+  const [treeStructureSelection, setTreeStructureSelection] = useState<{ typeId: string; name: string } | null>(null)
+  const [treeStructureRequestVersion, setTreeStructureRequestVersion] = useState(0)
+  const [treeInspector, setTreeInspector] = useState<{ name: string; kind: string; folder?: string; declaration?: string; body?: string } | null>(null)
+  const [treeInspectorError, setTreeInspectorError] = useState('')
+  const [treeInspectorOpen, setTreeInspectorOpen] = useState(false)
+  const [treeInspectorLoading, setTreeInspectorLoading] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  useEffect(() => { if (!selectedTypeId || activePage !== 'types' || wizardOpen) return; const frame = requestAnimationFrame(() => document.querySelector('.type-object-workspace-panel')?.scrollIntoView({block:'start'})); return () => cancelAnimationFrame(frame) }, [selectedTypeId, treeStructureRequestVersion])
+
   const [deletingType, setDeletingType] = useState<TypeRow | null>(null)
   const [sortOrder, setSortOrder] = useState('asc')
   const [workbookName, setWorkbookName] = useState('')
@@ -83,13 +99,21 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [file, setFile] = useState<File | null>(null)
   const [reviewed, setReviewed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const goBack = () => {
+    if (wizardOpen) { setWizardOpen(false); return }
+    if (treeInspectorOpen) { setTreeInspectorOpen(false); setTreeInspector(null); setTreeInspectorError(''); return }
+    if (activePage === 'types' && selectedTypeId) { if (typeDraftDirty && !window.confirm('Discard unsaved type changes?')) return; setTypeDraftDirty(false); setSelectedTypeId(typeSelectionHistory[typeSelectionHistory.length - 1] || ''); setTypeSelectionHistory(old => old.slice(0, -1)); if (!typeSelectionHistory.length) requestAnimationFrame(() => document.querySelector('.plc-tree-workspace-panel')?.scrollIntoView({block:'start'})); return }
+    if (codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return
+    const previous = pageHistory[pageHistory.length - 1]; if (!previous) return
+    pageScroll.current[activePage] = window.scrollY; setPageHistory(old => old.slice(0, -1)); setActivePage(previous); window.location.hash = previous; requestAnimationFrame(() => window.scrollTo({top:pageScroll.current[previous] || 0}))
+  }
 
   const load = async () => {
     setLoading(true); setError('')
     try {
       const data = await request<Project>('/project')
       setProject(data)
-      setSelectedTypeId(old => data.types?.some(type => type.id === old) ? old : data.types?.[0]?.id || '')
+      setSelectedTypeId(old => data.types?.some(type => type.id === old) ? old : '')
       setWorkbookName(old => data.workbooks?.some(book => book.filename === old) ? old : data.workbooks?.[0]?.filename || '')
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load project') } finally { setLoading(false) }
   }
@@ -125,6 +149,31 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
       const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); setNotice(`${name} downloaded`)
     } catch (e) { setError(e instanceof Error ? e.message : 'Download failed') }
   }
+  const downloadPost = async (path: string, fallbackName: string) => {
+    if (busy) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await fetch(`/api/v2${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } })
+      if (!response.ok) { let message = `${response.status} ${response.statusText}`; try { const body = await response.json(); message = typeof body.detail === 'string' ? body.detail : body.detail?.errors?.slice(0,4).join('\n') || body.detail?.message || message } catch { /* non-JSON error */ }; throw new Error(message) }
+      const blob = await response.blob(), disposition = response.headers.get('content-disposition') || '', match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"\r\n]+)/i)
+      const name = match?.[1] ? decodeURIComponent(match[1].replaceAll('"', '')) : fallbackName
+      const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); setNotice(`${name} downloaded`); await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Download failed') } finally { setBusy(false) }
+  }
+  const openTreeObject = (object: PlcTreeObject) => {
+    if (object.type_id && !object.role) { setTreeInstanceName(object.name); openPage('instances'); return }
+    if (object.type_id && object.role) { if (selectType(String(object.type_id))) { setTreeStructureSelection({ typeId: String(object.type_id), name: object.role.toUpperCase() === 'FB' ? '__fb' : object.name }); setTreeStructureRequestVersion(version => version + 1) } return }
+    const matching = types.find(type => type.id === object.name || type.name === object.name)
+    if (matching) { selectType(matching.id); openPage('types'); return }
+    if (['FUNCTION','FC','FNC','EXCHANGE'].includes(object.kind.toUpperCase())) {
+      setTreeCodeSelection({ category: 'functions', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('functions'); return
+    }
+    if (['GFC','GFB','PROGRAM','ACTION','METHOD'].includes(object.kind.toUpperCase())) {
+      setTreeCodeSelection({ category: 'generated', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('generated'); return
+    }
+    setTreeInspector(null); setTreeInspectorError(''); setTreeInspectorOpen(true); setTreeInspectorLoading(true)
+    void request<{ name: string; kind: string; folder?: string; declaration?: string; body?: string }>(`/plc/object/${encodeURIComponent(object.name)}`).then(setTreeInspector).catch(e => setTreeInspectorError(e instanceof Error ? e.message : 'Impossible d’ouvrir cet objet')).finally(() => setTreeInspectorLoading(false))
+  }
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => { setFile(event.target.files?.[0] || null); setPreview(null); setReviewed(false); setNotice('') }
   const previewImport = async () => {
@@ -147,7 +196,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
 
   const phase = Math.max(1, project?.phase || 1)
   const active = pages.find(page => page.id === activePage) || pages[0]
-  return <div className="page-content v2-content v2-workspace" data-page={activePage}>
+  return <PanelPreferencesProvider scope={String(project?.project_id || project?.project_name || 'active')}><div className="page-content v2-content v2-workspace" data-page={activePage}>
     <div className="v2-workspace-layout">
       <nav className="v2-page-nav" aria-label="Pages du projet">
         <p className="v2-nav-heading">Espace projet</p>
@@ -171,25 +220,26 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         <div className="v2-nav-foot">Gaia Refinery<span>Révision {project?.revision ?? '—'}</span></div>
       </nav>
       <div className="v2-page-body">
-        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{activePage === 'overview' ? project?.project_name || active.title : active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools"><button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
+        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{activePage === 'overview' ? project?.project_name || active.title : active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools">{(treeInspectorOpen || (activePage === 'types' && selectedTypeId) || pageHistory.length > 0) && <button className="button secondary" onClick={goBack}>← Retour</button>}<button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
         {error && <div className="v2-alert error" role="alert"><b>Could not complete request</b><span>{error}</span></div>}{notice && <div className="v2-alert success" role="status">{notice}</div>}
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-overview" aria-labelledby="tab-overview" hidden={activePage !== 'overview'}>
           {project && <ProjectHome csrf={csrf} project={project} onChanged={() => void load()} beforeProjectChange={() => (!typeDraftDirty && !wizardOpen && !Object.values(codeDirty).some(Boolean)) || window.confirm('Changer de projet ferme les formulaires et brouillons non enregistrés. Continuer ?')} onSelectProject={() => onWorkspaceChanged?.()} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-types" aria-labelledby="tab-types" hidden={activePage !== 'types'}>
+          {project && <WorkspacePanel id="plc-explorer" title="Explorateur CODESYS" className="plc-tree-workspace-panel"><V2PlcTree projectKey={String(project.project_id || project.project_name || 'active')} projectRevision={project.revision} csrf={csrf} onOpen={openTreeObject} onChanged={()=>void load()}/></WorkspacePanel>}
           <div className="type-page-actions"><button className="button primary" onClick={()=>{if(!typeDraftDirty || window.confirm('Discard unsaved type changes and create a new type?')) setWizardOpen(true)}}>＋ Create type</button></div>
           {wizardOpen && project && <V2TypeWizard project={project} csrf={csrf} onChanged={()=>void load()} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
           <div hidden={wizardOpen}>
-          <section className="v2-panel object-catalogue">
+          <WorkspacePanel id="type-catalogue" title="Types d’équipements" className="type-catalogue-workspace-panel"><section className="v2-panel object-catalogue">
             <div className="v2-panel-head"><div><h2>Equipment types</h2><p>Select a model to open its object view.</p></div><div className="catalogue-filters"><label className="v2-filter"><span>Kind</span><select aria-label="Filter types by kind" value={typeKind} onChange={e=>setTypeKind(e.target.value)}><option value="all">All kinds</option>{typeKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><input aria-label="Search types" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search types"/><select aria-label="Sort names" value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></div></div>
-            <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Name</th><th>Kind</th><th>Instances</th><th>Members</th><th>Actions</th></tr></thead><tbody>{filteredTypes.map(type=><tr key={type.id} className={selectedTypeId===type.id?'active':''}><td><button className="object-open-link" onClick={()=>selectType(type.id)}>{type.name}</button><small>{type.description}</small></td><td>{type.kind}</td><td>{instances.filter(instance=>instance.type_id===type.id).length}</td><td>{(type.duts||[]).reduce((n,dut)=>n+(dut.members?.length||0),0)}</td><td><button className="type-delete-button" aria-label={`Supprimer le type ${type.name}`} onClick={()=>{if(!typeDraftDirty || window.confirm('Fermer les modifications non enregistrées pour supprimer un type ?')) setDeletingType(type)}}>Supprimer</button></td></tr>)}{!filteredTypes.length&&<tr><td colSpan={5}>No matching types.</td></tr>}</tbody></table></div>
-          </section>
+            <div className="v2-table-scroll object-list-scroll"><table className="v2-table"><thead><tr><th>Name</th><th>Kind</th><th>Instances</th><th>Members</th><th>Actions</th></tr></thead><tbody>{filteredTypes.map(type=><tr key={type.id} className={selectedTypeId===type.id?'active':''}><td><button className="object-open-link" onClick={()=>selectType(type.id)}>{type.name}</button><small>{type.description}</small></td><td>{type.kind}</td><td>{instances.filter(instance=>instance.type_id===type.id).length}</td><td>{(type.duts||[]).reduce((n,dut)=>n+(dut.members?.length||0),0)}</td><td><button className="button secondary" aria-label={`Exporter ${type.name} en XML`} disabled={busy} onClick={()=>void downloadPost(`/plc/export/type/${encodeURIComponent(type.id)}`,`${type.name}.xml`)}>Exporter XML</button> <button className="type-delete-button" aria-label={`Supprimer le type ${type.name}`} onClick={()=>{if(!typeDraftDirty || window.confirm('Fermer les modifications non enregistrées pour supprimer un type ?')) setDeletingType(type)}}>Supprimer</button></td></tr>)}{!filteredTypes.length&&<tr><td colSpan={5}>No matching types.</td></tr>}</tbody></table></div>
+          </section></WorkspacePanel>
           {deletingType && project && <V2TypeDelete typeId={deletingType.id} typeName={deletingType.name} revision={project.revision!} csrf={csrf} onClose={()=>setDeletingType(null)} onDeleted={()=>{setDeletingType(null);setTypeDraftDirty(false);setNotice(`Type ${deletingType.name} supprimé du catalogue partagé.`);void load()}}/>}
-          {selectedTypeId && <V2ObjectView kind="type" objectId={selectedTypeId} csrf={csrf} projectRevision={project?.revision} onDirtyChange={setTypeDraftDirty} onSaved={()=>void load()}/>}
+          {selectedTypeId && <WorkspacePanel id={`type-object-${selectedTypeId}`} title={types.find(type=>type.id===selectedTypeId)?.name || 'Éditeur du type'} className="type-object-workspace-panel"><div className="type-editor-navigation"><button className="button secondary" onClick={goBack}>← Retour aux dossiers</button></div><V2ObjectView kind="type" objectId={selectedTypeId} initialStructure={treeStructureSelection?.typeId === selectedTypeId ? treeStructureSelection.name : undefined} initialStructureVersion={treeStructureRequestVersion} csrf={csrf} projectRevision={project?.revision} onDirtyChange={setTypeDraftDirty} onSaved={()=>void load()}/></WorkspacePanel>}
           </div>
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-instances" aria-labelledby="tab-instances" hidden={activePage !== 'instances'}>
-          {project && <V2Instances project={project} csrf={csrf} onSaved={()=>void load()} onCommunications={()=>openPage('communications')} onProgram={()=>openPage('generated')}/>}
+          {project && <><div className="type-page-actions"><button className="button secondary" disabled={busy} onClick={()=>void downloadPost('/plc/export/instances','instances-and-types.xml')}>Exporter les instances et leurs types en XML</button></div><WorkspacePanel id="instances:table" title="Instances du projet"><V2Instances project={project} csrf={csrf} openInstanceName={treeInstanceName} onSaved={()=>void load()} onCommunications={()=>openPage('communications')} onProgram={()=>openPage('generated')} onOpenInstanceHandled={()=>setTreeInstanceName('')}/></WorkspacePanel></>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-parameters" aria-labelledby="tab-parameters" hidden={activePage !== 'parameters'}>
           {project && <V2Parameters csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} />}
@@ -201,20 +251,20 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
           {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-generated" aria-labelledby="tab-generated" hidden={activePage !== 'generated'}>
-          {project && (activePage === 'generated' || openedCodePages.generated) && <V2Code category="generated" csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.generated === dirty ? old : {...old, generated: dirty})} />}
+          {project && (activePage === 'generated' || openedCodePages.generated) && <V2Code category="generated" initialObject={treeCodeSelection?.category === 'generated' ? treeCodeSelection.name : undefined} initialObjectVersion={treeCodeRequestVersion} csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.generated === dirty ? old : {...old, generated: dirty})} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-functions" aria-labelledby="tab-functions" hidden={activePage !== 'functions'}>
-          {project && (activePage === 'functions' || openedCodePages.functions) && <V2Code category="functions" csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.functions === dirty ? old : {...old, functions: dirty})} />}
+          {project && (activePage === 'functions' || openedCodePages.functions) && <V2Code category="functions" initialObject={treeCodeSelection?.category === 'functions' ? treeCodeSelection.name : undefined} initialObjectVersion={treeCodeRequestVersion} csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.functions === dirty ? old : {...old, functions: dirty})} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-workbooks" aria-labelledby="tab-workbooks" hidden={activePage !== 'workbooks'}>
-    <section className="v2-panel workbook-panel"><div className="v2-panel-head"><div><p className="eyebrow">SOURCE WORKBOOKS</p><h2>Workbook reader</h2><p>Inspect source tables without downloading or changing the workbook.</p></div><div className="workbook-pickers"><label><span>Workbook</span><select value={workbookName} onChange={e=>setWorkbookName(e.target.value)}><option value="">Choose workbook</option>{(project?.workbooks||[]).map(book=><option key={book.filename} value={book.filename}>{book.filename}</option>)}</select></label><label><span>Sheet</span><select value={sheetName} onChange={e=>setSheetName(e.target.value)} disabled={!sheetData?.sheets?.length}><option value="">Choose sheet</option>{(sheetData?.sheets||[]).map(sheet=><option key={sheet.name} value={sheet.name}>{sheet.name}</option>)}</select></label></div></div>
+    <WorkspacePanel id="workbooks:reader" title="Lecture des classeurs"><section className="v2-panel workbook-panel"><div className="v2-panel-head"><div><p className="eyebrow">SOURCE WORKBOOKS</p><h2>Workbook reader</h2><p>Inspect source tables without downloading or changing the workbook.</p></div><div className="workbook-pickers"><label><span>Workbook</span><select value={workbookName} onChange={e=>setWorkbookName(e.target.value)}><option value="">Choose workbook</option>{(project?.workbooks||[]).map(book=><option key={book.filename} value={book.filename}>{book.filename}</option>)}</select></label><label><span>Sheet</span><select value={sheetName} onChange={e=>setSheetName(e.target.value)} disabled={!sheetData?.sheets?.length}><option value="">Choose sheet</option>{(sheetData?.sheets||[]).map(sheet=><option key={sheet.name} value={sheet.name}>{sheet.name}</option>)}</select></label></div></div>
       {workbookName && <div className="workbook-meta"><span>{workbookLoading ? 'Loading workbook…' : `${currentSheet?.rows?.length ?? (project?.workbooks||[]).find(book=>book.filename===workbookName)?.sheets.find(sheet=>sheet.name===sheetName)?.row_count ?? 0} rows`}</span><span>{currentSheet?.state || 'Read-only'}</span></div>}
       {currentSheet ? <div className="v2-table-scroll workbook-scroll"><table className="v2-table workbook-table"><thead><tr>{(currentSheet.headers||[]).map((header,index)=><th key={`${header}-${index}`}>{header}</th>)}</tr></thead><tbody>{(currentSheet.rows||[]).map((row,index)=><tr key={index}>{(Array.isArray(row)?row:[]).map((cell,i)=><td key={i}>{asText(cell)}</td>)}</tr>)}{!currentSheet.rows?.length&&<tr><td colSpan={Math.max(1,currentSheet.headers?.length||1)} className="v2-empty">This sheet has no data rows.</td></tr>}</tbody></table></div> : <div className="workbook-empty">{workbookLoading?'Loading sheet contents…':workbookName?'Choose a sheet to inspect its rows.':'No workbook selected.'}</div>}
-    </section>
+    </section></WorkspacePanel>
 
-    <section className="v2-panel import-panel"><div className="v2-panel-head"><div><p className="eyebrow">CONTROLLED IMPORT</p><h2>Import an Excel workbook</h2><p>Upload a workbook, review its proposed changes, then apply the preview.</p></div></div><div className="import-controls"><label className="v2-field"><span>Import mode</span><select value={mode} onChange={e=>{setMode(e.target.value as 'merge'|'replace');setPreview(null);setReviewed(false)}}><option value="merge">Merge</option><option value="replace">Replace</option></select></label><div className={`mode-explanation ${mode}`}><b>{mode === 'merge' ? 'Merge existing data' : 'Replace selected workbook'}</b><span>{mode === 'merge' ? 'Add new rows and update matching rows. Unmatched existing rows are kept.' : 'Replace data in the selected workbook only. Other workbooks and project data remain unchanged. Review every proposed removal before applying.'}</span></div><label className="file-pick button secondary">{file ? file.name : 'Choose .xlsx workbook'}<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile}/></label><button className="button primary" onClick={()=>void previewImport()} disabled={!file||busy}>{busy?'Working…':'Preview import'}</button></div>
+    <WorkspacePanel id="workbooks:import" title="Import Excel"><section className="v2-panel import-panel"><div className="v2-panel-head"><div><p className="eyebrow">CONTROLLED IMPORT</p><h2>Import an Excel workbook</h2><p>Upload a workbook, review its proposed changes, then apply the preview.</p></div></div><div className="import-controls"><label className="v2-field"><span>Import mode</span><select value={mode} onChange={e=>{setMode(e.target.value as 'merge'|'replace');setPreview(null);setReviewed(false)}}><option value="merge">Merge</option><option value="replace">Replace</option></select></label><div className={`mode-explanation ${mode}`}><b>{mode === 'merge' ? 'Merge existing data' : 'Replace selected workbook'}</b><span>{mode === 'merge' ? 'Add new rows and update matching rows. Unmatched existing rows are kept.' : 'Replace data in the selected workbook only. Other workbooks and project data remain unchanged. Review every proposed removal before applying.'}</span></div><label className="file-pick button secondary">{file ? file.name : 'Choose .xlsx workbook'}<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={chooseFile}/></label><button className="button primary" onClick={()=>void previewImport()} disabled={!file||busy}>{busy?'Working…':'Preview import'}</button></div>
       {preview && <div className="import-preview"><div className="preview-heading"><div><h3>Preview: {preview.filename || file?.name}</h3><p>Review the row level changes and validation before applying this import.</p></div><span className={`validation-pill ${allErrors.length?'bad':''}`}>{allErrors.length ? `${allErrors.length} errors` : 'No errors'}</span></div><div className="diff-summary">{(['added','modified','removed'] as const).map(kind=><div className={`diff-tile ${kind}`} key={kind}><b>{list(preview.diff?.[kind]).length}</b><span>{kind}</span></div>)}</div><div className="diff-details">{(['added','modified','removed'] as const).map(kind=><section key={kind}><h4>{kind[0].toUpperCase()+kind.slice(1)} rows <span>{list(preview.diff?.[kind]).length}</span></h4>{list(preview.diff?.[kind]).length ? <details><summary>Show affected row details</summary><div className="diff-json-list">{list(preview.diff?.[kind]).map((item,index)=><pre key={index}>{pretty(item)}</pre>)}</div></details> : <p className="v2-empty">None</p>}</section>)}</div><div className="import-validation"><div><h4>Errors <span>{allErrors.length}</span></h4>{allErrors.map((item,index)=><p className="issue error-text" key={index}>{asText(item)}</p>)}{!allErrors.length&&<p className="v2-empty">No validation errors.</p>}</div><div><h4>Warnings <span>{allWarnings.length}</span></h4>{allWarnings.map((item,index)=><p className="issue warning-text" key={index}>{asText(item)}</p>)}{!allWarnings.length&&<p className="v2-empty">No warnings.</p>}</div></div><label className="review-check"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={allErrors.length>0}/><span>I reviewed the preview, including affected rows and warnings.</span></label><div className="preview-actions"><button className="button secondary" onClick={()=>{setPreview(null);setReviewed(false)}}>Discard preview</button><button className="button primary" onClick={()=>void applyImport()} disabled={busy||allErrors.length>0||!reviewed}>{busy?'Applying…':'Apply import'}</button></div></div>}
-    </section>
+    </section></WorkspacePanel>
 
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-plc" aria-labelledby="tab-plc" hidden={activePage !== 'plc'}>
@@ -226,11 +276,12 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
 
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exports" aria-labelledby="tab-exports" hidden={activePage !== 'exports'}>
-    <section className="v2-panel exports-panel"><div className="v2-panel-head"><div><p className="eyebrow">PROJECT OUTPUTS</p><h2>Exports &amp; backups</h2><p>Download the current project files for downstream tools and recovery.</p></div></div><div className="export-cards"><article><span className="export-icon blue">XLS</span><h3>Workbook exports</h3><p>Download a workbook from the project export set.</p><div className="export-file-list">{(project?.workbooks||[]).map(book=><button key={book.filename} onClick={()=>void download(`/exports/${encodeURIComponent(book.filename)}`,book.filename)}><span>{book.filename}</span><b>↓</b></button>)}{!project?.workbooks?.length&&<span className="v2-empty">No workbook exports listed.</span>}</div></article><article><span className="export-icon teal">CSV</span><h3>FUXA signals</h3><p>Export the current signal list for FUXA.</p><button className="button secondary" onClick={()=>void download('/exports/fuxa.csv','fuxa.csv')}>Download FUXA CSV <b>↓</b></button></article><article><span className="export-icon slate">JSON</span><h3>Full project backup</h3><p>Save a JSON backup of the full v2 project state.</p><button className="button secondary" onClick={()=>void download('/backup','gaia-project-backup.json')}>Download JSON backup <b>↓</b></button></article></div></section>
+    <section className="v2-panel exports-panel"><div className="v2-panel-head"><div><p className="eyebrow">PROJECT OUTPUTS</p><h2>Exports &amp; backups</h2><p>Download the current project files for downstream tools and recovery.</p></div></div><div className="export-cards"><WorkspacePanel id="exports:workbooks" title="Classeurs Excel"><article><span className="export-icon blue">XLS</span><h3>Workbook exports</h3><p>Download a workbook from the project export set.</p><div className="export-file-list">{(project?.workbooks||[]).map(book=><button key={book.filename} onClick={()=>void download(`/exports/${encodeURIComponent(book.filename)}`,book.filename)}><span>{book.filename}</span><b>↓</b></button>)}{!project?.workbooks?.length&&<span className="v2-empty">No workbook exports listed.</span>}</div></article></WorkspacePanel><WorkspacePanel id="exports:fuxa" title="Signaux FUXA"><article><span className="export-icon teal">CSV</span><h3>FUXA signals</h3><p>Export the current signal list for FUXA.</p><button className="button secondary" onClick={()=>void download('/exports/fuxa.csv','fuxa.csv')}>Download FUXA CSV <b>↓</b></button></article></WorkspacePanel><WorkspacePanel id="exports:backup" title="Sauvegarde du projet"><article><span className="export-icon slate">JSON</span><h3>Full project backup</h3><p>Save a JSON backup of the full v2 project state.</p><button className="button secondary" onClick={()=>void download('/backup','gaia-project-backup.json')}>Download JSON backup <b>↓</b></button></article></WorkspacePanel></div></section>
 
         </div>
+    {treeInspectorOpen && <div className="plc-object-inspector-backdrop" role="presentation"><section className="plc-object-inspector" role="dialog" aria-modal="true" aria-labelledby="plc-object-inspector-title"><header><div><p className="eyebrow">CODESYS OBJECT</p><h2 id="plc-object-inspector-title">{treeInspector?.name || 'Objet PLC'}</h2><p>{treeInspector?.kind}{treeInspector?.folder ? ` · ${treeInspector.folder}` : ''} · lecture seule</p></div><button type="button" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Retour</button></header><div className="plc-object-inspector-body">{treeInspectorLoading ? <p>Chargement de l’objet…</p> : treeInspectorError ? <div className="v2-alert error" role="alert">{treeInspectorError}</div> : treeInspector && <StEditor value={[treeInspector.declaration, treeInspector.body].filter(Boolean).join('\n\n')} readOnly label={`${treeInspector.name} · Structured Text`}/>}</div><footer><button type="button" className="button secondary" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Fermer</button></footer></section></div>}
     <footer className="page-footer"><span>GAIA IO GENERATOR <b>·</b> PROJECT V2</span><span>Phase {project?.phase ?? 1} <i/> Connected</span></footer>
       </div>
     </div>
-  </div>
+  </div></PanelPreferencesProvider>
 }

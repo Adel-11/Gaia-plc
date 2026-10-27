@@ -35,7 +35,7 @@ class VersionEvent(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now,nullable=False)
 
 SHARED=('types','catalog_options')
-COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme'}
+COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme','object_folders':'Emplacements des objets PLC','plc_folders':'Dossiers PLC'}
 
 def _catalog(state):
     result={k:copy.deepcopy(state.get(k,[] if k=='types' else {})) for k in SHARED}
@@ -116,10 +116,11 @@ def _persist(session,pid,state,previous,username,revision,event=None):
         version=f'{parts[0]+1}.0.0';history_kind='major';comment=event['comment']
     elif event and event['kind'] in ('program_export','program_import'):
         fingerprint=event['digest']
-        if fingerprint!=(previous or {}).get('_program_digests',{}).get(event['kind']):
+        digest_key=event.get('digest_key',event['kind'])
+        if fingerprint!=(previous or {}).get('_program_digests',{}).get(digest_key):
             version=f'{parts[0]}.{parts[1]+1}.0';history_kind=event['kind'];comment=('Export' if history_kind=='program_export' else 'Import')+' du programme après modification : '+event.get('name','programme')
         state['_program_digests']=copy.deepcopy((previous or {}).get('_program_digests',{}))
-        state['_program_digests'][event['kind']]=fingerprint
+        state['_program_digests'][digest_key]=fingerprint
     elif changes:
         version=f'{parts[0]}.{parts[1]}.{parts[2]+1}';history_kind='change';comment=' ; '.join(changes)
     state['version']=version
@@ -205,8 +206,11 @@ def program_digest(state):
     from backend import v2_plc
     from lxml import etree
     objects=v2_plc.build_program(state)
-    return digest({name:etree.tostring(obj['element'],method='c14n').decode() for name,obj in sorted(objects.items())})
+    rendered={name:etree.tostring(obj['element'],method='c14n').decode() for name,obj in sorted(objects.items())}
+    if state.get('object_folders') or state.get('plc_folders'):
+        return digest({'objects':rendered,'folders':{name:obj.get('folder','') for name,obj in sorted(objects.items())},'directories':sorted(state.get('plc_folders',[]))})
+    return digest(rendered)
 
-def record_event(session,state,username,kind,name,digest_value=None):
-    session.info['version_event']={'kind':kind,'name':name,**({'digest':digest_value} if digest_value else {})}
+def record_event(session,state,username,kind,name,digest_value=None,digest_key=None):
+    session.info['version_event']={'kind':kind,'name':name,**({'digest':digest_value} if digest_value else {}),**({'digest_key':digest_key} if digest_key else {})}
     return save_workspace_project(session,state,username,expected_revision=state.get('revision',0))

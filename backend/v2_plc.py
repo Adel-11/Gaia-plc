@@ -431,7 +431,7 @@ def _generated_objects(objs, state):
     if "PLC_PRG" in objs: _pou_text(objs["PLC_PRG"],"GFC_COM_IN();\nGFC_IO_IN();\nGFB_UPI_1();\nGFC_EXC();\nGFB_INST_1();\nGFC_COM_OUT();\nGFC_IO_OUT();")
 
 
-def build_program(state) -> dict:
+def build_program(state, include_union: bool = False) -> dict:
     """Return every free program object as {name: {name,kind,folder,element}}."""
     root = _source(); src = _source_objects(root); folders = _folder_map(root)
     model_pous={str(t.get("fb",{}).get("name")) for t in state.get("types",[]) if t.get("fb",{}).get("name")}
@@ -441,13 +441,13 @@ def build_program(state) -> dict:
     snapshot_folders={name:o.get("folder") for name,o in snapshot_objects.items() if o.get("folder")}
     objs = {}
     for name, template in src.items():
-        if name == "DUT_Union_Real_Word": continue
+        if name == "DUT_Union_Real_Word" and not include_union: continue
         if name.startswith("DUT_") and name not in model_duts: continue
         if name.startswith("FB_") and name not in model_pous: continue
         if name.startswith("FC_EXC_") and name not in model_fcs: continue
         el = copy.deepcopy(template)
         kind = "DUT" if _local(el) == "dataType" else ("GVL" if _local(el) == "globalVars" else "POU")
-        folder = snapshot_folders.get(name) or folders.get(name, "")
+        folder = (state.get("object_folders") or {}).get(name, snapshot_folders.get(name) if name in snapshot_folders else folders.get(name, ""))
         objs[name] = {"name": name, "kind": kind, "folder": folder, "element": el}
     # Rebuild DUT declarations from the current structured model, retaining source FB/FNC implementations.
     templates = {n: v["element"] for n, v in objs.items()}
@@ -456,15 +456,15 @@ def build_program(state) -> dict:
         for dut in typ.get("duts", []):
             name = dut.get("name") or f"DUT_{dut.get('role')}_{type_name}"
             el = _build_dut(name, typ, dut.get("role"), state, templates.get(name))
-            folder = folders.get(name, typ.get("folder", "Function Blocs/FB"))
+            folder = (state.get("object_folders") or {}).get(name, folders.get(name, typ.get("folder", "Function Blocs/FB")))
             objs[name] = {"name": name, "kind": "DUT", "folder": folder, "element": el}
         fbname=typ.get("fb",{}).get("name")
         if fbname and fbname not in objs:
-            objs[fbname]={"name":fbname,"kind":"POU","folder":typ.get("folder","Function Blocs/FB"),"element":_new_fb(fbname,typ)}
+            objs[fbname]={"name":fbname,"kind":"POU","folder":(state.get("object_folders") or {}).get(fbname,typ.get("folder","Function Blocs/FB")),"element":_new_fb(fbname,typ)}
     for fn in state.get("exchange_functions",[]):
         name=str(fn.get("name") or fn.get("FC") or "")
         if name and name not in objs:
-            objs[name]={"name":name,"kind":"POU","folder":"Functions/FC_EXC","element":_new_exchange_function(fn,{str(t.get("name")):t for t in state.get("types",[])})}
+            objs[name]={"name":name,"kind":"POU","folder":(state.get("object_folders") or {}).get(name,"Functions/FC_EXC"),"element":_new_exchange_function(fn,{str(t.get("name")):t for t in state.get("types",[])})}
     # The structured model owns authored ST; unchanged reference objects still retain their exact V7 source text.
     for typ in state.get("types", []):
         fb = typ.get("fb", {}); name = fb.get("name")
@@ -540,7 +540,7 @@ def _new_project(template_root, state):
     return root
 
 
-def serialize_program(objects: dict, state: dict, selected_names: list[str]) -> bytes:
+def serialize_program(objects: dict, state: dict, selected_names: list[str], include_all_folders: bool = True) -> bytes:
     """Serialize selected free objects only, with a pruned ProjectStructure."""
     selected_names=list(dict.fromkeys(selected_names))
     missing = [n for n in selected_names if n not in objects]
@@ -557,7 +557,7 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str]) -> 
             data=etree.SubElement(add,NS+"data",name=GVL_DATA,handleUnknown="implementation")
             data.append(el)
         snapshot_obj=next((o for o in (state.get("snapshot") or {}).get("objects",[]) if o.get("name")==name),None)
-        paths[name]=snapshot_obj.get("folder", "") if snapshot_obj is not None else obj.get("folder","")
+        paths[name]=(state.get("object_folders") or {}).get(name, snapshot_obj.get("folder", "") if snapshot_obj is not None else obj.get("folder",""))
     psdata=etree.SubElement(add,NS+"data",name=STRUCT,handleUnknown="discard")
     ps=etree.SubElement(psdata,NS+"ProjectStructure")
     for name in selected_names:
@@ -567,6 +567,13 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str]) -> 
             if node is None: node=etree.SubElement(cur,NS+"Folder",Name=folder)
             cur=node
         etree.SubElement(cur,NS+"Object",Name=name,ObjectId=_stable_id(name,state))
+    selected_paths = list(paths.values())
+    for folder_path in (state.get("plc_folders", []) if include_all_folders else [p for p in state.get("plc_folders", []) if any(q == p or q.startswith(p + "/") for q in selected_paths)]):
+        cur=ps
+        for folder in [p for p in str(folder_path).split("/") if p]:
+            node=next((x for x in cur if _local(x)=="Folder" and x.get("Name")==folder),None)
+            if node is None: node=etree.SubElement(cur,NS+"Folder",Name=folder)
+            cur=node
     output=etree.tostring(root,xml_declaration=True,encoding="utf-8",pretty_print=True)
     if b"<html:" in output or b"<ns0:xhtml" in output:
         raise ValueError("PLCopen XHTML must use its default namespace")

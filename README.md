@@ -387,3 +387,11 @@ never downloads a program to the running PLC.
 Use **Supprimer** in the Types or Instances table and review the confirmation. A type is shared across projects: removal is blocked while any project instance, DUT declaration or ST block still references its blocks. The dialog identifies those dependencies. Removing an unused type removes its DUTs, FB and TYPE workbook from the shared catalog and future exports. Historical project revisions and CODESYS snapshots remain available as references.
 
 Removing an instance releases its addresses and I/O assignments, removes its exchange calls and GFC/GFB membership, and keeps its shared type. Physical I/O rows remain available for reassignment. Both operations are recorded in project version history.
+
+### CODESYS explorer and focused XML packages
+
+The Types page contains the project object tree (FB, DUT, FNC, GFC, GFB, GVL and PLC_PRG). Create folders or move objects and whole folder subtrees using drag and drop or the destination menus. Placements belong to the active project; sharing a type does not change other projects’ folder choices. Explicit placements take precedence over the CODESYS reference in XML exports.
+
+Each type has an XML export button for its FB, DUTs and required reusable dependencies. The Instances page has one XML package for declared instances and their types, including GVL declarations and GFB declarations/calls selected in the project; communication/exchange GFC integration remains separate. PA overrides are preserved. These packages validate independently of unrelated exchange errors. Each export scope records its own fingerprint, so downloading an unchanged package again does not increase the minor version.
+
+Major workspace panels can be collapsed and resized from their bottom-right handle or header controls. Size and open/closed state are stored in this browser per signed-in user, project and panel. Reset restores the default size. Returning to a page preserves drafts; Cancel draft abandons unsaved edits. The last object or folder move can be reversed with Annuler ce déplacement. Retour navigates within the application and does not undo previously saved engineering changes. Dialogs and their contents scroll within the available window height.

@@ -166,3 +166,11 @@
 
 .v2-workspace[data-page="generated"]{--page-accent:#3b657f;--page-tint:#ddeaf2;--page-ink:#243e50;--page-canvas:#eff4f8}
 .v2-workspace[data-page="functions"]{--page-accent:#795044;--page-tint:#efdfd7;--page-ink:#50352e;--page-canvas:#f8f1ed}
+:where([role="dialog"]){max-width:min(96vw,1200px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;}
+:where([role="dialog"]) :where(.modal-body,[class*="-body"],[class*="-content"]){min-height:0;overscroll-behavior:contain;}
+:where([role="dialog"]) :where(pre,textarea,[class*="table-wrap"],[class*="table-scroll"]){max-width:100%;}
+@media(max-height:700px){:where([role="dialog"]){max-height:calc(100dvh - 12px);}}
+.v2-workspace [role="dialog"]{min-height:0;max-height:calc(100dvh - 32px)!important;max-width:calc(100vw - 32px);overflow:auto!important;overscroll-behavior:contain}
+.v2-workspace [role="dialog"]>header,.v2-workspace [role="dialog"]>footer{flex-shrink:0}
+.v2-workspace [class*="backdrop"]{overflow-y:auto;overscroll-behavior:contain}
+.v2-workspace [role="dialog"] [class*="-body"]{min-height:0;overflow:auto}

@@ -1,4 +1,5 @@
 import { ChangeEvent, useMemo, useState } from 'react'
+import WorkspacePanel from './WorkspacePanel'
 
 type Change = {
   name: string; kind: string; status: string; identity_changed?: boolean; folder_changed?: boolean
@@ -68,7 +69,7 @@ export default function V2CodesysImport({ csrf, onApplied }: { csrf: string; onA
   return <>
     {error && <div className="v2-alert error" role="alert"><b>Instantané CODESYS</b><span>{error}</span></div>}
     {notice && <div className="v2-alert success" role="status">{notice}</div>}
-    <section className="v2-panel codesys-import-panel">
+    <WorkspacePanel id="import:codesys" title="CODESYS snapshot review"><section className="v2-panel codesys-import-panel">
       <div className="v2-panel-head"><div><p className="eyebrow">RÉFÉRENCE · CODESYS</p><h2>Actualiser la référence CODESYS</h2><p>Importez le dernier instantané XML, vérifiez les changements d’objets, puis appliquez-le.</p></div><span className="phase-badge">Import</span></div>
       <div className="codesys-scope-note"><b>Périmètre de l’instantané</b><span>Le XML sert de référence pour comparer les objets d’ingénierie. La configuration des appareils et les tâches sont exclues. Un instantané complet ne remplace jamais vos classeurs d’ingénierie.</span></div>
       <div className="import-controls codesys-controls">
@@ -88,6 +89,6 @@ export default function V2CodesysImport({ csrf, onApplied }: { csrf: string; onA
         <label className="review-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} disabled={preview.errors.length > 0}/><span>J’ai vérifié les changements d’objets, les comparaisons de code et les avertissements.</span></label>
         <div className="preview-actions"><button className="button secondary" onClick={() => resetPreview()}>Supprimer l’aperçu</button><button className="button primary" onClick={() => void apply()} disabled={busy || preview.errors.length > 0 || unresolved.length > 0 || !reviewed}>{busy ? 'Application…' : 'Appliquer l’instantané'}</button></div>
       </div>}
-    </section>
+    </section></WorkspacePanel>
   </>
 }

@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import V2ObjectView from './V2ObjectView'
 import './instances.css'
 
 type Row = Record<string, any>
-type Props = { project: any; csrf: string; onSaved: () => void; onCommunications: () => void; onProgram: () => void }
+type Props = { project: any; csrf: string; onSaved: () => void; onCommunications: () => void; onProgram: () => void; openInstanceName?: string; onOpenInstanceHandled?: () => void }
 const list = (v: unknown): Row[] => Array.isArray(v) ? v as Row[] : []
 
-export default function V2Instances({ project, csrf, onSaved, onCommunications, onProgram }: Props) {
+export default function V2Instances({ project, csrf, onSaved, onCommunications, onProgram, openInstanceName, onOpenInstanceHandled }: Props) {
   const instances=list(project?.instances), types=list(project?.types)
   const [name,setName]=useState(''),[typeId,setTypeId]=useState(''),[busy,setBusy]=useState(false)
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[review,setReview]=useState<Row|null>(null)
   const [editor,setEditor]=useState<Row|null>(null),[editorDirty,setEditorDirty]=useState(false)
+  useEffect(() => { if (!openInstanceName) return; const instance = instances.find(item => (item.name || item.id) === openInstanceName); if (instance) { setEditor(instance); setEditorDirty(false); onOpenInstanceHandled?.() } }, [openInstanceName, project?.revision])
   const [pa,setPa]=useState<Row|null>(null),[values,setValues]=useState<Row>({})
   const typeFor=(id:any)=>types.find(t=>String(t.id)===String(id)||String(t.name)===String(id))
   const proposedName=()=> { if(name.trim())return name.trim(); const prefix=typeFor(typeId)?.name||'INSTANCE';let n=1;while(instances.some(i=>i.name===`${prefix}_${n}`))n++;return `${prefix}_${n}` }
