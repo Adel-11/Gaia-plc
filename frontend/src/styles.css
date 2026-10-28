@@ -174,3 +174,7 @@
 .v2-workspace [role="dialog"]>header,.v2-workspace [role="dialog"]>footer{flex-shrink:0}
 .v2-workspace [class*="backdrop"]{overflow-y:auto;overscroll-behavior:contain}
 .v2-workspace [role="dialog"] [class*="-body"]{min-height:0;overflow:auto}
+
+.transfer-hub{display:grid;gap:18px}.transfer-tabs{display:flex;gap:8px;border-bottom:1px solid #c9d2d5;overflow-x:auto}.transfer-tabs button{padding:11px 16px;border:0;border-bottom:3px solid transparent;background:transparent;color:#394950;font-weight:700;white-space:nowrap}.transfer-tabs button.active{border-color:#176b70;color:#14565a}.transfer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.transfer-grid>.v2-panel{padding:20px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}.transfer-review{grid-column:1/-1}.transfer-review>div{display:flex;gap:10px}.transfer-review input[type=file],.transfer-grid input[type=file]{max-width:100%}
+
+.template-download{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;padding:10px 0;border-bottom:1px solid #dbe1e3}.template-download span{display:grid;gap:4px}.template-download small{color:#607078}

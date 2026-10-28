@@ -58,6 +58,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     from backend.v2_catalog import register_catalog_routes
     register_workspace_routes(app, get_session, current_user, csrf)
     register_catalog_routes(app, get_session, current_user, csrf)
+    from backend.v2_templates import register_template_routes
+    register_template_routes(app, current_user)
 
     def project_for(session):
         state = store.load_project(session)

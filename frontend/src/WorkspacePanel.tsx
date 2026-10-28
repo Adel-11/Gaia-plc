@@ -1,107 +1,42 @@
-import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, PointerEvent, ReactNode, useContext, useEffect, useRef, useState } from 'react'
 import './workspace-panel.css'
 
-type Props = {
-  id: string
-  title: string
-  children: ReactNode
-  className?: string
-  contentClassName?: string
-  initialWidth?: number
-  initialHeight?: number
-  minWidth?: number
-  minHeight?: number
-}
-
+type Props = { id: string; title: string; children: ReactNode; className?: string; contentClassName?: string; initialWidth?: number; initialHeight?: number; minWidth?: number; minHeight?: number }
 type Saved = { width?: number; height?: number; collapsed?: boolean }
 const PanelScope = createContext('guest/default')
-
 export function usePanelScope() { return useContext(PanelScope) }
-
-export function PanelPreferencesProvider({ scope, children }: { scope: string; children: ReactNode }) {
-  const parent = useContext(PanelScope)
-  return <PanelScope.Provider value={`${parent}/${scope || 'default'}`}>{children}</PanelScope.Provider>
-}
+export function PanelPreferencesProvider({ scope, children }: { scope: string; children: ReactNode }) { const parent = useContext(PanelScope); return <PanelScope.Provider value={`${parent}/${scope || 'default'}`}>{children}</PanelScope.Provider> }
 
 /** Resizable, collapsible workspace section with a per-user, per-panel saved size. */
 export default function WorkspacePanel({ id, title, children, className = '', contentClassName = '', initialWidth, initialHeight, minWidth = 280, minHeight = 160 }: Props) {
-  const host = useRef<HTMLElement>(null)
-  const userResizing = useRef(false)
-  const collapsedRef = useRef(false)
-  const savedRef = useRef<Saved>({})
-  const scope = useContext(PanelScope)
-  const [collapsed, setCollapsed] = useState(false)
-  const [dimensions, setDimensions] = useState<Saved>({})
+  const host = useRef<HTMLElement>(null), scope = useContext(PanelScope)
+  const [collapsed, setCollapsed] = useState(false), [dimensions, setDimensions] = useState<Saved>({})
   const storeKey = `gaia.workspace-panel.v1.${scope}.${id}`
-
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storeKey) || '{}') as Saved
-      savedRef.current = saved
-      setDimensions(saved)
-      setCollapsed(!!saved.collapsed)
-      collapsedRef.current = !!saved.collapsed
-      if (host.current) {
-        host.current.style.width = saved.width ? `${saved.width}px` : ''
-        host.current.style.height = saved.height ? `${saved.height}px` : ''
-      }
-    } catch { /* Ignore unavailable or malformed local preferences. */ }
-    const node = host.current
-    if (!node || typeof ResizeObserver === 'undefined') return
-    let timer = 0
-    const observer = new ResizeObserver(entries => {
-      const box = entries[0]?.contentRect
-      if (!box || !userResizing.current || box.width <= 0 || box.height <= 0) return
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => {
-        const actual = node.getBoundingClientRect()
-        const width = Math.round(actual.width), height = Math.round(actual.height)
-        if (width < minWidth || height < minHeight) return
-        const next = {...savedRef.current, width, height, collapsed: collapsedRef.current}
-        savedRef.current = next
-        setDimensions(next)
-        try { localStorage.setItem(storeKey, JSON.stringify(next)) } catch { /* Storage is optional. */ }
-      }, 160)
-    })
-    const finishResize = () => {
-      if (!userResizing.current || collapsedRef.current) return
-      window.clearTimeout(timer)
-      const box = node.getBoundingClientRect()
-      const next = {...savedRef.current, width: Math.round(box.width), height: Math.round(box.height)}
-      savedRef.current = next
-      setDimensions(next)
-      try { localStorage.setItem(storeKey, JSON.stringify(next)) } catch { /* Storage is optional. */ }
-      userResizing.current = false
-    }
-    observer.observe(node)
-    window.addEventListener('pointerup', finishResize)
-    window.addEventListener('mouseup', finishResize)
-    return () => { observer.disconnect(); window.clearTimeout(timer); window.removeEventListener('pointerup', finishResize); window.removeEventListener('mouseup', finishResize) }
-  // Panel identity stays stable for the lifetime of the mounted workspace.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeKey, minWidth, minHeight])
-
-  const save = (next: Saved) => {
-    savedRef.current = {...savedRef.current, ...next}
-    setDimensions(savedRef.current)
-    try { localStorage.setItem(storeKey, JSON.stringify(savedRef.current)) } catch { /* Storage is optional. */ }
+      setDimensions(saved); setCollapsed(!!saved.collapsed)
+      if (host.current) { host.current.style.width = saved.width ? `${saved.width}px` : ''; host.current.style.height = saved.height ? `${saved.height}px` : ''; if (id.includes(':list')) host.current.parentElement?.style.setProperty('--code-list-width', saved.width ? `${saved.width}px` : '') }
+    } catch { /* Ignore unavailable or malformed preferences. */ }
+  }, [storeKey, id])
+  const save = (next: Saved) => { setDimensions(old => { const merged = { ...old, ...next }; try { localStorage.setItem(storeKey, JSON.stringify(merged)) } catch { /* Storage is optional. */ }; return merged }) }
+  const reset = () => { if (!host.current) return; host.current.style.width = ''; host.current.style.height = ''; if (id.includes(':list')) host.current.parentElement?.style.removeProperty('--code-list-width'); save({ width: undefined, height: undefined }) }
+  const resize = (axis: 'width' | 'height' | 'both', event: PointerEvent<HTMLDivElement>) => {
+    if (collapsed || !host.current || event.button !== 0 || !event.isPrimary) return
+    event.preventDefault(); event.stopPropagation()
+    const handle = event.currentTarget, node = host.current, startX = event.clientX, startY = event.clientY, rect = node.getBoundingClientRect(), parentRect = node.parentElement?.getBoundingClientRect(), isCodeList = id.includes(':list')
+    const maxW = Math.max(minWidth, Math.min(window.innerWidth - rect.left - 8, parentRect ? parentRect.right - rect.left - (isCodeList ? 300 : 0) : window.innerWidth - rect.left - 8)), maxH = Math.max(minHeight, Math.min(window.innerHeight - rect.top - 8, 1200))
+    handle.setPointerCapture(event.pointerId)
+    const move = (e: globalThis.PointerEvent) => { const w = Math.max(minWidth, Math.min(maxW, rect.width + e.clientX - startX)), h = Math.max(minHeight, Math.min(maxH, rect.height + e.clientY - startY)); if (axis !== 'height') { node.style.width = `${Math.round(w)}px`; if (isCodeList) node.parentElement?.style.setProperty('--code-list-width', `${Math.round(w)}px`) } if (axis !== 'width') node.style.height = `${Math.round(h)}px` }
+    let finished = false
+    const finish = () => { if (finished) return; finished = true; handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', finish); handle.removeEventListener('pointercancel', finish); handle.removeEventListener('lostpointercapture', finish); if (axis !== 'height') { const width = Math.round(node.getBoundingClientRect().width); if (isCodeList) node.parentElement?.style.setProperty('--code-list-width', `${width}px`); save({ width }) } if (axis !== 'width') save({ height: Math.round(node.getBoundingClientRect().height) }) }
+    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish); handle.addEventListener('lostpointercapture', finish)
   }
-  const adjust = (axis: 'width' | 'height', amount: number) => {
-    if (!host.current) return
-    const current = axis === 'width' ? host.current.getBoundingClientRect().width : host.current.getBoundingClientRect().height
-    const value = Math.max(axis === 'width' ? minWidth : minHeight, Math.round(current + amount))
-    host.current.style[axis] = `${value}px`
-    save({ [axis]: value })
-  }
-  const reset = () => {
-    if (!host.current) return
-    host.current.style.width = ''
-    host.current.style.height = ''
-    save({ width: undefined, height: undefined })
-  }
-
-  return <section ref={host as React.Ref<HTMLElement>} className={`workspace-panel ${collapsed ? 'is-collapsed' : ''} ${className}`} data-workspace-panel={id} onPointerDown={event => { const bounds = event.currentTarget.getBoundingClientRect(); userResizing.current = !collapsed && bounds.right - event.clientX < 24 && bounds.bottom - event.clientY < 24 }} style={{ '--panel-min-width': `${minWidth}px`, '--panel-min-height': `${minHeight}px`, ...(initialWidth && !dimensions.width ? { width: `${initialWidth}px` } : {}), ...(initialHeight && !dimensions.height ? { height: `${initialHeight}px` } : {}) } as React.CSSProperties}>
-    <header className="workspace-panel-head"><h2>{title}</h2><div className="workspace-panel-tools"><button type="button" title="Make narrower" aria-label={`Make ${title} narrower`} onClick={() => adjust('width', -80)}>−W</button><button type="button" title="Make wider" aria-label={`Make ${title} wider`} onClick={() => adjust('width', 80)}>＋W</button><button type="button" title="Make shorter" aria-label={`Make ${title} shorter`} onClick={() => adjust('height', -80)}>−H</button><button type="button" title="Make taller" aria-label={`Make ${title} taller`} onClick={() => adjust('height', 80)}>＋H</button><button type="button" title="Reset size" aria-label={`Reset ${title} size`} onClick={reset}>Reset</button><button type="button" aria-expanded={!collapsed} onClick={() => { const next = !collapsed; collapsedRef.current = next; setCollapsed(next); save({ collapsed: next }) }}>{collapsed ? 'Expand' : 'Collapse'}</button></div></header>
+  const keyboardResize = (axis: 'width' | 'height' | 'both', event: React.KeyboardEvent<HTMLDivElement>) => { const delta = event.shiftKey ? 40 : 12; if (!['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(event.key)) return; event.preventDefault(); if (!host.current) return; const bounds = host.current.getBoundingClientRect(), width = Math.max(minWidth, Math.min(window.innerWidth - bounds.left - 8, bounds.width + (event.key === 'ArrowRight' ? delta : event.key === 'ArrowLeft' ? -delta : 0))), height = Math.max(minHeight, Math.min(Math.min(window.innerHeight - bounds.top - 8, 1200), bounds.height + (event.key === 'ArrowDown' ? delta : event.key === 'ArrowUp' ? -delta : 0))); if (axis !== 'height') { host.current.style.width = `${width}px`; if (id.includes(':list')) host.current.parentElement?.style.setProperty('--code-list-width', `${width}px`) } if (axis !== 'width') host.current.style.height = `${height}px`; save({ ...(axis !== 'height' ? { width } : {}), ...(axis !== 'width' ? { height } : {}) }) }
+  const handleProps = (axis: 'width' | 'height' | 'both', label: string) => ({ role: 'separator' as const, tabIndex: collapsed ? -1 : 0, 'aria-label': `${label} — utiliser les flèches pour redimensionner`, 'aria-orientation': axis === 'width' ? 'vertical' as const : 'horizontal' as const, onPointerDown: (e: PointerEvent<HTMLDivElement>) => resize(axis, e), onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => keyboardResize(axis, e) })
+  return <section ref={host as React.Ref<HTMLElement>} className={`workspace-panel ${collapsed ? 'is-collapsed' : ''} ${className}`} data-workspace-panel={id} style={{ '--panel-min-width': `${minWidth}px`, '--panel-min-height': `${minHeight}px`, ...(initialWidth && !dimensions.width ? { width: `${initialWidth}px` } : {}), ...(initialHeight && !dimensions.height ? { height: `${initialHeight}px` } : {}) } as React.CSSProperties}>
+    <header className="workspace-panel-head"><h2>{title}</h2><div className="workspace-panel-tools"><button type="button" title="Réinitialiser la taille" aria-label={`Réinitialiser la taille de ${title}`} onClick={reset}>Reset</button><button type="button" aria-expanded={!collapsed} onClick={() => { const next = !collapsed; setCollapsed(next); save({ collapsed: next }) }}>{collapsed ? 'Déplier' : 'Replier'}</button></div></header>
     <div className={`workspace-panel-content ${contentClassName}`} hidden={collapsed}>{children}</div>
+    {!collapsed && <><div className="workspace-panel-resize-edge workspace-panel-resize-right" {...handleProps('width', `Redimensionner ${title} horizontalement`)} /><div className="workspace-panel-resize-edge workspace-panel-resize-bottom" {...handleProps('height', `Redimensionner ${title} verticalement`)} /><div className="workspace-panel-resize-corner" {...handleProps('both', `Redimensionner ${title}`)} /></>}
   </section>
 }

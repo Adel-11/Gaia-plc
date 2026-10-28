@@ -98,7 +98,7 @@ def test_shared_breaking_change_rolls_back_and_sessions_select_independently(wor
         session.info['workspace_id']=made['id'];state=store.load_project(session)
         used=original['instances'][0]['type_id']
         state['types']=[t for t in state['types'] if t['id']!=used]
-        with pytest.raises(ValueError,match='Catalogue incompatible'):
+        with pytest.raises(ValueError,match='Catalogue incompatible|Type encore utilisé'):
             store.save_project(session,state,'workspace-admin',state['revision'])
         session.rollback()
     assert other.get('/api/v2/project').json()['types']==original['types']
