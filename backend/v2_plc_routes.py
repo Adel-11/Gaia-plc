@@ -122,7 +122,7 @@ def register_plc_routes(app, get_session, current_user, csrf):
 
     def inventory_objects(state):
         """Folder browsing and moves do not compile communication mappings."""
-        source = v2_plc._source()
+        source = v2_plc._source(state)
         templates = v2_plc._source_objects(source)
         defaults = v2_plc._folder_map(source)
         snapshot = {o['name']: o.get('folder', '') for o in (state.get('snapshot') or {}).get('objects', []) if o.get('name')}

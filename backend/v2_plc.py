@@ -29,21 +29,14 @@ def _id(el):
     return None
 
 
-def _source():
-    return etree.parse(str(REF)).getroot()
+def _source(state=None):
+    from backend.v2_hmi import REFERENCE, is_hmi
+    return etree.parse(str(REFERENCE if is_hmi(state) else REF)).getroot()
 
 
 def _source_objects(root):
-    result = {}
-    types = root.find(NS + "types")
-    for group in (types.find(NS + "dataTypes"), types.find(NS + "pous")):
-        if group is not None:
-            for el in group:
-                result[el.get("name")] = el
-    for data in root.findall(NS + "addData/" + NS + "data"):
-        g = data.find(NS + "globalVars")
-        if g is not None: result[g.get("name")] = g
-    return result
+    from backend.v2_codesys import _objects
+    return _objects(root)
 
 
 def _stable_id(name, state):
@@ -192,8 +185,8 @@ def _sync_gfb_instances(pou, pairs, upi=False):
         var=etree.SubElement(local,NS+"variable",name=name); etree.SubElement(var,NS+"type").append(etree.Element(NS+"derived",name=fbtype))
 
 
-def _reference_com_rank(pou_name):
-    source=_source_objects(_source()).get(pou_name)
+def _reference_com_rank(pou_name, sources):
+    source = sources.get(pou_name)
     if source is None: return {}
     body=source.find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
     ranks={}
@@ -278,7 +271,7 @@ def _tcp_address_expression(point, state):
     return f"{base}[{address - 1}]"
 
 
-def _generated_objects(objs, state):
+def _generated_objects(objs, state, sources):
     """Refresh generated calls and copy POUs from current workbook rows."""
     from backend.v2_program_membership import freeze_membership
     legacy_membership = not isinstance(state.get("program_membership"), dict)
@@ -372,7 +365,8 @@ def _generated_objects(objs, state):
     # TCP copy statements use the exact mapped variable identifiers from Excel.
     tcp_in, tcp_out, rtu_in, rtu_out = [], [], [], []
     tcp_points=[p for p in state.get("tcp_points",[]) if str(p.get("Instance") or p.get("instance_id") or "") in valid_instances]
-    in_rank=_reference_com_rank("GFC_COM_IN"); out_rank=_reference_com_rank("GFC_COM_OUT")
+    in_rank = _reference_com_rank("GFC_COM_IN", sources)
+    out_rank = _reference_com_rank("GFC_COM_OUT", sources)
     def com_rank(p, ranks): return ranks.get(_com_key(p.get("GVL_COM variable")),10**9)
     tcp_in_rows=sorted((p for p in tcp_points if p.get("Direction")=="Client to PLC" and included("GFC_COM_IN",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,in_rank))
     tcp_out_rows=sorted((p for p in tcp_points if p.get("Direction")!="Client to PLC" and included("GFC_COM_OUT",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,out_rank))
@@ -382,6 +376,10 @@ def _generated_objects(objs, state):
             com = re.sub(r"\.Word_value\[\d+\]", f".Word_value[{0 if str(p.get('Word')).upper() == 'LSW' else 1}]", com)
         if not mapped or not com: continue
         stmt = f"GVL_COM.{com} := GVL_MODBUS.{mapped};" if p.get("Direction") == "Client to PLC" else f"GVL_MODBUS.{mapped} := GVL_COM.{com};"
+        if state.get("program_profile") == "hmi-v8":
+            label = str(p.get("Name") or "").splitlines()
+            address = p.get("Modbus address", p.get("address"))
+            stmt += f" // {address} | {' '.join(label)}"
         (tcp_in if p.get("Direction") == "Client to PLC" else tcp_out).append(stmt)
     # RTU channels are whole arrays, grouped to avoid emitting one copy per register.
     rtu_rows=[p for p in state.get("rtu_channels",[]) if str(p.get("instance") or p.get("instance_id") or "") in valid_instances and included("GFC_COM_IN" if p.get("Direction")=="Equipment to PLC" else "GFC_COM_OUT",p.get("instance") or p.get("instance_id"))]
@@ -433,7 +431,7 @@ def _generated_objects(objs, state):
 
 def build_program(state, include_union: bool = False) -> dict:
     """Return every free program object as {name: {name,kind,folder,element}}."""
-    root = _source(); src = _source_objects(root); folders = _folder_map(root)
+    root = _source(state); src = _source_objects(root); folders = _folder_map(root)
     model_pous={str(t.get("fb",{}).get("name")) for t in state.get("types",[]) if t.get("fb",{}).get("name")}
     model_duts={str(d.get("name")) for t in state.get("types",[]) for d in t.get("duts",[]) if d.get("name")}
     model_fcs={str(f.get("name") or f.get("FC")) for f in state.get("exchange_functions",[]) if f.get("name") or f.get("FC")}
@@ -442,7 +440,7 @@ def build_program(state, include_union: bool = False) -> dict:
     objs = {}
     for name, template in src.items():
         if name == "DUT_Union_Real_Word" and not include_union: continue
-        if name.startswith("DUT_") and name not in model_duts: continue
+        if name.startswith("DUT_") and name not in model_duts and name != "DUT_Union_Real_Word": continue
         if name.startswith("FB_") and name not in model_pous: continue
         if name.startswith("FC_EXC_") and name not in model_fcs: continue
         el = copy.deepcopy(template)
@@ -478,7 +476,7 @@ def build_program(state, include_union: bool = False) -> dict:
             body=objs[name]["element"].find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
             if body is not None: body.text=fn["body"]
         if name in objs: _append_custom(objs[name],code,name)
-    _generated_objects(objs, state)
+    _generated_objects(objs, state, src)
     # Generated sections remain owned by the model; authored additions survive regeneration.
     for name, code in (state.get("generated_custom_code") or {}).items():
         if name in {"GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC", "GFB_INST", "GFB_UPI", "PLC_PRG"} and name in objs:
@@ -545,7 +543,7 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str], inc
     selected_names=list(dict.fromkeys(selected_names))
     missing = [n for n in selected_names if n not in objects]
     if missing: raise KeyError("Unknown PLC objects: " + ", ".join(missing))
-    source = _source(); root = _new_project(source,state)
+    source = _source(state); root = _new_project(source,state)
     types = root.find(NS + "types"); dts=types.find(NS+"dataTypes"); pous=types.find(NS+"pous")
     add=root.find(NS+"addData")
     selected=set(selected_names); paths={}

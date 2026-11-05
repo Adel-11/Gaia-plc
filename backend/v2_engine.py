@@ -582,6 +582,19 @@ def validate_project(state: dict) -> dict:
 
 def _validate(state: dict, filename: str) -> dict:
     errors, warnings = [], []
+    if state.get("program_profile") == "hmi-v8":
+        from backend.v2_hmi import RETIRED_TYPES, member_error
+        for client in state.get("tcp_clients", []):
+            if str(client.get("Client", "")).upper() in {"FUXA", "WEBVISU"}:
+                errors.append("FUXA and WebVisu are retired in the PanelView program.")
+        for typ in state.get("types", []):
+            if str(typ.get("name", "")).upper() in RETIRED_TYPES:
+                errors.append(f"Retired type {typ['name']} cannot be imported into the PanelView program.")
+            for dut in typ.get("duts", []):
+                for member in dut.get("members", []):
+                    issue = member_error(state, dut.get("role"), member.get("name"))
+                    if issue:
+                        errors.append(f"{dut['name']}.{issue}")
     types = {str(t.get("name")): t for t in state.get("types", [])}
     instances = {str(i.get("name")): i for i in state.get("instances", [])}
     type_ids = {t.get("id") for t in state.get("types", [])}
@@ -829,6 +842,9 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
 def _updated_lists(state: dict, source: dict) -> dict:
     """Refresh the project's three entity dropdown columns in LISTS."""
     result = copy.deepcopy(source)
+    if state.get("program_profile") == "hmi-v8":
+        from backend.v2_hmi import clean_list
+        clean_list(result)
     headers = [str(value or "") for value in result.get("headers", [])]
     columns = {name: index for index, name in enumerate(headers)
                if name in {"OBJ_TYPE", "INSTANCE", "FC_EXC"}}
@@ -840,6 +856,9 @@ def _updated_lists(state: dict, source: dict) -> dict:
         "FC_EXC": [str(item.get("name") or item.get("id")) for item in state.get("exchange_functions", [])
                    if item.get("name") or item.get("id")],
     }
+    if state.get("program_profile") == "hmi-v8" and "CLIENT" in headers:
+        columns["CLIENT"] = headers.index("CLIENT")
+        desired["CLIENT"] = [str(client["Client"]) for client in state.get("tcp_clients", []) if client.get("Client")]
     rows = result.setdefault("rows", [])
     for header, col in columns.items():
         existing = [row[col] for row in rows if col < len(row) and row[col] not in (None, "")]
@@ -881,6 +900,9 @@ def export_workbook(state: dict, filename: str) -> bytes:
     if not template.exists():
         raise FileNotFoundError(f"Official workbook template missing for {filename}")
     wb = openpyxl.load_workbook(template)
+    if state.get("program_profile") == "hmi-v8":
+        from backend.v2_hmi import clean_template
+        clean_template(wb)
     sheets = _sheet_map(book)
     # Project workbooks carry one tab per RTU slave, parameterized equipment,
     # or exchange function. Clone the matching official placeholder sheet.
@@ -895,6 +917,7 @@ def export_workbook(state: dict, filename: str) -> bytes:
             continue
         new_ws = wb.copy_worksheet(prototype)
         new_ws.title = source_name
+        new_ws.data_validations = copy.deepcopy(prototype.data_validations)
     if prototype_name:
         for ws in list(wb.worksheets):
             if ws.title == prototype_name and prototype_name not in sheets:

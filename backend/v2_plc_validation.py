@@ -261,6 +261,18 @@ def plan_export(state: dict, objects: dict[str, dict], mode: str = "full", focus
                  and str(o.get("kind", "")).casefold() in {"dut", "gvl", "pou", "function", "functionblock", "function_block", "program"}}
     deletions.extend(sorted(n for n in old_names if n and n not in available_names and n != "DUT_Union_Real_Word"))
     manual = []
+    if state.get("program_profile") == "hmi-v8":
+        manual.append("PanelView 800 : utiliser les nouvelles adresses du classeur Modbus TCP. Coils et registres commencent à 1, entrées TOR à 10001. Conserver l’ordre CDAB.")
+        if state.get("v7_archive_revision") or any("UPI_LOCAL_FUXA" in n or "UPI_LOCAL_WEBVISU" in n for n in deletions):
+            from backend.v2_hmi import RETIRED_TYPES
+            for name in sorted(RETIRED_TYPES):
+                obsolete = [f"DUT_{role}_{name}" for role in ("COM", "EXC", "INT")]
+                obsolete += [f"FB_{name}"] + [f"FC_EXC_{name}_{kind}" for kind in ("ADM100W", "DOSENSOR", "DIP1500")]
+                deletions.extend(f"{obj} (si présent)" for obj in obsolete if obj not in deletions)
+            deletions.extend(f"{name} (si présent)" for name in (
+                "Visualisation ADM100W", "Visualisation DIP1500", "Visualisation DO_Sensor",
+                "Visualization Manager", "WebVisu",
+            ))
     for table, needed, capacity in _tcp_capacity_overflow(state):
         manual.append(f"Increase the CODESYS Modbus TCP {table} server/device zone to at least {needed} addresses and update the generated array bounds.")
     current_map = {_mapped_variable_base(str(v.get("name"))) for v in state.get("mapped_variables", []) if v.get("name") and "INSTANCE" not in str(v.get("name")).upper() and "<" not in str(v.get("name"))}

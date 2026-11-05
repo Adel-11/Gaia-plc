@@ -59,7 +59,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
     register_workspace_routes(app, get_session, current_user, csrf)
     register_catalog_routes(app, get_session, current_user, csrf)
     from backend.v2_templates import register_template_routes
-    register_template_routes(app, current_user)
+    register_template_routes(app, get_session, current_user)
 
     def project_for(session):
         state = store.load_project(session)
@@ -169,6 +169,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
             submitted = [{**old, **incoming, "role": incoming.get("role", old.get("role")), "name": incoming.get("name", old.get("name"))}
                          for old, incoming in zip(typ.get("duts", []), submitted)]
         errors, warnings, changes = [], [], []
+        from backend.v2_hmi import member_error
         from backend.v2_type_creation import _iec_type_error, _identifier
         known_types = {str(t.get("name")) for t in current.get("types", []) if t.get("name")}
         known_types.update(str(d.get("name")) for t in current.get("types", []) for d in t.get("duts", []) if d.get("name"))
@@ -186,6 +187,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 name = str(member.get("name", ""))
                 if name.upper() in {"INT", "BOOL", "REAL", "WORD", "BYTE", "ARRAY", "STRUCT", "END_STRUCT", "VAR", "END_VAR", "IF", "THEN", "ELSE", "TRUE", "FALSE", "FOR", "WHILE", "FUNCTION", "PROGRAM", "FUNCTION_BLOCK"}: errors.append(f"Reserved IEC keyword {name!r} cannot be a member name")
                 if not _identifier(name): errors.append(f"Invalid IEC member name {name!r} in DUT_{role}")
+                issue = member_error(current, role, name)
+                if issue:
+                    errors.append(f"DUT_{role}.{issue}")
                 if name.casefold() in seen: errors.append(f"Duplicate member {name} in DUT_{role}")
                 seen.add(name.casefold())
                 prior = old_members.get(name)
@@ -373,6 +377,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     @app.get("/api/v2/exports/fuxa.csv")
     def export_fuxa(session=Depends(get_session), user=Depends(current_user)):
         state = project_for(session)
+        if state.get("program_profile") == "hmi-v8":
+            raise HTTPException(404, "The PanelView program does not export a FUXA CSV")
         errors = engine.validate_project(state).get("errors", [])
         if errors:
             raise HTTPException(409, detail={"errors": errors})

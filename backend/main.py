@@ -38,8 +38,11 @@ _login_attempts: dict[str, list[float]] = {}
 _password_hasher = PasswordHash.recommended()
 
 
-@lru_cache(maxsize=1)
-def _v2_reference_project():
+@lru_cache(maxsize=2)
+def _v2_reference_project(panelview=False):
+    if panelview:
+        from backend.v2_hmi import load_hmi_pack
+        return load_hmi_pack()
     from backend.v2_engine import load_pack
     return load_pack()
 
@@ -365,9 +368,10 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                         changed_names = True
                 if changed_names or db.load_state(session) is None:
                     db.save_state(session, initial)
+                hmi_project = os.environ.get("GAIA_UPGRADE_HMI_PROJECT", "").strip()
                 if seed and v2_store.load_project(session) is None:
                     from copy import deepcopy
-                    v2_initial = deepcopy(_v2_reference_project())
+                    v2_initial = deepcopy(_v2_reference_project(hmi_project.casefold() == "gaia"))
                     v2_initial["migration"] = {
                         "source": "reference-v2 pack",
                         "legacy_backup": "backups/legacy-v1-before-v2.sqlite3" if (resolved_data / "backups/legacy-v1-before-v2.sqlite3").exists() else None,
@@ -379,6 +383,9 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                     from backend.v2_fb_flow import convert_project
                     convert_project(v2_initial)
                     v2_store.initialize(session, v2_initial)
+                if hmi_project:
+                    from backend.v2_hmi import upgrade_named_project
+                    upgrade_named_project(session, hmi_project)
                 # Move legacy handwritten INPUTS/OUTPUTS text into the editable PROCESSING section.
                 from backend.v2_fb_flow import convert_project
                 v2_existing = v2_store.load_project(session)

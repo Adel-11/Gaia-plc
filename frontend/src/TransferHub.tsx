@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import V2PlcExport from './V2PlcExport'
 import V2CodesysImport from './V2CodesysImport'
 
-type Project = { workbooks?: { filename: string }[]; phase?: number }
+type Project = { workbooks?: { filename: string }[]; phase?: number; program_profile?: string; v7_archive_revision?: number }
 type ExcelRow = { sheet: string; key: unknown; row?: Record<string, unknown>; before?: Record<string, unknown>; after?: Record<string, unknown> }
 type ExcelDiff = { added: ExcelRow[]; modified: ExcelRow[]; removed: ExcelRow[] }
 type ExcelPreview = { kind: 'excel'; token: string; filename?: string; mode?: 'merge' | 'replace'; diff: ExcelDiff; validation: { errors?: unknown[]; warnings?: unknown[] } }
@@ -53,7 +53,25 @@ export default function TransferHub({ csrf, project, revision, onChanged }: { cs
         {preview.kind==='excel'?<><p>Mode : {preview.mode==='merge'?'Fusionner':'Remplacer'}.</p><div className="diff-summary">{(['added','modified','removed'] as const).map(kind=><div className={`diff-tile ${kind}`} key={kind}><b>{preview.diff?.[kind]?.length||0}</b><span>{kind==='added'?'Ajouts':kind==='modified'?'Modifications':'Suppressions'}</span></div>)}</div><div className="diff-details">{(['added','modified','removed'] as const).map(kind=><section key={kind}><h4>{kind==='added'?'Ajouts':kind==='modified'?'Modifications':'Suppressions'} ({preview.diff?.[kind]?.length||0})</h4>{preview.diff?.[kind]?.length?<details><summary>Afficher les lignes concernées</summary>{preview.diff[kind].map((row,index)=><pre key={index}>{rowText(row)}</pre>)}</details>:<p>Aucun changement.</p>}</section>)}</div></>:<div>{preview.changes.map((change,index)=><p key={index}>{change}</p>)}</div>}
         {excelErrors.map((item,index)=><p className="error-text" key={`e${index}`}>Erreur : {item}</p>)}{restoreErrors.map((item,index)=><p className="error-text" key={`r${index}`}>Erreur : {item}</p>)}{warnings.map((item,index)=><p className="warning-text" key={`w${index}`}>Avertissement : {item}</p>)}
         <label><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={excelErrors.length>0||restoreErrors.length>0||!preview.token}/> J’ai vérifié l’aperçu et ses avertissements.</label><div><button className="button secondary" onClick={()=>{setPreview(null);setReviewed(false)}}>Annuler</button><button className="button primary" disabled={!reviewed||busy||!preview.token||excelErrors.length>0||restoreErrors.length>0} onClick={apply}>Appliquer</button></div></article>}</div>}
-    {tab==='exports'&&<div className="transfer-grid"><article className="v2-panel"><h2>Classeurs Excel</h2><p>Téléchargez un classeur individuel ou l’ensemble en ZIP.</p>{(project.workbooks||[]).map(b=><button className="button secondary" key={b.filename} onClick={()=>void download(`/exports/${encodeURIComponent(b.filename)}`,b.filename)}>{b.filename} ↓</button>)}<button className="button primary" disabled={busy} onClick={()=>void download('/workspace/excel','classeurs-excel.zip',true)}>Télécharger tous les classeurs (ZIP)</button></article><article className="v2-panel"><h2>FUXA</h2><p>Export des signaux au format CSV.</p><button className="button secondary" onClick={()=>void download('/exports/fuxa.csv','fuxa.csv')}>Télécharger CSV</button></article><article className="v2-panel"><h2>Sauvegarde projet</h2><p>Créer une sauvegarde JSON complète.</p><button className="button secondary" onClick={()=>void download('/workspace/backup','gaia-backup.json',true)}>Télécharger JSON</button></article></div>}
+    {tab === 'exports' && <div className="transfer-grid">
+      <article className="v2-panel">
+        <h2>Classeurs Excel</h2>
+        <p>Téléchargez un classeur individuel ou l’ensemble en ZIP.</p>
+        {(project.workbooks || []).map(book => <button className="button secondary" key={book.filename}
+          disabled={busy} onClick={() => void download(`/exports/${encodeURIComponent(book.filename)}`, book.filename)}>{book.filename} ↓</button>)}
+        <button className="button primary" disabled={busy} onClick={() => void download('/workspace/excel', 'classeurs-excel.zip', true)}>Télécharger tous les classeurs (ZIP)</button>
+      </article>
+      {project.program_profile !== 'hmi-v8' && <article className="v2-panel">
+        <h2>FUXA</h2><p>Export des signaux au format CSV.</p>
+        <button className="button secondary" disabled={busy} onClick={() => void download('/exports/fuxa.csv', 'fuxa.csv')}>Télécharger CSV</button>
+      </article>}
+      <article className="v2-panel">
+        <h2>Sauvegarde projet</h2><p>Créer une sauvegarde JSON complète.</p>
+        <button className="button secondary" disabled={busy} onClick={() => void download('/workspace/backup', 'gaia-backup.json', true)}>Télécharger JSON</button>
+        {project.v7_archive_revision && <button className="button secondary" disabled={busy}
+          onClick={() => void download('/workspace/archive-v7', 'gaia-archive-V7.json')}>Télécharger l’archive V7</button>}
+      </article>
+    </div>}
     {tab==='templates'&&<div className="transfer-grid"><article className="v2-panel"><h2>Modèles Excel</h2><p>Téléchargez les modèles officiels du pack, avec leurs listes de choix et info-bulles. Complétez-les puis renommez-les avant import : TYPE_MonType.xlsx, MODBUS_TCP.xlsx, MODBUS_RTU.xlsx, IO_PHYSICAL.xlsx, PARAMETERS_PA.xlsx ou EXCHANGES_EXC.xlsx.</p>{templatesLoading?<p>Chargement…</p>:templates.map(item=><div className="template-download" key={item.filename}><span><strong>{item.filename}</strong><small>{item.description}</small></span><button className="button secondary" disabled={busy} onClick={()=>void download(`/templates/${encodeURIComponent(item.filename)}`,item.filename)}>Télécharger</button></div>)}{!templatesLoading&&!templates.length&&<p>Aucun modèle disponible.</p>}<button className="button primary" disabled={busy||templatesLoading||!templates.length} onClick={()=>void download('/templates.zip','modeles-excel.zip')}>Télécharger tous les modèles (ZIP)</button></article></div>}
     {tab==='plc'&&<V2PlcExport csrf={csrf} projectRevision={revision} onExported={onChanged}/>}
     {tab==='codesys'&&<V2CodesysImport key={revision} csrf={csrf} onApplied={onChanged}/>}

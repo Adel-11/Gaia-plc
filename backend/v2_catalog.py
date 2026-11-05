@@ -50,9 +50,14 @@ class Apply(BaseModel):
 
 
 def _catalog(state):
+    from backend.v2_hmi import RETIRED, is_hmi
     options = state.get("catalog_options") or {}
-    return {"sections": list(options.get("sections") or BASE_SECTIONS),
-            "prefixes": list(options.get("prefixes") or BASE_PREFIXES)}
+    sections = list(options.get("sections") or BASE_SECTIONS)
+    prefixes = list(options.get("prefixes") or BASE_PREFIXES)
+    if is_hmi(state):
+        sections = [section for section in sections if not RETIRED.search(section)]
+        prefixes = [prefix for prefix in prefixes if not RETIRED.search(prefix + "_")]
+    return {"sections": sections, "prefixes": prefixes}
 
 
 def _identifier(value):
@@ -92,6 +97,7 @@ def register_catalog_routes(app, get_session, current_user, csrf):
 
     @app.post("/api/v2/catalog/options")
     def set_catalog(body: CatalogOptions, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        from backend.v2_hmi import RETIRED, is_hmi
         current = project_for(session)
         clean = {}
         for key, values in (("sections", body.sections), ("prefixes", body.prefixes)):
@@ -100,6 +106,8 @@ def register_catalog_routes(app, get_session, current_user, csrf):
                 raise HTTPException(422, f"{key.title()} must contain short non-empty labels")
             if len({value.casefold() for value in normalized}) != len(normalized):
                 raise HTTPException(422, f"{key.title()} cannot contain duplicates")
+            if is_hmi(current) and any(RETIRED.search(value) for value in normalized):
+                raise HTTPException(422, "Use PanelView labels for HMI catalog options.")
             clean[key] = normalized
         state = copy.deepcopy(current)
         state["catalog_options"] = clean

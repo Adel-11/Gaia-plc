@@ -1,0 +1,115 @@
+"""PanelView reference acceptance and scoped V7 archive migration."""
+from collections import Counter
+from copy import deepcopy
+import io
+import zipfile
+
+from fastapi.testclient import TestClient
+from lxml import etree
+import openpyxl
+
+from backend.main import create_app
+from backend.v2_addressing import allocate_tcp_points, client_ranges
+from backend.v2_codesys import _ids, _objects
+from backend.v2_engine import export_workbook, import_workbook, validate_project
+from backend.v2_hmi import PROFILE, REFERENCE, RETIRED, load_hmi_pack
+from backend.v2_plc import build_program, serialize_program
+from backend.v2_plc_validation import validate_xml
+from tests.test_v2_plc_acceptance import _dut_signature, _gvl_signature, _interface_signature, _st_tokens
+
+
+def test_panelview_program_and_workbooks_match_the_codesys_reference():
+    state = deepcopy(load_hmi_pack())
+    assert {t["name"] for t in state["types"]} == {"ADM100W", "DIP1500", "DOSENSOR", "UPI_LOCAL_HMI"}
+    assert len(state["instances"]) == 4
+    assert len(state["exchange_calls"]) == 3
+    assert [client["Client"] for client in state["tcp_clients"]] == ["HMI"]
+    counts = Counter(row["table"] for row in state["tcp_points"])
+    assert counts == {"coils": 15, "discrete_inputs": 16, "input_registers": 99, "holding_registers": 13}
+    assert set(row["Modbus address"] for row in state["tcp_points"] if row["table"] == "discrete_inputs") == (
+        set(range(10001, 10021)) - {10013, 10015, 10017, 10019}
+    )
+    assert client_ranges(state, "HMI")["coils"][0] == 1
+    assert validate_project(state)["errors"] == []
+
+    root = etree.parse(str(REFERENCE)).getroot()
+    expected = _objects(root)
+    ids, id_errors = _ids(root, expected)
+    assert not id_errors
+    objects = build_program(state)
+    xml = serialize_program(objects, state, list(objects))
+    assert validate_xml(xml, state, objects)["errors"] == []
+    output = etree.fromstring(xml)
+    actual = _objects(output)
+    assert len(actual) == 41
+    assert set(actual) == set(expected)
+    assert _ids(output, actual) == (ids, [])
+    checks = {"dataType": [_dut_signature], "globalVars": [_gvl_signature],
+              "pou": [_interface_signature, _st_tokens]}
+    for name, node in expected.items():
+        for signature in checks[etree.QName(node).localname]:
+            assert signature(actual[name]) == signature(node), (name, signature.__name__)
+
+    for filename in state["workbooks"]:
+        content = export_workbook(state, filename)
+        preview = import_workbook(content, filename, state)
+        assert preview["validation"]["errors"] == [], filename
+        assert not any(preview["diff"].values()), filename
+
+    # A free HMI map can be allocated without any paired supervision client.
+    state["tcp_points"] = []
+    points = allocate_tcp_points(state, "DOSENSOR_1", "HMI")
+    assert all(point["Client"] == "HMI" for point in points)
+    assert min(point["Modbus address"] for point in points if point["table"] == "coils") == 1
+
+
+def test_startup_upgrade_archives_gaia_and_preserves_other_projects(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("GAIA_UPGRADE_HMI_PROJECT", raising=False)
+    monkeypatch.setenv("ADMIN_USERNAME", "panelview-test")
+    monkeypatch.setenv("ADMIN_PASSWORD", "panelview-test-password")
+    settings = {"data_dir": tmp_path, "secret_key": "panelview-test-key-" * 3, "cookie_secure": False}
+    credentials = {"username": "panelview-test", "password": "panelview-test-password"}
+    with TestClient(create_app(**settings)) as client:
+        csrf = {"X-CSRF-Token": client.post("/api/login", json=credentials).json()["csrf_token"]}
+        gaia = client.get("/api/v2/project").json()
+        other = client.post("/api/v2/workspace/projects", headers=csrf, json={
+            "name": "Other PLC project", "copy_current": True,
+        }).json()
+        other_before = client.get("/api/v2/project").json()
+
+    monkeypatch.setenv("GAIA_UPGRADE_HMI_PROJECT", "Gaia")
+    with TestClient(create_app(**settings)) as client:
+        csrf = {"X-CSRF-Token": client.post("/api/login", json=credentials).json()["csrf_token"]}
+        upgraded = client.get("/api/v2/project").json()
+        assert upgraded["project_id"] == gaia["project_id"]
+        assert upgraded["program_profile"] == PROFILE
+        assert upgraded["validation"]["errors"] == []
+        assert client.get("/api/v2/exports/fuxa.csv").status_code == 404
+        archive = client.get("/api/v2/workspace/archive-v7").json()["state"]
+        assert archive["revision"] == gaia["revision"]
+        assert archive["types"] == gaia["types"]
+        assert archive["tcp_points"] == gaia["tcp_points"]
+        review = client.post("/api/v2/plc/preview", headers=csrf, json={"mode": "full"}).json()
+        assert review["errors"] == []
+        assert len(review["manual_deletions"]) == 19
+        assert any("PanelView 800" in action for action in review["manual_actions"])
+
+        template_zip = client.get("/api/v2/templates.zip")
+        assert template_zip.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(template_zip.content)) as bundle:
+            for name in bundle.namelist():
+                book = openpyxl.load_workbook(io.BytesIO(bundle.read(name)))
+                assert any(sheet.data_validations.dataValidation for sheet in book)
+                for sheet in book:
+                    for row in sheet.iter_rows():
+                        for cell in row:
+                            assert not RETIRED.search(str(cell.value))
+                            assert cell.comment is None or not RETIRED.search(cell.comment.text)
+        assert client.post("/api/v2/workspace/select", headers=csrf, json={"id": other["id"]}).status_code == 200
+        assert client.get("/api/v2/project").json() == other_before
+        assert client.get("/api/v2/workspace/archive-v7").status_code == 404
+
+    with TestClient(create_app(**settings)) as client:
+        assert client.post("/api/login", json=credentials).status_code == 200
+        assert client.get("/api/v2/project").json()["revision"] == upgraded["revision"]

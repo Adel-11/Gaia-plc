@@ -43,7 +43,9 @@ export default function ProjectHome({ csrf, project, onChanged, onSelectProject,
       ['Types', Number(supplied.types ?? project?.types?.length ?? 0)],
       ['Instances', Number(supplied.instances ?? project?.instances?.length ?? 0)],
       ['Membres DUT', Number(supplied.dut_members ?? 0)],
-      ['Tags FUXA', Number(supplied.fuxa_signals ?? 0)],
+      project?.program_profile === 'hmi-v8'
+        ? ['Points Modbus TCP', Number(supplied.tcp_points ?? 0)]
+        : ['Tags FUXA', Number(supplied.fuxa_signals ?? 0)],
       ['Fonctions échange', Number(supplied.exchange_functions ?? 0)],
       ['Classeurs', Number(supplied.workbooks ?? project?.workbooks?.length ?? 0)],
     ] as [string, number][]
@@ -71,7 +73,7 @@ export default function ProjectHome({ csrf, project, onChanged, onSelectProject,
   const addUser = async (event: FormEvent) => { event.preventDefault(); if (!username.trim() || !password) return; setBusy(true); setError(''); try { const result = await post<{ users: User[] }>('/workspace/users', { username: username.trim(), password, is_admin: newAdmin }); setUsers(result.users || [...users, { id: Date.now(), username: username.trim(), is_admin: newAdmin }]); setUsername(''); setPassword(''); setNewAdmin(false); setNotice('Le compte a été créé.') } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de créer le compte') } finally { setPassword(''); setBusy(false) } }
 
   return <main className="ph-home">
-    <header className="ph-hero"><div><span className="ph-eyebrow">ESPACE DE TRAVAIL</span><h1>{currentProject?.name || 'Projet Gaia'}</h1><p>Vue d’ensemble du projet, de son activité et de ses versions.</p></div><div className="ph-version"><span>Version actuelle</span><strong>{workspace?.version || currentProject?.version || '—'}</strong><button type="button" onClick={() => setMajorOpen(true)} disabled={busy}>Créer une version majeure</button></div></header>
+    <header className="ph-hero"><div><span className="ph-eyebrow">{project?.program_profile === "hmi-v8" ? "PANELVIEW V8" : "ESPACE DE TRAVAIL"}</span><h1>{currentProject?.name || 'Projet Gaia'}</h1><p>Vue d’ensemble du projet, de son activité et de ses versions.</p></div><div className="ph-version"><span>Version actuelle</span><strong>{workspace?.version || currentProject?.version || '—'}</strong><button type="button" onClick={() => setMajorOpen(true)} disabled={busy}>Créer une version majeure</button></div></header>
     {error && <p className="ph-alert" role="alert">{error}</p>}{notice && <p className="ph-notice" role="status">{notice}</p>}
     <WorkspacePanel id="project:selection" title="Project selection"><section className="ph-card ph-project-card"><div className="ph-card-title"><div><h2>Projets</h2><p>Sélectionnez un projet ou créez-en un nouveau.</p></div><label className="ph-picker">Projet actif<select disabled={busy} value={currentId || ''} onChange={e => void selectProject(Number(e.target.value))}>{(workspace?.projects || []).map(item => <option key={item.id} value={item.id}>{item.name} · {item.version || 'v1.0.0'}</option>)}</select></label></div>
       <div className="ph-project-actions"><form onSubmit={createProject}><label>Nouveau projet<input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nom du projet" required /></label><label className="ph-check"><input type="checkbox" checked={copyCurrent} onChange={e => setCopyCurrent(e.target.checked)} />Copier le projet actif</label><button type="submit" disabled={busy || !newName.trim()}>Créer un projet</button></form><form onSubmit={renameProject}><label>Renommer le projet actif<input value={rename} onChange={e => setRename(e.target.value)} required /></label><button type="submit" disabled={busy || !rename.trim()}>Renommer</button></form></div></section></WorkspacePanel>

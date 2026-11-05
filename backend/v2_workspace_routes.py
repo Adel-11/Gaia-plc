@@ -32,6 +32,7 @@ def _filename(name,suffix):return (re.sub(r'[^A-Za-z0-9_-]+','-',name).strip('-'
 
 def register_workspace_routes(app,get_session,current_user,csrf):
     from backend import v2_engine as engine,v2_plc,v2_plc_validation
+    from backend.v2_hmi import is_hmi, load_hmi_pack
     def project(session):
         result=store.load_project(session)
         if result is None:raise HTTPException(404,'Projet introuvable')
@@ -68,7 +69,7 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         source=project(session)
         if body.copy_current:state=copy.deepcopy(source)
         else:
-            state=copy.deepcopy(engine.load_pack())
+            state=copy.deepcopy(load_hmi_pack() if is_hmi(source) else engine.load_pack())
             state=ws.overlay(state,ws._catalog(source))
             for coll in ('instances','tcp_points','rtu_slaves','rtu_channels','pa_values','exchange_calls','virtual_io'):state[coll]=[]
             state['exchange_layout']={};state['generated_custom_code']={}
@@ -81,7 +82,7 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         # Reserve a project identity under the same global write lock as all revisions.
         ws._lock(session)
         pid=(session.scalar(select(func.max(store.V2Project.id))) or 0)+1
-        for key in ('revision','project_id','version','activity','_program_digests','_catalog_revision'):state.pop(key,None)
+        for key in ('revision','project_id','version','activity','_program_digests','_catalog_revision','v7_archive_revision'):state.pop(key,None)
         state['project_name']=name
         session.info['workspace_id']=pid
         try:result=store.save_project(session,state,user.username,expected_revision=0)
@@ -133,6 +134,15 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         state=saved(session,state,user,{'kind':'backup','name':filename})
         payload={'format':'gaia-generator-v2-backup','version':2,'state':state}
         return attachment(json.dumps(payload,ensure_ascii=False,indent=2).encode(),filename,'application/json')
+    @app.get('/api/v2/workspace/archive-v7')
+    def archive_v7(session=Depends(get_session),user=Depends(current_user)):
+        state = project(session)
+        archive = session.get(store.V2ProjectRevision, state.get('v7_archive_revision')) if state.get('v7_archive_revision') else None
+        if archive is None or archive.project_id != state['project_id']:
+            raise HTTPException(404, 'Archive V7 introuvable')
+        payload = {'format': 'gaia-generator-v2-backup', 'version': 2, 'state': json.loads(archive.state_payload)}
+        filename = _filename(state['project_name'], '-archive-V7.json')
+        return attachment(json.dumps(payload, ensure_ascii=False, indent=2).encode(), filename, 'application/json')
     @app.post('/api/v2/workspace/restore/preview')
     async def preview_restore(file:UploadFile=File(...),session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
         current=project(session);raw=await file.read(20*1024*1024+1)
@@ -141,6 +151,11 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             payload=json.loads(raw,parse_constant=lambda x: (_ for _ in ()).throw(ValueError('Nombre invalide')))
             if payload.get('format')!='gaia-generator-v2-backup' or not isinstance(payload.get('state'),dict):raise ValueError('Format de sauvegarde invalide')
             state=payload['state']
+            if ws.catalog_id(state) != ws.catalog_id(current):
+                raise ValueError('Cette sauvegarde appartient à une autre version du programme PLC')
+            state.pop('v7_archive_revision', None)
+            if current.get('v7_archive_revision'):
+                state['v7_archive_revision'] = current['v7_archive_revision']
             if not isinstance(state.get('types'),list) or not isinstance(state.get('workbooks'),dict):raise ValueError('Le modèle et les classeurs sont requis')
             for name in state['workbooks']:
                 if Path(name).name!=name or (name not in engine.PROJECT_FILES and not re.fullmatch(r'TYPE_[A-Za-z0-9_]+\.xlsx',name)):raise ValueError('Nom de classeur non autorisé')

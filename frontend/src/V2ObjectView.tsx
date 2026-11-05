@@ -17,7 +17,7 @@ type ObjectData = { id: string; name: string; kind: string; type_id?: string; re
 type Preview = { token: string; errors?: unknown[]; warnings?: unknown[]; changes?: string[] }
 type CatalogOptions = { sections: string[]; prefixes: string[]; revision?: number }
 const BASE_SECTIONS = ['INPUT (field to plc)', 'OUTPUT (plc to field)', 'STATE', 'PARAMETERS', 'INTERNAL']
-const BASE_PREFIXES = ['INPUT', 'OUTPUT', 'STATE', 'CMD', 'SPARE', 'COM', 'HMI', 'SCADA']
+const BASE_PREFIXES = ['INPUT', 'OUTPUT', 'STATE', 'CMD', 'SPARE', 'COM', 'HMI']
 type Props = { codeOnly?: boolean; kind: 'type' | 'instance'; objectId: string; csrf: string; projectRevision?: number; onSaved: () => void; onOpenType?: (typeId: string) => void; onDirtyChange?: (dirty: boolean) => void; initialStructure?: string; initialStructureVersion?: number }
 
 async function request<T>(path: string, options: RequestInit = {}, csrf = ''): Promise<T> {

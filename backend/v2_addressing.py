@@ -60,7 +60,7 @@ def client_ranges(state, client_id):
             if not BASES[table] <= value[0] <= value[1] <= 65535: raise ValueError(f"{table} range for {client_id} must be within {BASES[table]}..65535")
             result[table] = value
     if len(result) != len(TABLES):
-        if re.search(r"FUXA\s+address\s*\+\s*1000", str(client.get("Address range", "")), re.I):
+        if state.get("program_profile") != "hmi-v8" and re.search(r"FUXA\s+address\s*\+\s*1000", str(client.get("Address range", "")), re.I):
             fuxa = _client(state, "FUXA")
             for table in TABLES:
                 base = result.get(table)
@@ -186,7 +186,8 @@ def allocate_tcp_points(state, instance_id, client_id):
     if not _client(state, client_id): raise ValueError(f"Unknown TCP client {client_id}")
     templates=_find_templates(state,instance_id)
     client=str(client_id)
-    if client.casefold()=="fuxa" and _client(state,"HMI"):
+    legacy = state.get("program_profile") != "hmi-v8"
+    if legacy and client.casefold()=="fuxa" and _client(state,"HMI"):
         selected=[r for r in templates if str(r.get("Client", "")).casefold() in {"fuxa","hmi"}]
     else:
         selected=[r for r in templates if str(r.get("Client", "")).casefold()==client.casefold()]
@@ -200,7 +201,7 @@ def allocate_tcp_points(state, instance_id, client_id):
     for (target_client,table), rows in sorted(groups.items(),key=lambda item:(0 if item[0][0].casefold()=="fuxa" else 1,item[0][1])):
         if not _client(state,target_client): continue
         addresses=[]; reserved=[]
-        if target_client.casefold()=="hmi":
+        if legacy and target_client.casefold()=="hmi":
             for row in rows:
                 match=next((p for p in state.get("tcp_points",[]) if str(p.get("Client",p.get("client_id",""))).casefold()=="fuxa" and _table(p)==table and str(p.get("Instance",p.get("instance_id","")))==str(instance_id) and str(p.get("Name",p.get("name","")))==str(row.get("Name","")) and str(p.get("Word",""))==str(row.get("Word",""))),None)
                 candidate=int(match.get("Modbus address",match.get("address")))+1000 if match else None
@@ -213,7 +214,7 @@ def allocate_tcp_points(state, instance_id, client_id):
                 else: addresses.append(None)
         else: addresses=[None]*len(rows)
         if any(a is None for a in addresses):
-            if target_client.casefold()=="fuxa" and _client(state,"HMI"):
+            if legacy and target_client.casefold()=="fuxa" and _client(state,"HMI"):
                 paired_rows=[r for r in templates if str(r.get("Client","")).casefold()=="hmi" and _table(r)==table]
                 free=_free_fuxa_block(state,table,rows,paired_rows)
             else:

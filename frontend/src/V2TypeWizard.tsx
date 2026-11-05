@@ -12,9 +12,37 @@ const steps = ['Identity', 'Blocks', 'Review']
 const roles: Record<string, string[]> = { Equipment: ['PA', 'COM', 'EXC', 'IO', 'INT'], 'Functional unit (UPI)': ['COM', 'EXC', 'INT'] }
 const IEC_TYPES = ['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING']
 const BASE_SECTIONS = ['INPUT (field to plc)', 'OUTPUT (plc to field)', 'STATE', 'PARAMETERS', 'INTERNAL']
-const BASE_PREFIXES = ['INPUT', 'OUTPUT', 'STATE', 'CMD', 'SPARE', 'COM', 'HMI', 'SCADA']
+const BASE_PREFIXES = ['INPUT', 'OUTPUT', 'STATE', 'CMD', 'SPARE', 'COM', 'HMI']
 const blankMember = (): Member => ({ name: '', iec_type: 'BOOL', section: 'INTERNAL', default_value: '', unit: '', comment: '' })
 const blankDuts = (kind: string): Dut[] => (roles[kind] || roles.Equipment).map(role => ({ role, members: [{ ...blankMember(), name: 'SPARE' }] }))
+const panelViewMembers: Record<string, string[]> = {
+  COM: ['HMI_INPUT_LOCAL_REQUEST', 'HMI_INPUT_AUTO_REQUEST', 'HMI_OUTPUT_LOCAL_ACTIVE'],
+  EXC: ['UPI_INPUT_GLOBAL_LOCAL_HMI'],
+  INT: ['HMI_LOCAL_REQUEST', 'HMI_AUTO_REQUEST', 'GLOBAL_LOCAL_HMI', 'LOCAL_HMI_INDIVIDUAL', 'LOCAL_HMI', 'AUTO'],
+}
+const panelViewCode = [
+  '// Control mode requests from PanelView and the global HMI UPI',
+  'INTERN.HMI_LOCAL_REQUEST := COM.HMI_INPUT_LOCAL_REQUEST;',
+  'INTERN.HMI_AUTO_REQUEST := COM.HMI_INPUT_AUTO_REQUEST;',
+  'INTERN.GLOBAL_LOCAL_HMI := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;',
+  '',
+  'IF INTERN.HMI_LOCAL_REQUEST THEN INTERN.LOCAL_HMI_INDIVIDUAL := TRUE; END_IF',
+  'IF INTERN.HMI_AUTO_REQUEST THEN INTERN.LOCAL_HMI_INDIVIDUAL := FALSE; END_IF',
+  'INTERN.LOCAL_HMI := INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI;',
+  'INTERN.AUTO := NOT INTERN.LOCAL_HMI;',
+  'COM.HMI_OUTPUT_LOCAL_ACTIVE := INTERN.LOCAL_HMI;',
+].join('\n')
+
+function startingBlocks(kind: string, panelView: boolean) {
+  const hmiEquipment = panelView && kind === 'Equipment'
+  return {
+    duts: blankDuts(kind).map(dut => {
+      const names = hmiEquipment ? panelViewMembers[dut.role] : undefined
+      return names ? { ...dut, members: names.map(name => ({ ...blankMember(), name, section: 'PanelView local / auto' })) } : dut
+    }),
+    processing: hmiEquipment ? panelViewCode : '',
+  }
+}
 const label = (key: string) => key.replaceAll('_', ' ')
 
 async function request<T>(path: string, body: unknown, csrf: string): Promise<T> {
@@ -25,12 +53,13 @@ async function request<T>(path: string, body: unknown, csrf: string): Promise<T>
 
 export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onChanged }: Props) {
   const types: AnyRow[] = project?.types || []
+  const panelView = project?.program_profile === 'hmi-v8'
   const [step, setStep] = useState(0), [name, setName] = useState(''), [kind, setKind] = useState('Equipment')
   const [description, setDescription] = useState(''), [copyFrom, setCopyFrom] = useState('')
   const [catalog, setCatalog] = useState<CatalogOptions>({ sections: BASE_SECTIONS, prefixes: BASE_PREFIXES })
   const [projectRevision, setProjectRevision] = useState<number>(Number(project?.revision || 0))
-  const [duts, setDuts] = useState<Dut[]>(blankDuts('Equipment')), [selectedRole, setSelectedRole] = useState('PA')
-  const [processingCode, setProcessingCode] = useState(''), [customCode, setCustomCode] = useState('')
+  const [duts, setDuts] = useState<Dut[]>(() => startingBlocks('Equipment', panelView).duts), [selectedRole, setSelectedRole] = useState('PA')
+  const [processingCode, setProcessingCode] = useState(() => startingBlocks('Equipment', panelView).processing), [customCode, setCustomCode] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null), [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const activeDut = duts.find(d => d.role === selectedRole) || duts[0]
   useEffect(() => { setProjectRevision(Number(project?.revision || 0)) }, [project?.revision])
@@ -50,11 +79,22 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     try { const saved = await request<CatalogOptions>('/catalog/options', next, csrf); setCatalog({ sections: [...new Set([...BASE_SECTIONS, ...(saved.sections || [])])], prefixes: [...new Set([...BASE_PREFIXES, ...(saved.prefixes || [])])] }); if (typeof saved.revision === 'number') setProjectRevision(saved.revision); setPreview(null); setReviewed(false); onChanged?.() }
     catch (e) { setCatalog(previous); setError(e instanceof Error ? e.message : 'Unable to save catalog options') }
   }
-  const changeKind = (next: string) => { setKind(next); replaceDuts(blankDuts(next)); setSelectedRole((roles[next] || roles.Equipment)[0]); setCopyFrom(''); setProcessingCode(''); setCustomCode('') }
+  const resetBlocks = (next: string) => {
+    const initial = startingBlocks(next, panelView)
+    replaceDuts(initial.duts)
+    setProcessingCode(initial.processing)
+    setCustomCode('')
+  }
+  const changeKind = (next: string) => {
+    setKind(next)
+    resetBlocks(next)
+    setSelectedRole((roles[next] || roles.Equipment)[0])
+    setCopyFrom('')
+  }
   const copyType = (id: string) => {
     setCopyFrom(id)
     const selected = types.find(t => String(t.id) === id || t.name === id)
-    if (!selected) { replaceDuts(blankDuts(kind)); setProcessingCode(''); setCustomCode(''); return }
+    if (!selected) { resetBlocks(kind); return }
     // Copy the type's reusable DUT/FB blocks only. Instance addresses and communication links are created later.
     replaceDuts((roles[kind] || roles.Equipment).map(role => {
       const dut = (selected.duts || []).find((item: AnyRow) => item.role === role)
@@ -75,7 +115,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         <label>Type name<input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null); setReviewed(false) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
         <label>Kind<select value={kind} onChange={e => changeKind(e.target.value)}><option>Equipment</option><option>Functional unit (UPI)</option></select></label>
         <label>Description<textarea rows={2} value={description} onChange={e => { setDescription(e.target.value); setPreview(null) }}/></label>
-        <label>Copy from an existing type<select value={copyFrom} onChange={e => copyType(e.target.value)}><option value="">Start with blank blocks</option>{types.filter(t => (t.kind || 'Equipment') === kind).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><small>Copies the DUT blocks and PROCESSING code only. Add instance addresses, communication settings, and exchange links later on their respective pages.</small></label>
+        <label>Copy from an existing type<select value={copyFrom} onChange={e => copyType(e.target.value)}><option value="">{panelView && kind === "Equipment" ? "Start with PanelView local / auto blocks" : "Start with blank blocks"}</option>{types.filter(t => (t.kind || 'Equipment') === kind).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><small>Copies the DUT blocks and PROCESSING code only. Add instance addresses, communication settings, and exchange links later on their respective pages.</small></label>
         <aside className="tw-flow-note"><b>Three steps:</b> create the type here, declare an instance, then configure communications and exchanges from the instance pages.</aside>
       </div></WorkspacePanel>}
 

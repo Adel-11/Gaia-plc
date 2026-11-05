@@ -429,7 +429,9 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                         try: n=int(v)
                         except (TypeError,ValueError): raise ValueError("Modbus addresses must be whole numbers")
                         if field=="tcp_points":
-                            lo,hi=_tcp_range(row.get("Client",row.get("client_id","FUXA")),row.get("table",row.get("sheet")),state)
+                            default_client = "HMI" if state.get("program_profile") == "hmi-v8" else "FUXA"
+                            client = row.get("Client") or row.get("client_id") or default_client
+                            lo,hi=_tcp_range(client,row.get("table",row.get("sheet")),state)
                             if not lo<=n<=hi: raise ValueError(f"TCP address must be between {lo} and {hi}")
                         if field=="rtu_slaves" and not 1<=n<=247: raise ValueError("RTU slave address must be between 1 and 247")
                         same=[]

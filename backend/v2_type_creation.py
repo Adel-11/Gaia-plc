@@ -410,11 +410,14 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         return state
 
     def construct(current, request):
+        from backend.v2_hmi import RETIRED_TYPES, is_hmi, member_error
         errors, warnings = [], []
         if request.rtu or request.rtu_default or request.supervision or request.upi_bindings:
             warnings.append("Communication recipes are not created with a type; add RTU, TCP, I/O, or UPI configuration after the type exists.")
         if request.kind not in ROLES: errors.append("Kind must be Equipment or Functional unit (UPI).")
         if not _identifier(request.name): errors.append("Name must be a valid non-reserved IEC identifier.")
+        if is_hmi(current) and request.name.upper() in RETIRED_TYPES:
+            errors.append(f"{request.name} was retired in the PanelView program.")
         if any(str(t.get("name", "")).casefold() == request.name.casefold() for t in current.get("types", [])):
             errors.append(f"Type {request.name} already exists (names are case-insensitive).")
         if errors: return None, errors, warnings
@@ -513,6 +516,9 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         for d in typ["duts"]:
             for m in d.get("members", []):
                 if not _identifier(m.get("name")): errors.append(f"Invalid member name in {d['name']}: {m.get('name')}")
+                issue = member_error(current, d.get("role"), m.get("name"))
+                if issue:
+                    errors.append(f"{d['name']}.{issue}")
                 type_error = _iec_type_error(m.get("iec_type"), known_types)
                 if type_error: errors.append(f"{d['name']}.{m.get('name')}: {type_error}")
         state = copy.deepcopy(current)

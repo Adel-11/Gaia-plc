@@ -54,14 +54,17 @@ def _raw(session,pid):
     revision=session.get(store.V2ProjectRevision,project.current_revision_id) if project and project.current_revision_id else None
     return project,json.loads(revision.state_payload) if revision else None
 
+def catalog_id(state):
+    """Projects share a catalog within their PLC program profile."""
+    return 2 if (state or {}).get('program_profile') == 'hmi-v8' else 1
+
 def ensure_workspace(session):
     counter=session.get(WorkspaceCounter,1)
     if counter is None:
         session.add(WorkspaceCounter(id=1,value=session.scalar(select(func.max(store.V2ProjectRevision.revision))) or 0))
-    catalog=session.get(SharedCatalog,1)
-    if catalog is None:
-        _,state=_raw(session,1)
-        if state is not None: session.add(SharedCatalog(id=1,revision=1,payload=dump(_catalog(state))))
+    _, state = _raw(session, 1)
+    if state is not None and session.get(SharedCatalog, catalog_id(state)) is None:
+        session.add(SharedCatalog(id=catalog_id(state), revision=1, payload=dump(_catalog(state))))
     for project in session.scalars(select(store.V2Project)).all():
         if not session.scalar(select(VersionEvent.id).where(VersionEvent.project_id==project.id).limit(1)):
             _,state=_raw(session,project.id)
@@ -71,7 +74,7 @@ def ensure_workspace(session):
 def load_workspace_project(session):
     pid=int(session.info.get('workspace_id',1));project,state=_raw(session,pid)
     if state is None:return None
-    catalog=session.get(SharedCatalog,1)
+    catalog=session.get(SharedCatalog,catalog_id(state))
     if catalog:state=overlay(state,json.loads(catalog.payload))
     state['project_id']=pid;state['project_name']=project.name
     state['_catalog_revision']=catalog.revision if catalog else 0
@@ -165,7 +168,10 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     if project:session.refresh(project)
     _,raw=_raw(session,pid)
     if expected_revision is not None and int(expected_revision)!=(raw or {}).get('revision',0):raise ValueError(f"Project revision conflict: expected {expected_revision}, current is {(raw or {}).get('revision',0)}")
-    catalog=session.get(SharedCatalog,1)
+    library = catalog_id(state)
+    if raw is not None and catalog_id(raw) != library:
+        raise ValueError('La sauvegarde appartient à une autre version du programme PLC')
+    catalog=session.get(SharedCatalog,library)
     if catalog:session.refresh(catalog)
     if catalog and state.get('_catalog_revision',catalog.revision)!=catalog.revision:raise ValueError('Le catalogue partagé a changé ; actualisez avant de réessayer')
     current=overlay(raw,json.loads(catalog.payload)) if raw and catalog else raw
@@ -181,7 +187,10 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
                 blockers=deletion_blockers(session,state,removed)
                 if blockers:raise ValueError('Type encore utilisé : '+ '; '.join(blockers[:8]))
         for other in session.scalars(select(store.V2Project).where(store.V2Project.id!=pid)).all():
-            _,old=_raw(session,other.id);before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
+            _,old=_raw(session,other.id)
+            if old is None or catalog_id(old) != library:
+                continue
+            before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
             if blocks_only:
                 known={str(t.get('id')) for t in proposed.get('types',[])} | {str(t.get('name')) for t in proposed.get('types',[])}
                 errors=[f"Type {i.get('type_id')} is still used by {i.get('name')}" for i in proposed.get('instances',[]) if str(i.get('type_id')) not in known]
@@ -193,7 +202,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     event=session.info.pop('version_event',None)
     saved=_persist(session,pid,state,current,username,revision,event)
     if catalog is None:
-        catalog=SharedCatalog(id=1,revision=1,payload=dump(shared));session.add(catalog)
+        catalog=SharedCatalog(id=library,revision=1,payload=dump(shared));session.add(catalog)
     elif changed:
         catalog.revision+=1;catalog.payload=dump(shared)
     for other_id,before,proposed in affected:

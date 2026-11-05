@@ -70,6 +70,8 @@ def deletion_blockers(session, proposed, typ):
             state = proposed
         else:
             _, raw = ws._raw(session, project.id)
+            if raw is None or ws.catalog_id(raw) != ws.catalog_id(proposed):
+                continue
             state = ws.overlay(raw, ws._catalog(proposed))
         for detail in project_blockers(state, typ):
             result.append(f"{project.name} : {detail}")
@@ -100,7 +102,7 @@ def register_type_deletion_routes(app, get_session, current_user, csrf):
             blockers = deletion_blockers(session, state, typ)
         except (ValueError, TypeError, KeyError) as exc:
             raise HTTPException(422, f'La vérification du programme n’a pas pu aboutir : {exc}') from exc
-        changes = [f"Supprimer le type partagé {typ['name']} de tous les projets",
+        changes = [f"Supprimer le type partagé {typ['name']} du catalogue de ce projet",
                    *[f"Supprimer le bloc {name}" for name in sorted(type_objects(typ))]]
         if typ.get('source_file'):
             changes.append(f"Supprimer le classeur {typ['source_file']}")

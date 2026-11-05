@@ -401,3 +401,9 @@ Major workspace panels can be collapsed and resized by dragging their right edge
 Use **Imports / Exports** for reviewed Excel imports, CODESYS XML exports and reference imports, workbook downloads, FUXA CSV and JSON backup/restore. Spreadsheet contents are edited in Excel rather than displayed in the application. **Modèles Excel** offers the six official workbook templates individually or together in a ZIP, preserving their header tooltips, validations and formatting. Downloads do not change the project version. Complete the template and rename it to its project workbook name before import (for example `TYPE_MyEquipment.xlsx` or `MODBUS_TCP.xlsx`).
 
 PA values are configured using **Paramètres PA** on each instance. The Arborescence synthesis page opens objects in the corresponding type, instance or code editor. Exchanges uses a full workspace canvas with a floating instance menu and a large variable mapping dialog. Selected code has a scrollable detail panel; frame sizes remain local to each user and project.
+
+### PanelView V8
+
+The PanelView profile uses the supplied CODESYS export in `reference-v2/v8/latest_codesys.xml`. The project model derives the DUT members and 143 TCP mappings from this file. The Excel exports and templates use the PanelView profile of the active project.
+
+Set the runtime variable `GAIA_UPGRADE_HMI_PROJECT=Gaia` to initialize or switch the named Gaia workspace to this reference. Switching validates the new model, archives the previous revision and changes the active revision in one transaction. The operation runs once per project and does not change user accounts. V8 projects share their own type catalog, separate from projects still on the previous program. Download the archive from **Imports / Exports → Exports**. The export report lists the obsolete objects to remove from older CODESYS copies and the PanelView address changes.
