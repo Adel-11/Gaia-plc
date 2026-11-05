@@ -9,7 +9,7 @@ from backend.db import ImportPreview
 class Preview(BaseModel):
     revision:int; action:str; function_id:str|None=None; type_a_id:str|None=None; type_b_id:str|None=None
     instance_a_id:str|None=None; instance_b_id:str|None=None; call_id:str|None=None
-    mappings:list[dict]|None=None; custom_code:str|None=None; layout:dict|None=None
+    mappings:list[dict]|None=None; custom_code:str|None=None; layout:dict|None=None; local_variables:list[dict]|None=None
 class Apply(BaseModel): token:str
 
 def _type(state, ident): return next((t for t in state.get('types',[]) if str(t.get('id'))==str(ident) or str(t.get('name'))==str(ident)),None)
@@ -286,6 +286,11 @@ def register_exchange_routes(app,get_session,current_user,csrf):
                 if not fn: raise ValueError('Exchange function not found')
                 maps=body.mappings if body.mappings is not None else _normal_mappings(state,fn)
                 if body.custom_code is not None: fn['custom_code']=body.custom_code
+                if body.local_variables is not None:
+                    from backend.v2_local_vars import normalize, validate_removal
+                    local_variables = normalize(body.local_variables, state)
+                    validate_removal(fn.get("local_variables", []), local_variables, _fname(fn), fn.get("custom_code"))
+                    fn["local_variables"] = local_variables
                 validate_mappings(fn,maps,state); fn['mappings']=copy.deepcopy(maps); changes.append(f'Update shared function {_fname(fn)}; all its instance pairs use these mappings'); warnings.append('Function edits apply to every connected instance pair.')
             elif body.action=='connect':
                 ia=next((i for i in state.get('instances',[]) if str(i.get('id') or i.get('name'))==str(body.instance_a_id)),None); ib=next((i for i in state.get('instances',[]) if str(i.get('id') or i.get('name'))==str(body.instance_b_id)),None)

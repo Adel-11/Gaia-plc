@@ -492,6 +492,12 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
                 source_interface = source_fb.find(plc.NS + "interface") if source_fb is not None else None
                 if source_interface is not None:
                     cloned = copy.deepcopy(source_interface)
+                    managed = {v["name"].casefold() for v in typ["fb"].get("local_variables", [])}
+                    for group in cloned.findall(plc.NS + "localVars"):
+                        for variable in group.findall(plc.NS + "variable"):
+                            if str(variable.get("name")).casefold() in managed: group.remove(variable)
+                    for variable in typ["fb"].get("local_variables", []):
+                        variable["iec_type"] = _replace_st_identifiers(variable["iec_type"], mapping)
                     allowed_roles = set(ROLES[request.kind])
                     for group in list(cloned):
                         if etree.QName(group).localname not in {"inOutVars", "inputVars", "outputVars"}: continue
@@ -511,11 +517,11 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
             for provided in request.duts:
                 target = next((d for d in typ["duts"] if d["role"] == provided.get("role")), None)
                 if target is None: errors.append(f"Unsupported DUT role: {provided.get('role')}"); continue
-                target["members"] = copy.deepcopy(provided.get("members", []))
+                target["members"] = copy.deepcopy(provided.get("members", [])) or [{"name": "SPARE", "iec_type": "BOOL"}]
                 for i, m in enumerate(target["members"]):
-                    m.update(position=i, id=f"{request.name}:{target['role']}:{i}")
+                    m["position"] = i
         if request.body is not None: typ["fb"]["body"] = request.body
-        if request.custom_code is not None: typ["fb"]["custom_code"] = request.custom_code
+        if request.custom_code is not None: typ["fb"]["custom_code"] = _replace_st_identifiers(request.custom_code, mapping) if src else request.custom_code
         # Do not synthesize PA/RTU/TCP/IO/EXC instance recipes during type creation.
         typ["templates"] = {}
         if not any(d.get("role") == "INT" for d in typ["duts"]):
@@ -533,12 +539,22 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
                 if type_error: errors.append(f"{d['name']}.{m.get('name')}: {type_error}")
         state = copy.deepcopy(current)
         state["types"].append(typ)
+        if src and request.duts is not None:
+            from backend.v2_fb_flow import update_flow
+            from backend.v2_member_sync import member_deltas, sync_fb
+            processing = _replace_st_identifiers(request.processing_code, mapping) if request.processing_code is not None else None
+            mappings, sync_errors, effects = sync_fb(typ, member_deltas(src, typ), processing_code=processing)
+            warnings.extend(effects)
+            errors.extend(sync_errors or update_flow(typ, state, mappings=mappings))
+            request = request.model_copy(update={"processing_code": None})
         state.setdefault("workbooks", {})[typ["source_file"]] = _book_for_type(engine, typ, typ["source_file"])
         # Re-normalize from the workbook so type Excel re-import is lossless.
         normalized = engine._normalize_type(state["workbooks"][typ["source_file"]])
         normalized["fb"].update(body=typ["fb"].get("body", ""), custom_code=typ["fb"].get("custom_code", ""))
         if typ["fb"].get("interface_xml"):
             normalized["fb"]["interface_xml"] = typ["fb"]["interface_xml"]
+        if typ["fb"].get("local_variables"):
+            normalized["fb"]["local_variables"] = typ["fb"]["local_variables"]
         normalized["templates"] = {}
         normalized.pop("upi_bindings", None)
         normalized["fb"]["body"] = typ["fb"].get("body", "")

@@ -96,7 +96,8 @@ def apply_changes(state, changes):
         if not row: raise ValueError(f"{coll} row {ident} was not found")
         had_io_mapping = bool(row.get("Instance") or row.get("GVL_IOMAP variable")) if coll == "io_channels" else False
         if op == "delete":
-            if coll not in {"tcp_clients","tcp_points","rtu_slaves"}: raise ValueError(f"Deleting {coll} rows is not supported")
+            if coll not in {"tcp_clients","tcp_points","rtu_slaves","rtu_channels"}: raise ValueError(f"Deleting {coll} rows is not supported")
+            if coll == "rtu_channels" and not row.get("manual_scalar"): raise ValueError("Only individually mapped RTU points can be removed here. Imported channel groups are managed in CODESYS.")
             if coll == "tcp_clients" and any(str(p.get("Client", p.get("client_id", ""))) == ident for p in state.get("tcp_points", [])): raise ValueError("Cannot delete a TCP client that still has points")
             if coll == "rtu_slaves" and any(str(c.get("Instance", c.get("instance_id", ""))) == ident for c in state.get("rtu_channels", [])): raise ValueError("Cannot delete an RTU slave that still has channels")
             rows.remove(row)

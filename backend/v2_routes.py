@@ -29,6 +29,7 @@ class ObjectEdit(BaseModel):
     custom_code: str | None = None
     processing_code: str | None = None
     mappings: list[dict] | None = None
+    local_variables: list[dict] | None = None
 
 
 class ApplyObjectEdit(BaseModel):
@@ -123,6 +124,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
         else:
             generated = build_program(state)
             pou = generated.get(fb.get("name"), {}).get("element")
+        if kind == "type":
+            from backend.v2_local_vars import append as append_local_vars
+            append_local_vars(pou, fb.get("local_variables"), ((state.get("snapshot") or {}).get("generator_locals") or {}).get(fb.get("name"), []) if not fb.get("interface_xml") else [])
         declaration = []
         if pou is not None:
             interface = pou.find(XML_NS + "interface")
@@ -184,7 +188,11 @@ def register_v2_routes(app, get_session, current_user, csrf):
             if not old: continue
             if str(dut.get("name")) != str(old.get("name")): errors.append(f"DUT {role} name is fixed")
             seen = set()
-            old_members = {str(m.get("name")): m for m in old.get("members", [])}
+            old_members = {str(m.get("name")).casefold(): m for m in old.get("members", [])}
+            old_ids = {str(m["id"]): m for m in old.get("members", []) if m.get("id")}
+            used_ids = set()
+            if not dut.get("members"):
+                dut["members"] = [{"name": "SPARE", "iec_type": "BOOL"}]
             for member_index, member in enumerate(dut.get("members", [])):
                 name = str(member.get("name", ""))
                 if name.upper() in {"INT", "BOOL", "REAL", "WORD", "BYTE", "ARRAY", "STRUCT", "END_STRUCT", "VAR", "END_VAR", "IF", "THEN", "ELSE", "TRUE", "FALSE", "FOR", "WHILE", "FUNCTION", "PROGRAM", "FUNCTION_BLOCK"}: errors.append(f"Reserved IEC keyword {name!r} cannot be a member name")
@@ -194,11 +202,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
                     errors.append(f"DUT_{role}.{issue}")
                 if name.casefold() in seen: errors.append(f"Duplicate member {name} in DUT_{role}")
                 seen.add(name.casefold())
-                prior = old_members.get(name)
-                if prior:
-                    member["id"] = prior.get("id")
-                else:
-                    member["id"] = f"{typ.get('id')}:{role}:{name}"
+                prior = old_ids.get(str(member.get("id"))) or (old_members.get(name.casefold()) if not member.get("id") else None)
+                member["id"] = (prior or {}).get("id") or uuid.uuid4().hex
+                if member["id"] in used_ids: errors.append(f"Duplicate member identity in DUT_{role}")
+                used_ids.add(member["id"])
                 member["position"] = member_index
                 iec_type = str(member.get("iec_type", "")).strip()
                 type_error = _iec_type_error(iec_type, known_types)
@@ -220,24 +227,32 @@ def register_v2_routes(app, get_session, current_user, csrf):
                         except ValueError: errors.append(f"Invalid {base} default {default!r} for {role}.{name}")
                         else:
                             if not limits[base][0] <= value <= limits[base][1]: errors.append(f"{base} default {default!r} is out of range for {role}.{name}")
-            deleted = {str(m.get("name")) for m in old.get("members", [])} - {str(m.get("name")) for m in dut.get("members", [])}
-            for name in sorted(deleted):
-                fb = typ.get("fb", {})
-                flow = fb.get("flow", {})
-                code = "\n".join((str(fb.get("body", "")), str(fb.get("custom_code", "")), str(flow.get("processing_code", "")), str(body.processing_code or "")))
-                mappings = body.mappings if body.mappings is not None else []
-                if body.mappings is None:
-                    mappings = [segment for section in ("input_segments", "output_segments") for segment in flow.get(section, []) if segment.get("kind") == "mapping"]
-                mapping_reference = any(re.search(rf"\b{re.escape(name)}\b", str(mapping.get(field, ""))) for mapping in mappings for field in ("source", "destination"))
-                if mapping_reference or re.search(rf"\b{re.escape(name)}\b", code): errors.append(f"Cannot delete referenced member {role}.{name}; update its own FB code or mapping first")
         if errors: return {"token": None, "errors": errors, "warnings": warnings, "changes": []}
         typ["duts"] = submitted
         if body.body is not None: typ.setdefault("fb", {})["body"] = body.body
         if body.custom_code is not None: typ.setdefault("fb", {})["custom_code"] = body.custom_code
-        from backend.v2_fb_flow import ensure_flow, update_flow
-        ensure_flow(typ.setdefault("fb", {}))
-        flow_errors = update_flow(typ, state, mappings=body.mappings, processing_code=body.processing_code)
+        if body.local_variables is not None:
+            from backend.v2_local_vars import normalize
+            try: typ.setdefault("fb", {})["local_variables"] = normalize(body.local_variables, state)
+            except ValueError as exc: return {"token": None, "errors": [str(exc)], "changes": []}
+        from backend.v2_fb_flow import update_flow
+        from backend.v2_member_sync import member_deltas, sync_fb, sync_consumers
+        edits = member_deltas(original, typ)
+        mappings, sync_errors, updates = sync_fb(typ, edits, body.mappings, body.processing_code)
+        flow_errors = sync_errors or update_flow(typ, state, mappings=mappings)
         if flow_errors: return {"token": None, "errors": flow_errors, "warnings": [], "changes": []}
+        if body.local_variables is not None:
+            from backend.v2_local_vars import validate_removal
+            fb = typ["fb"]
+            try: validate_removal(original.get("fb", {}).get("local_variables", []), fb["local_variables"], fb["name"], fb.get("body"), fb.get("custom_code"))
+            except ValueError as exc: return {"token": None, "errors": [str(exc)], "changes": []}
+        consumer_errors, consumer_updates = sync_consumers(state, typ, edits)
+        if consumer_errors: return {"token": None, "errors": consumer_errors, "warnings": [], "changes": []}
+        if body.duts is not None and submitted != original.get("duts", []):
+            from backend.v2_workspace import _compatibility_errors
+            baseline = set(_compatibility_errors(current))
+            new_issues = [e for e in _compatibility_errors(state) if e not in baseline]
+            if new_issues: return {"token": None, "errors": new_issues, "warnings": [], "changes": []}
         _sync_type_workbook(state, typ)
         # Rebuild and run the same reference consistency checks used for PLCopen
         # exports, while allowing unrelated pre-existing project warnings/errors.
@@ -280,7 +295,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
         except (ValueError, KeyError, TypeError) as exc:
             errors.append(f"PLC consistency check failed: {exc}")
         if errors: return {"token": None, "errors": errors, "warnings": warnings, "changes": []}
-        changes = []
+        changes = list(dict.fromkeys(updates + consumer_updates))
+        if body.local_variables is not None and typ["fb"].get("local_variables") != original.get("fb", {}).get("local_variables", []):
+            changes.append(f"{typ['fb']['name']} : déclaration VAR mise à jour")
         for previous, proposed in zip(original.get("duts", []), typ.get("duts", [])):
             old_rows = {str(m.get("name")): m for m in previous.get("members", [])}
             new_rows = {str(m.get("name")): m for m in proposed.get("members", [])}
@@ -314,6 +331,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
         current = project_for(session)
         if current.get("revision", 0) != metadata.get("base_revision"): raise HTTPException(409, "Project changed after preview; create a new preview")
         state = json.loads(preview.state_payload)
+        session.info["sync_dut_references"] = True
         try: saved = store.save_project(session, state, username=user.username, expected_revision=metadata["base_revision"])
         except ValueError as exc: raise HTTPException(409, str(exc)) from exc
         session.delete(preview); session.commit()

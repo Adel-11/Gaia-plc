@@ -59,8 +59,11 @@ def _type_tag(iec):
     arr = re.fullmatch(r"ARRAY\s*\[\s*(-?\d+)\s*\.\.\s*(-?\d+)\s*\]\s*OF\s*(\w+)", text, re.I)
     if arr:
         a = etree.Element(NS + "array"); etree.SubElement(a, NS + "dimension", lower=arr[1], upper=arr[2])
-        b = etree.SubElement(a, NS + "baseType"); etree.SubElement(b, NS + arr[3].upper()); return a
-    if text.upper().startswith("DUT_"):
+        b = etree.SubElement(a, NS + "baseType"); b.append(_type_tag(arr[3])); return a
+    string = re.fullmatch(r"(W?STRING)\s*\(\s*(\d+)\s*\)", text, re.I)
+    if string: return etree.Element(NS + string[1].lower(), length=string[2])
+    from backend.v2_local_vars import STANDARD_FB
+    if text.upper().startswith(("DUT_", "FB_")) or text.upper() in STANDARD_FB:
         return etree.Element(NS + "derived", name=text)
     return etree.Element(NS + re.sub(r"\s*", "", text).upper())
 
@@ -488,6 +491,19 @@ def build_program(state, include_union: bool = False) -> dict:
     # Explicit PA instance values are overlays on the persistent declarations.
     pa = objs.get("GVL_PA", {}).get("element")
     if pa is not None:
+        # A retained source initializer can still contain an old DUT member.
+        # Keep unrelated source values and let current instance overrides win.
+        pa_members = {str(d.get("name")): {str(m["name"]).casefold() for m in d.get("members", [])}
+                      for t in state.get("types", []) for d in t.get("duts", []) if d.get("role") == "PA"}
+        for variable in pa.findall(NS + "variable"):
+            derived = variable.find(NS + "type/" + NS + "derived")
+            known = pa_members.get(derived.get("name")) if derived is not None else None
+            initial = variable.find(NS + "initialValue")
+            struct = initial.find(NS + "structValue") if initial is not None else None
+            if known is None or struct is None: continue
+            for val in struct.findall(NS + "value"):
+                if str(val.get("member")).casefold() not in known: struct.remove(val)
+            if not len(struct): variable.remove(initial)
         for row in state.get("pa_values", []):
             inst = row.get("instance") or row.get("instance_id")
             member = row.get("member_name") or row.get("Member")
@@ -510,7 +526,12 @@ def build_program(state, include_union: bool = False) -> dict:
             for ch in list(val): val.remove(ch)
             etree.SubElement(val, NS + "simpleValue", value=str(value))
     # Keep all objects modeled in the latest full reference, including 6 GVLs and generated GFC/GFBs.
-    for name, obj in objs.items(): _set_object_id(obj["element"], name, state)
+    from backend.v2_local_vars import append as append_local_vars, models as local_models
+    locals_by_pou = local_models(state)
+    imported_locals = (state.get("snapshot") or {}).get("generator_locals") or {}
+    for name, obj in objs.items():
+        append_local_vars(obj["element"], locals_by_pou.get(name), imported_locals.get(name, []))
+        _set_object_id(obj["element"], name, state)
     return objs
 
 

@@ -812,7 +812,7 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
             typ["upi_bindings"] = copy.deepcopy(old["upi_bindings"])
         if old and old.get("fb"):
             typ["fb"].update({k: copy.deepcopy(old["fb"].get(k, typ["fb"].get(k)))
-                              for k in ("declaration", "body", "custom_code", "flow", "interface_xml") if k in old["fb"]})
+                              for k in ("declaration", "body", "custom_code", "flow", "interface_xml", "local_variables") if k in old["fb"]})
     # Excel describes scoped tables, not the complete object-instance inventory.
     # Keep explicit instances even when they have no communications or PA rows yet.
     known_type_ids = {str(t.get("id")) for t in project.get("types", [])}
@@ -824,7 +824,11 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
     for function in project.get("functions", []):
         old = old_functions.get(str(function.get("id", function.get("name"))))
         if old:
-            function.update({k: copy.deepcopy(old.get(k, function.get(k))) for k in ("declaration", "body", "custom_code")})
+            function.update({k: copy.deepcopy(old.get(k, function.get(k))) for k in ("declaration", "body", "custom_code", "local_variables") if k in old})
+    old_exchanges = {str(f.get("id") or f.get("name") or f.get("FC")): f for f in current.get("exchange_functions", [])}
+    for function in project.get("exchange_functions", []):
+        old = old_exchanges.get(str(function.get("id") or function.get("name") or function.get("FC")), {})
+        if "local_variables" in old: function["local_variables"] = copy.deepcopy(old["local_variables"])
     # Preserve migration/source metadata unknown to the Excel-normalized model.
     model_keys = set(project)
     for key, value in new_state.items():

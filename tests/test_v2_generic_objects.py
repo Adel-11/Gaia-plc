@@ -88,3 +88,9 @@ def test_generic_models_stay_out_of_plc_until_used_and_rename_bound_references(t
         config["generic"]["inherit_processing"] = False
         allowed = client.post("/api/v2/types/preview", headers=headers, json=config).json()
         assert allowed["errors"] == [], allowed
+        before = client.get("/api/v2/project").json()
+        removed = client.delete(f"/api/v2/generic-objects/{model['id']}", params={"revision": before["revision"]}, headers=headers)
+        assert removed.status_code == 200, removed.text
+        after = client.get("/api/v2/project").json()
+        assert all(item["id"] != model["id"] for item in after["generic_objects"])
+        assert any(item["name"] == "DUAL_SENSOR" for item in after["types"])

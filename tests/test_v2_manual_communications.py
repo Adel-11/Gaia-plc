@@ -54,6 +54,11 @@ def test_rtu_point_is_explicit_and_preserves_exact_word_leaf():
     assert channel['manual_scalar']
     assert f"GVL_COM.COM_NEW_METER.{member['path'].removeprefix('COM.')} := GVL_MODBUS.RTU_NEW_METER_WORD;" in text(v2_plc.build_program(updated),'GFC_COM_IN')
 
+    apply_changes(state,[{'collection':'rtu_channels','op':'delete','id':state['rtu_channels'][-1]['id']}])
+    synchronize_workbooks(state)
+    assert 'RTU_NEW_METER_WORD' not in text(v2_plc.build_program(state),'GFC_COM_IN')
+    assert any(row.get('Instance')=='NEW_METER' for row in state['rtu_slaves'])
+
 
 def test_no_communication_without_an_instance():
     state=copy.deepcopy(v2_engine.load_pack())

@@ -154,6 +154,8 @@ def _st(e):
             if _local(node) == 'array':
                 dims = ', '.join(f"{d.get('lower')}..{d.get('upper')}" for d in node.findall('p:dimension', NS))
                 return f"ARRAY[{dims}] OF {type_text(node.find('p:baseType/*', NS))}"
+            if _local(node).lower() in {"string", "wstring"} and node.get("length"):
+                return f"{_local(node).upper()}({node.get('length')})"
             return _local(node).upper()
         def initial(node):
             if node is None:
@@ -351,7 +353,10 @@ def preview_codesys(data: bytes, filename: str, current: dict, scope: str = "par
                         for n, e in merged.items()]
     proposed = copy.deepcopy(current)
     proposed["codesys_conflicts"] = conflicts
-    proposed["snapshot"] = {"filename": filename, "xml": xml, "object_count": len(merged), "object_ids": all_ids,
+    from backend.v2_local_vars import imported_ownership
+    ownership = imported_ownership(current, incoming)
+    if scope == "full": ownership = {name: names for name, names in ownership.items() if name in incoming}
+    proposed["snapshot"] = {"filename": filename, "generator_locals": ownership, "xml": xml, "object_count": len(merged), "object_ids": all_ids,
                             "objects": snapshot_objects, "file_header": file_header,
                             "content_header": content_header,
                             "imported_at": datetime.now(timezone.utc).isoformat()}

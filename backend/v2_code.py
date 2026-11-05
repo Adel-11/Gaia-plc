@@ -16,6 +16,7 @@ class PreviewCode(BaseModel):
     body: str | None = None
     custom_code: str | None = None
     included_instances: list[str] | None = None
+    local_variables: list[dict] | None = None
 
 class ApplyCode(BaseModel): token: str
 
@@ -75,7 +76,7 @@ def _objects(state):
         status="new" if name not in semantic_snapshots else "changed" if v2_plc_validation._changed(name,obj,semantic_snapshots) else "unchanged"
         diff="".join(difflib.unified_diff(ref.splitlines(True),full_body.splitlines(True),fromfile=f"reference/{name}",tofile=f"current/{name}"))
         entry={"name":name,"kind":kind,"category":kind,"folder":obj.get("folder",""),"body":body,"custom_code":custom,
-          "declaration":_decl(obj),
+          "declaration":_decl(obj), "local_variables": (function_model or {}).get("local_variables", []) if name not in GENERATED else (state.get("generated_local_variables") or {}).get(name, []),
           "full_body":full_body,"changed":status!="unchanged","status":status,"reference_body":ref,"diff":diff,"dependencies":sorted(v2_plc_validation._refs(obj))}
         if name in membership:
             candidates=[]
@@ -129,6 +130,18 @@ def register_code_routes(app,get_session,current_user,csrf):
             target=next(f for f in state["functions"] if f.get("name")==req.name)
             if req.body is not None: target["body"]=req.body
             if req.custom_code is not None: target["custom_code"]=req.custom_code
+        if req.local_variables is not None:
+            from backend.v2_local_vars import normalize, validate_removal
+            try:
+                local_variables = normalize(req.local_variables, state)
+                if isgen:
+                    before_locals = (current.get("generated_local_variables") or {}).get(req.name, [])
+                    validate_removal(before_locals, local_variables, req.name, (state.get("generated_custom_code") or {}).get(req.name))
+                else:
+                    validate_removal(fn.get("local_variables", []), local_variables, req.name, target.get("body"), target.get("custom_code"))
+            except ValueError as exc: return {"token":None,"errors":[str(exc)],"warnings":[],"changes":[]}
+            if isgen: state.setdefault("generated_local_variables", {})[req.name] = local_variables
+            else: target["local_variables"] = local_variables
         try:
             objects=v2_plc.build_program(state); xml=v2_plc.serialize_program(objects,state,list(objects)); checked=v2_plc_validation.validate_xml(xml,state,objects)
             oldobj=v2_plc.build_program(current); oldxml=v2_plc.serialize_program(oldobj,current,list(oldobj)); previous_check=v2_plc_validation.validate_xml(oldxml,current,oldobj); baseline=set(previous_check["errors"])
@@ -137,11 +150,12 @@ def register_code_routes(app,get_session,current_user,csrf):
         except Exception as exc: checked={"errors":[str(exc)],"warnings":[]}
         token=secrets.token_urlsafe(24)
         meta={"kind":"v2-code-edit","base_revision":current.get("revision",0),"name":req.name,"generated":isgen,"membership_changed":req.included_instances is not None}
+        if checked["errors"]: return {"token":None,"errors":checked["errors"],"warnings":checked["warnings"],"changes":[]}
         item=next((x for x in _objects(state) if x["name"]==req.name),None)
-        if checked["errors"]: return {"token":None,"errors":checked["errors"],"warnings":checked["warnings"],"changes":[],"object":item}
         session.add(ImportPreview(token=token,owner_id=user.id,created_at=datetime.now(timezone.utc),expires_at=datetime.now(timezone.utc)+timedelta(minutes=20),diff_payload=json.dumps(meta),state_payload=json.dumps(state,ensure_ascii=False)))
         session.commit()
         changes=[f"Update code in {req.name}"] if req.body is not None or req.custom_code is not None else []
+        if req.local_variables is not None: changes.append(f"{req.name} : déclaration VAR mise à jour")
         if req.included_instances is not None:
             changes.append(f"Update instances added to {req.name}: {', '.join(requested) if requested else 'none'}")
         return {"token":token,"errors":checked["errors"],"warnings":checked["warnings"],"changes":changes,"object":item}
@@ -156,6 +170,18 @@ def register_code_routes(app,get_session,current_user,csrf):
         current=project(session)
         if current.get("revision",0)!=meta.get("base_revision"): raise HTTPException(409,"Project changed after preview; create a new preview")
         state=json.loads(preview.state_payload)
+        if req.local_variables is not None:
+            from backend.v2_local_vars import normalize, validate_removal
+            try:
+                local_variables = normalize(req.local_variables, state)
+                if isgen:
+                    before_locals = (current.get("generated_local_variables") or {}).get(req.name, [])
+                    validate_removal(before_locals, local_variables, req.name, (state.get("generated_custom_code") or {}).get(req.name))
+                else:
+                    validate_removal(fn.get("local_variables", []), local_variables, req.name, target.get("body"), target.get("custom_code"))
+            except ValueError as exc: return {"token":None,"errors":[str(exc)],"warnings":[],"changes":[]}
+            if isgen: state.setdefault("generated_local_variables", {})[req.name] = local_variables
+            else: target["local_variables"] = local_variables
         try:
             objects=v2_plc.build_program(state); xml=v2_plc.serialize_program(objects,state,list(objects)); checked=v2_plc_validation.validate_xml(xml,state,objects)
             oldobj=v2_plc.build_program(current); oldxml=v2_plc.serialize_program(oldobj,current,list(oldobj)); baseline=set(v2_plc_validation.validate_xml(oldxml,current,oldobj)["errors"])

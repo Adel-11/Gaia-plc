@@ -134,10 +134,11 @@ export function SignalFields({ signals, onChange }: { signals: GenericSignal[]; 
   </div>
 }
 
-export function LogicFields({ members, signals, onChange }: {
+export function LogicFields({ members, signals, onChange, onRemoveSignal }: {
   members: GenericMember[]
   signals: GenericSignal[]
   onChange: (rows: GenericMember[]) => void
+  onRemoveSignal?: (id: string) => void
 }) {
   const typeList = useId()
   const [role, setRole] = useState<GenericMember['role']>(members[0]?.role ?? 'PA')
@@ -154,8 +155,8 @@ export function LogicFields({ members, signals, onChange }: {
     </div>
     <p><strong>{memberRoles.find(item => item.role === role)?.label}</strong></p>
     {generated.length > 0 && <div className="generic-generated">
-      <p>Ces variables suivent les noms saisis dans Signaux.</p>
-      {generated.map(member => <code key={member.id}>{codeRole(role)}.{member.name} · {member.type}</code>)}
+      <p>Retirer un signal retire aussi les variables IO, INT et EXC associées.</p>
+      {generated.map(member => <div className="generic-generated-row" key={member.id}><code>{codeRole(role)}.{member.name} · {member.type}</code>{role === 'IO' && onRemoveSignal && <button type="button" className="button secondary" aria-label={`Retirer le signal ${member.name}`} onClick={() => onRemoveSignal(member.id)}>Retirer le signal</button>}</div>)}
     </div>}
     <datalist id={typeList}>{['BOOL', ...analogTypes, 'TIME', 'TON', 'TOF', 'TP'].map(type => <option key={type} value={type} />)}</datalist>
     {selected.map(member => <div className="generic-signal-row" key={member.id}>
@@ -246,6 +247,20 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
     }
   }
 
+  const remove = async (template: GenericTemplate) => {
+    if (busy || template.builtin || !window.confirm(`Supprimer le modèle « ${template.name} » ? Les types déjà créés à partir de ce modèle sont conservés.`)) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await fetch(`/api/v2/generic-objects/${encodeURIComponent(template.id)}?revision=${revision}`, {
+        method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf },
+      })
+      if (!response.ok) { const result = await response.json(); throw new Error(result.detail || 'Suppression impossible.') }
+      setNotice(`Modèle « ${template.name} » supprimé.`)
+      onChanged()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Suppression impossible.') }
+    finally { setBusy(false) }
+  }
+
   if (draft) return <form className="generic-editor" onSubmit={save}>
     <WorkspacePanel id="generic:identity" title={draft.id ? 'Modifier le modèle' : 'Créer un modèle générique'}>
       <div className="generic-identity">
@@ -260,7 +275,7 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
     </WorkspacePanel>
     <WorkspacePanel id="generic:logic" title="Variables de logique et ST de base">
       <p>Une entrée crée une variable interne et une sortie EXC disponible pour le programme.</p>
-      <LogicFields members={draft.members} signals={draft.signals} onChange={members => edit({ members })} />
+      <LogicFields members={draft.members} signals={draft.signals} onChange={members => edit({ members })} onRemoveSignal={id => edit({ signals: draft.signals.filter(signal => signal.id !== id) })} />
       <label className="generic-processing">Code PROCESSING
         <small>Utilise les noms indiqués, par exemple INTERN.MESURE. L’assistant adapte ces références lors des renommages.</small>
         <textarea value={draft.processing} maxLength={30000} rows={9} spellCheck={false}
@@ -278,6 +293,7 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
     <div className="generic-actions">
       <button type="button" className="button primary" onClick={() => open(emptyDraft)}>＋ Nouveau modèle</button>
     </div>
+    {error && <div className="v2-alert error" role="alert">{error}</div>}
     {notice && <div className="v2-alert success" role="status">{notice}</div>}
     <div className="generic-library-grid">
       {templates.map(template => <article className="generic-card" key={template.id}>
@@ -294,6 +310,7 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
             ? { ...template, id: '', name: `${template.name} – copie` } : template)}>
             {template.builtin ? 'Personnaliser une copie' : 'Modifier le modèle'}
           </button>
+          {!template.builtin && <button type="button" className="button secondary" disabled={busy} onClick={() => void remove(template)}>Supprimer le modèle</button>}
         </div>
       </article>)}
     </div>

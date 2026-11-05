@@ -212,3 +212,20 @@ def register_generic_routes(app, get_session, current_user, csrf):
             raise HTTPException(409, str(exc)) from exc
         session.commit()
         return {"template": item, "revision": result["revision"]}
+
+    @app.delete("/api/v2/generic-objects/{template_id}")
+    def delete(template_id: str, revision: int, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        state = store.load_project(session)
+        if not state or revision != state.get("revision"):
+            raise HTTPException(409, "Le projet a changé. Actualise avant de supprimer le modèle.")
+        models = state.get("generic_objects", [])
+        target = next((item for item in models if item["id"] == template_id and not item.get("builtin")), None)
+        if target is None:
+            raise HTTPException(404, "Modèle personnalisé introuvable.")
+        models.remove(target)
+        try:
+            result = store.save_project(session, state, user.username, expected_revision=revision)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        session.commit()
+        return {"revision": result["revision"]}

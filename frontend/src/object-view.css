@@ -23,3 +23,4 @@
 .ov-table td .ov-name-parts{min-width:340px;grid-template-columns:110px 12px minmax(200px,1fr)}.ov-table td .ov-name-parts input{min-width:0;width:100%}
 
 .ov-layout.type-editor-layout.code-only-layout{display:block}.code-only-layout .ov-main{padding:20px}.code-only-layout .ov-fb-body{min-height:240px}
+.ov-review-backdrop{z-index:1200}.ov-fb-modal-section:has(.local-variables){grid-column:1/-1;min-height:0}

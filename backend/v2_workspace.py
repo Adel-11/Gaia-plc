@@ -35,7 +35,7 @@ class VersionEvent(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now,nullable=False)
 
 SHARED=('types','catalog_options')
-COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme','object_folders':'Emplacements des objets PLC','plc_folders':'Dossiers PLC'}
+COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','generated_local_variables':'Variables internes des blocs','generic_objects':'Modèles génériques','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme','object_folders':'Emplacements des objets PLC','plc_folders':'Dossiers PLC'}
 
 def _catalog(state):
     result={k:copy.deepcopy(state.get(k,[] if k=='types' else {})) for k in SHARED}
@@ -163,6 +163,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     pid=int(session.info.get('workspace_id',1))
     if state.get('project_id') not in (None,pid):raise ValueError('Le projet a changé depuis la préparation de cette action')
     blocks_only=session.info.pop('type_blocks_only',False)
+    sync_dut_refs=session.info.pop('sync_dut_references',False)
     revision=_lock(session)
     project=session.get(store.V2Project,pid)
     if project:session.refresh(project)
@@ -191,6 +192,17 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
             if old is None or catalog_id(old) != library:
                 continue
             before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
+            if sync_dut_refs:
+                from backend.v2_member_sync import member_deltas, sync_consumers
+                old_types = {str(t["id"]): t for t in before.get("types", [])}
+                for target in proposed.get("types", []):
+                    old_type = old_types.get(str(target["id"]))
+                    if old_type is None: continue
+                    saved_types = copy.deepcopy(proposed.get("types", []))
+                    sync_errors, _ = sync_consumers(proposed, target, member_deltas(old_type, target))
+                    if sync_errors or saved_types != proposed.get("types", []):
+                        detail = sync_errors[0] if sync_errors else "références ST à une instance de ce projet dans un FB partagé"
+                        raise ValueError(f"Projet {other.name} : {detail}")
             if blocks_only:
                 known={str(t.get('id')) for t in proposed.get('types',[])} | {str(t.get('name')) for t in proposed.get('types',[])}
                 errors=[f"Type {i.get('type_id')} is still used by {i.get('name')}" for i in proposed.get('instances',[]) if str(i.get('type_id')) not in known]
