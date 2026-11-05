@@ -1,0 +1,88 @@
+.generic-library, .generic-editor { display: grid; gap: 16px; }
+.generic-library-grid, .generic-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.generic-card, .generic-signal-group {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #d7e3df;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+}
+.generic-card { display: flex; flex-direction: column; gap: 10px; }
+.generic-card header, .generic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.generic-card h2 { margin: 0; font-size: 20px; }
+.generic-card header span, .generic-signal-group legend span {
+  color: #27665a;
+  background: #edf6f2;
+  border-radius: 20px;
+  padding: 3px 8px;
+  font-size: 13px;
+}
+.generic-card p, .generic-empty { margin: 0; color: #526b69; }
+.generic-counts { display: flex; flex-wrap: wrap; gap: 5px 14px; padding: 8px 0; font-size: 14px; }
+.generic-counts strong { color: #205f57; }
+.generic-card .generic-actions { margin-top: auto; }
+.generic-signal-group legend { font-weight: 650; color: #204941; padding: 0 5px; }
+.generic-signal-group > .button { margin-top: 8px; }
+.generic-signal-row {
+  border: 1px solid #e6eeec;
+  border-radius: 6px;
+  background: #f7faf9;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.generic-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.generic-row-fields label { flex: 1 1 94px; min-width: 0; }
+.generic-row-fields label:first-child { flex-basis: 138px; }
+.generic-editor label, .generic-row-fields label, .generic-processing {
+  display: grid;
+  gap: 4px;
+  color: #334b48;
+  font-weight: 550;
+  font-size: 14px;
+}
+.generic-editor input, .generic-editor select, .generic-editor textarea,
+.generic-row-fields input, .generic-row-fields select {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid #cad9d5;
+  border-radius: 5px;
+  background: #fff;
+  color: #253834;
+  font: inherit;
+}
+.generic-row-fields .generic-remove { min-height: 36px; }
+.generic-signal-row code { display: block; margin-top: 6px; color: #436461; overflow-wrap: anywhere; font-size: 13px; }
+.generic-identity { display: grid; gap: 10px; max-width: 720px; }
+.generic-processing { margin-top: 14px; }
+.generic-processing small { font-weight: 400; }
+.generic-processing textarea, .generic-code { font-family: Consolas, ui-monospace, monospace; }
+.generic-code { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+.generic-inherit-option { display: flex; align-items: start; gap: 8px; margin: 16px 0; }
+.generic-variable-details { margin-top: 6px; color: #3f6660; font-size: 14px; }
+.generic-variable-details summary { cursor: pointer; }
+.generic-variable-details .generic-row-fields { margin-top: 8px; }
+.generic-role-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.generic-role-buttons .button[aria-pressed="true"] { background: #e2f3ec; border-color: #609488; }
+.generic-role-buttons span { margin-left: 4px; color: #3e6c64; font-variant-numeric: tabular-nums; }
+.generic-generated { display: grid; gap: 4px; margin: 8px 0 12px; }
+.generic-generated p { margin: 0; color: #526b69; }
+.generic-generated code { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .generic-library-grid, .generic-signal-grid { grid-template-columns: minmax(0, 1fr); }
+}

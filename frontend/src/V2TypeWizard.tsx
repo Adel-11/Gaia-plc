@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import './type-wizard.css'
 import WorkspacePanel from './WorkspacePanel'
+import { LogicFields, SignalFields } from './GenericObjects'
+import type { GenericMember, GenericSignal, GenericTemplate } from './GenericObjects'
 
 type Member = { name: string; iec_type: string; section?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string }
 type Dut = { role: string; members: Member[] }
 type AnyRow = Record<string, any>
 type CatalogOptions = { sections: string[]; prefixes: string[]; revision?: number }
-type Preview = { token: string | null; errors?: string[]; generated_st?: string }
-type Props = { project: any; csrf: string; onCreated: (typeId?: string) => void; onCancel: () => void; onChanged?: () => void }
-const steps = ['Identity', 'Blocks', 'Review']
+type Preview = { token: string | null; errors?: string[]; warnings?: string[]; generated_st?: string }
+type Props = { project: any; csrf: string; onCreated: (typeId?: string) => void; onCancel: () => void; onChanged?: () => void; initialGenericId?: string }
 const roles: Record<string, string[]> = { Equipment: ['PA', 'COM', 'EXC', 'IO', 'INT'], 'Functional unit (UPI)': ['COM', 'EXC', 'INT'] }
 const IEC_TYPES = ['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING']
 const BASE_SECTIONS = ['INPUT (field to plc)', 'OUTPUT (plc to field)', 'STATE', 'PARAMETERS', 'INTERNAL']
@@ -51,11 +52,19 @@ async function request<T>(path: string, body: unknown, csrf: string): Promise<T>
   return response.json() as Promise<T>
 }
 
-export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onChanged }: Props) {
+export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onChanged, initialGenericId }: Props) {
   const types: AnyRow[] = project?.types || []
+  const genericTemplates: GenericTemplate[] = project?.generic_objects || []
+  const initialTemplate = genericTemplates.find(template => template.id === initialGenericId)
   const panelView = project?.program_profile === 'hmi-v8'
   const [step, setStep] = useState(0), [name, setName] = useState(''), [kind, setKind] = useState('Equipment')
-  const [description, setDescription] = useState(''), [copyFrom, setCopyFrom] = useState('')
+  const [description, setDescription] = useState(initialTemplate?.description ?? ''), [copyFrom, setCopyFrom] = useState('')
+  const [generic, setGeneric] = useState(initialTemplate)
+  const [signals, setSignals] = useState<GenericSignal[]>(initialTemplate?.signals ?? [])
+  const [logicMembers, setLogicMembers] = useState<GenericMember[]>(initialTemplate?.members ?? [])
+  const [inheritProcessing, setInheritProcessing] = useState(true)
+  const steps = generic ? ['Identité', 'Signaux', 'Variables et logique', 'Vérification'] : ['Identité', 'Blocs', 'Vérification']
+  const reviewStep = steps.length - 1
   const [catalog, setCatalog] = useState<CatalogOptions>({ sections: BASE_SECTIONS, prefixes: BASE_PREFIXES })
   const [projectRevision, setProjectRevision] = useState<number>(Number(project?.revision || 0))
   const [duts, setDuts] = useState<Dut[]>(() => startingBlocks('Equipment', panelView).duts), [selectedRole, setSelectedRole] = useState('PA')
@@ -90,6 +99,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     resetBlocks(next)
     setSelectedRole((roles[next] || roles.Equipment)[0])
     setCopyFrom('')
+    setGeneric(undefined)
   }
   const copyType = (id: string) => {
     setCopyFrom(id)
@@ -102,24 +112,95 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     }))
     setProcessingCode(selected.fb?.flow?.processing_code || ''); setCustomCode(selected.fb?.custom_code || '')
   }
-  const payload = () => ({ revision: projectRevision, name: name.trim(), kind, description, copy_from: copyFrom || null,
-    duts: duts.map(d => ({ role: d.role, members: d.members.map(m => ({ ...m })) })), processing_code: processingCode, custom_code: customCode })
-  const prepare = async () => { setBusy(true); setError(''); setPreview(null); setReviewed(false); try { setPreview(await request<Preview>('/types/preview', payload(), csrf)) } catch (e) { setError(e instanceof Error ? e.message : 'Preview failed') } finally { setBusy(false) } }
+  const source = generic ? `generic:${generic.id}` : copyFrom ? `type:${copyFrom}` : ''
+  const selectSource = (value: string) => {
+    const template = value.startsWith('generic:')
+      ? genericTemplates.find(item => item.id === value.slice('generic:'.length)) : undefined
+    setGeneric(template)
+    setPreview(null)
+    setReviewed(false)
+    if (template) {
+      setCopyFrom('')
+      setDescription(current => current || template.description)
+      setSignals(template.signals)
+      setLogicMembers(template.members)
+      setInheritProcessing(true)
+    } else {
+      copyType(value.slice('type:'.length))
+    }
+  }
+  const payload = () => ({
+    revision: projectRevision, name: name.trim(), kind, description,
+    ...(generic ? { generic: { template_id: generic.id, signals, members: logicMembers, inherit_processing: inheritProcessing } } : {
+      copy_from: copyFrom || null,
+      duts: duts.map(d => ({ role: d.role, members: d.members.map(m => ({ ...m })) })),
+      processing_code: processingCode, custom_code: customCode,
+    }),
+  })
+  const prepare = async () => {
+    setError('')
+    setPreview(null)
+    setReviewed(false)
+    const latest = generic && genericTemplates.find(template => template.id === generic.id)
+    if (generic && JSON.stringify(latest) !== JSON.stringify(generic)) {
+      setError('Le modèle a changé depuis l’ouverture de l’assistant. Choisis de nouveau le point de départ.')
+      return
+    }
+    setBusy(true)
+    try {
+      setPreview(await request<Preview>('/types/preview', payload(), csrf))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Vérification impossible.')
+    } finally {
+      setBusy(false)
+    }
+  }
   const apply = async () => { if (!preview?.token || !reviewed) return; setBusy(true); setError(''); try { const result = await request<{ type?: AnyRow }>('/types/apply', { token: preview.token }, csrf); onCreated(result.type?.id || name.trim()) } catch (e) { setError(e instanceof Error ? e.message : 'Unable to create type') } finally { setBusy(false) } }
-  const next = () => { setError(''); setStep(s => Math.min(2, s + 1)) }
-  return <section className="type-wizard" aria-label="Create type">
-    <header className="tw-header"><div><span className="tw-eyebrow">TYPE CREATION</span><h2>Create a type</h2><p>Define reusable structure and function-block logic.</p></div><div className="tw-header-actions"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>← Retour</button><button type="button" className="tw-secondary" disabled={busy} onClick={onCancel}>Annuler la création</button></div></header>
+  const next = () => {
+    setError('')
+    if (generic && step === reviewStep - 1 && !preview) void prepare()
+    setStep(current => Math.min(reviewStep, current + 1))
+  }
+  return <section className="type-wizard" aria-label="Créer un type">
+    <header className="tw-header"><div><span className="tw-eyebrow">TYPE CREATION</span><h2>Créer un type</h2><p>Définis les variables et la logique de l’équipement.</p></div><div className="tw-header-actions"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>← Retour</button><button type="button" className="tw-secondary" disabled={busy} onClick={onCancel}>Annuler la création</button></div></header>
     <nav className="tw-steps" aria-label="Creation steps">{steps.map((stepName, i) => <button type="button" key={stepName} className={i === step ? 'current' : i < step ? 'complete' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => { if (i <= step) setStep(i) }}><span>{i + 1}</span>{stepName}</button>)}</nav>
     <div className="tw-content">
       {step === 0 && <WorkspacePanel id="wizard-identity" title="Identité du type"><div className="tw-fields">
-        <label>Type name<input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null); setReviewed(false) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
+        <label>Nom du type<input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null); setReviewed(false) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
         <label>Kind<select value={kind} onChange={e => changeKind(e.target.value)}><option>Equipment</option><option>Functional unit (UPI)</option></select></label>
         <label>Description<textarea rows={2} value={description} onChange={e => { setDescription(e.target.value); setPreview(null) }}/></label>
-        <label>Copy from an existing type<select value={copyFrom} onChange={e => copyType(e.target.value)}><option value="">{panelView && kind === "Equipment" ? "Start with PanelView local / auto blocks" : "Start with blank blocks"}</option>{types.filter(t => (t.kind || 'Equipment') === kind).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><small>Copies the DUT blocks and PROCESSING code only. Add instance addresses, communication settings, and exchange links later on their respective pages.</small></label>
-        <aside className="tw-flow-note"><b>Three steps:</b> create the type here, declare an instance, then configure communications and exchanges from the instance pages.</aside>
+        <label>Point de départ
+          <select value={source} onChange={e => selectSource(e.target.value)}>
+            <option value="">{panelView && kind === 'Equipment' ? 'Blocs de base PanelView' : 'Blocs vides'}</option>
+            {kind === 'Equipment' && genericTemplates.length > 0 && <optgroup label="Objets génériques">
+              {genericTemplates.map(template => <option key={template.id} value={`generic:${template.id}`}>{template.name}</option>)}
+            </optgroup>}
+            <optgroup label="Copier un type existant">
+              {types.filter(type => (type.kind || 'Equipment') === kind).map(type => <option key={type.id} value={`type:${type.id}`}>{type.name}</option>)}
+            </optgroup>
+          </select>
+          <small>{generic?.description || 'Définis les blocs du type, puis configure ses adresses et ses échanges sur les instances.'}</small>
+        </label>
+        <aside className="tw-flow-note">Le type créé garde sa propre copie des variables et du code.</aside>
       </div></WorkspacePanel>}
 
-      {step === 1 && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
+      {generic && step === 1 && <WorkspacePanel id="wizard:generic-signals" title="Adapter les signaux du modèle">
+        <p>Renomme, ajoute ou retire les signaux. Les entrées créent aussi des variables internes et des sorties EXC à relier dans le programme.</p>
+        <SignalFields signals={signals} onChange={rows => { setSignals(rows); setPreview(null); setReviewed(false) }} />
+      </WorkspacePanel>}
+
+      {generic && step === 2 && <WorkspacePanel id="wizard:generic-logic" title="Adapter les variables de logique">
+        <LogicFields members={logicMembers} signals={signals} onChange={rows => { setLogicMembers(rows); setPreview(null); setReviewed(false) }} />
+        {generic.processing.trim() && <>
+          <label className="generic-inherit-option"><input type="checkbox" checked={inheritProcessing}
+            onChange={e => { setInheritProcessing(e.target.checked); setPreview(null); setReviewed(false) }} />
+            <span>Reprendre le PROCESSING du modèle et adapter les références aux noms saisis.</span>
+          </label>
+          {inheritProcessing && <details><summary>Voir le ST d’origine</summary><pre className="generic-code">{generic.processing}</pre></details>}
+        </>}
+      </WorkspacePanel>}
+
+      {!generic && step === 1 && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
         {activeDut && <><div className="tw-section-head"><div><h3>DUT_{activeDut.role}_{name || 'Type'}</h3><p>{activeDut.members.length} members in this block</p></div><label className="tw-existing">Copy members from<select value="" onChange={e => { const [typeId, role] = e.target.value.split('|'); const t = types.find(item => String(item.id) === typeId); const source = t?.duts?.find((d: AnyRow) => d.role === role); if (source) replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: source.members.map((m: AnyRow) => ({ name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || 'INTERNAL', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '' })) } : d)) }}><option value="">Choose a type and block</option>{types.flatMap(t => (t.duts || []).filter((d: AnyRow) => d.role === activeDut.role).map((d: AnyRow) => <option key={`${t.id}|${d.role}`} value={`${t.id}|${d.role}`}>{t.name} · {d.role}</option>))}</select></label></div>
           <WorkspacePanel id={`wizard-members-${activeDut.role}`} title={`Membres ${activeDut.role}`}><div className="tw-table-wrap"><table className="tw-table"><thead><tr>{['Order','Member','IEC type','Comment group','Default','Unit','Comment',''].map(h => <th key={h} title={({Order:'Member order is preserved in the generated declaration.',Member:'Canonical member name is the selected prefix joined to the basename.', 'IEC type':'IEC 61131-3 Structured Text data type.','Comment group':'Comment separator grouping inside this DUT, not an ST VAR_INPUT/VAR_OUTPUT section.',Default:'Initial value in the ST declaration.',Unit:'Engineering unit for this member.',Comment:'Documentation comment emitted with this member.'} as Record<string,string>)[h]}>{h}</th>)}</tr></thead><tbody>{activeDut.members.map((m, i) => { const parts = memberParts(m.name); return <tr key={i}>
             <td className="tw-order"><button type="button" aria-label={`Move ${m.name || i + 1} up`} disabled={i === 0} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i - 1, 0, item); return { ...d, members } }))}>↑</button><button type="button" aria-label={`Move ${m.name || i + 1} down`} disabled={i === activeDut.members.length - 1} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i + 1, 0, item); return { ...d, members } }))}>↓</button></td>
@@ -132,13 +213,13 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         <div className="tw-processing"><WorkspacePanel id="wizard-processing" title="PROCESSING"><label>PROCESSING code <small>Optional Structured Text for this function block.</small><textarea spellCheck={false} value={processingCode} onChange={e => { setProcessingCode(e.target.value); setPreview(null); setReviewed(false) }} placeholder="(* Add Structured Text processing here *)"/></label></WorkspacePanel><WorkspacePanel id="wizard-custom" title="Code personnalisé"><label>Custom code <small>Optional custom Structured Text, preserved separately.</small><textarea spellCheck={false} value={customCode} onChange={e => { setCustomCode(e.target.value); setPreview(null); setReviewed(false) }} placeholder="Optional custom Structured Text"/></label></WorkspacePanel></div>
       </div>}
 
-      {step === 2 && <WorkspacePanel id="wizard-review" title="Vérification du type"><div className="tw-review-step"><p className="tw-intro">Review the reusable type blocks before creating the type. Instances, addresses, communication settings, and exchanges are configured later.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>DUT BLOCKS</small><b>{duts.length}</b></div><div><small>MEMBERS</small><b>{duts.reduce((count, dut) => count + dut.members.length, 0)}</b></div></div>
-        {!preview && <button type="button" className="tw-primary" disabled={!validIdentity || busy} onClick={() => void prepare()}>{busy ? 'Checking type…' : 'Check type'}</button>}
+      {step === reviewStep && <WorkspacePanel id="wizard-review" title="Vérification du type"><div className="tw-review-step"><p className="tw-intro">Vérifie les blocs et le ST du nouveau type. Les adresses et les liaisons se configurent sur ses instances.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>DUT BLOCKS</small><b>{duts.length}</b></div><div><small>{generic ? "SIGNAUX PHYSIQUES" : "MEMBRES"}</small><b>{generic ? signals.length : duts.reduce((count, dut) => count + dut.members.length, 0)}</b></div></div>
+        {!preview && <button type="button" className="tw-primary" disabled={!validIdentity || busy} onClick={() => void prepare()}>{busy ? 'Vérification…' : 'Vérifier le type'}</button>}
         {error && <p className="tw-error" role="alert">{error}</p>}
-        {preview && <><div className={preview.errors?.length ? 'tw-error-list' : 'tw-success'} role={preview.errors?.length ? 'alert' : 'status'}>{preview.errors?.length ? <><b>Resolve these issues before creating the type</b>{preview.errors.map((item, i) => <p key={i}>{item}</p>)}</> : 'Type is ready to create.'}</div>{preview.generated_st && <details className="tw-generated"><summary>Generated DUT declaration</summary><pre>{preview.generated_st}</pre></details>}<label className="tw-confirm"><input type="checkbox" checked={reviewed} disabled={Boolean(preview.errors?.length)} onChange={e => setReviewed(e.target.checked)}/>I reviewed the type structure and want to create it.</label></>}
+        {preview && <><div className={preview.errors?.length ? 'tw-error-list' : 'tw-success'} role={preview.errors?.length ? 'alert' : 'status'}>{preview.errors?.length ? <><b>À corriger avant de créer le type</b>{preview.errors.map((item, i) => <p key={i}>{item}</p>)}</> : 'Le type est prêt à être créé.'}</div>{Boolean(preview.warnings?.length) && <ul>{preview.warnings?.map(warning => <li key={warning}>{warning}</li>)}</ul>}{preview.generated_st && <details className="tw-generated"><summary>Déclarations et code ST générés</summary><pre>{preview.generated_st}</pre></details>}<label className="tw-confirm"><input type="checkbox" checked={reviewed} disabled={Boolean(preview.errors?.length)} onChange={e => setReviewed(e.target.checked)}/>J’ai vérifié les blocs et le ST du type.</label></>}
       </div></WorkspacePanel>}
-      {error && step !== 2 && <p className="tw-error" role="alert">{error}</p>}
+      {error && step !== reviewStep && <p className="tw-error" role="alert">{error}</p>}
     </div>
-    <footer className="tw-footer"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>{step === 0 ? 'Cancel' : 'Back'}</button><span>Step {step + 1} of {steps.length}</span>{step < 2 ? <button type="button" className="tw-primary" disabled={step === 0 && !validIdentity} onClick={next}>Continue</button> : <button type="button" className="tw-primary" disabled={!preview?.token || !reviewed || busy || Boolean(preview.errors?.length)} onClick={() => void apply()}>{busy ? 'Creating…' : 'Create type'}</button>}</footer>
+    <footer className="tw-footer"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>{step === 0 ? 'Annuler' : 'Retour'}</button><span>Étape {step + 1} sur {steps.length}</span>{step < reviewStep ? <button type="button" className="tw-primary" disabled={step === 0 && !validIdentity} onClick={next}>{generic && step === reviewStep - 1 ? 'Prévisualiser le type' : 'Continuer'}</button> : <button type="button" className="tw-primary" disabled={!preview?.token || !reviewed || busy || Boolean(preview.errors?.length)} onClick={() => void apply()}>{busy ? 'Création…' : 'Créer le type'}</button>}</footer>
   </section>
 }

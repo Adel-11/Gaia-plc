@@ -60,6 +60,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     register_catalog_routes(app, get_session, current_user, csrf)
     from backend.v2_templates import register_template_routes
     register_template_routes(app, get_session, current_user)
+    from backend.v2_generic_objects import register_generic_routes, templates
+    register_generic_routes(app, get_session, current_user, csrf)
 
     def project_for(session):
         state = store.load_project(session)
@@ -353,6 +355,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                 for sheet in workbook.get("sheets", [])]})
         result = {key: value for key, value in state.items()
                   if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files"}}
+        result["generic_objects"] = templates(state)
         result.update(phase=8, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),
             "duts": sum(len(t.get("duts", [])) for t in types),

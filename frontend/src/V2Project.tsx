@@ -4,6 +4,7 @@ import V2ObjectView, { StEditor } from './V2ObjectView'
 import V2Communications from './V2Communications'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
+import GenericObjects from './GenericObjects'
 import V2TypeDelete from './V2TypeDelete'
 import V2Exchanges from './V2Exchanges'
 import V2Code from './V2Code'
@@ -34,6 +35,7 @@ const list = <T,>(value: T[] | undefined): T[] => value || []
 const pages = [
   { id: 'overview', label: 'Vue d’ensemble', detail: 'État du projet', icon: '◫', title: 'Votre projet, en un regard', description: 'Retrouvez les contrôles, les chiffres clés et la référence CODESYS actuelle.' },
   { id: 'types', label: 'Types', detail: 'Modèles et code ST', icon: '▤', title: 'Types d’équipements', description: 'Ouvrez un type pour explorer ses DUT, modifier les membres et éditer le code de son FB.' },
+  { id: 'generic', label: 'Objets génériques', detail: 'Bibliothèque de départ', icon: '◇', title: 'Objets génériques', description: 'Préparez des modèles de signaux et de logique pour créer vos futurs types automate.' },
   { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Déclarez les blocs de vos instances. Configurez ensuite les communications et ajoutez les appels dans les GFC / GFB.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
   { id: 'exchanges', label: 'Exchanges', detail: 'Connections and conditions', icon: '⇆', title: 'Equipment exchanges', description: 'Connect instances, wire their variables and define conditional copies.' },
@@ -55,7 +57,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [openedCodePages, setOpenedCodePages] = useState<Record<string, boolean>>({})
   useEffect(() => { if (activePage === 'generated' || activePage === 'functions') setOpenedCodePages(old => old[activePage] ? old : {...old, [activePage]: true}) }, [activePage])
   const openPage = (id: PageId) => { if (id !== activePage && codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return; if (id !== activePage && activePage === 'types' && typeDraftDirty && !window.confirm('Le type contient des modifications non enregistrées. Quitter cette page ? Le brouillon restera ouvert.')) return; if (id !== activePage) { pageScroll.current[activePage] = window.scrollY; setPageHistory(old => [...old, activePage]); } setActivePage(id); window.location.hash = id; requestAnimationFrame(() => window.scrollTo({top:pageScroll.current[id] || 0})) }
-  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','instances','communications','exchanges','tree'].includes(activePage) ? 'design' : ['generated','functions'].includes(activePage) ? 'code' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
+  useEffect(() => { const group = activePage === 'overview' ? 'project' : ['types','generic','instances','communications','exchanges','tree'].includes(activePage) ? 'design' : ['generated','functions'].includes(activePage) ? 'code' : 'delivery'; setExpandedGroups(old => ({...old, [group]: true})) }, [activePage])
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -77,6 +79,17 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [treeInspectorOpen, setTreeInspectorOpen] = useState(false)
   const [treeInspectorLoading, setTreeInspectorLoading] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardGenericId, setWizardGenericId] = useState<string>()
+  const [wizardKey, setWizardKey] = useState(0)
+  const openWizard = (templateId?: string) => {
+    if (wizardOpen && !window.confirm('Remplacer le brouillon de création en cours ?')) return
+    if (typeDraftDirty && !window.confirm('La création d’un autre type fermera le brouillon en cours. Ouvrir l’assistant ?')) return
+    setWizardGenericId(templateId)
+    setWizardKey(key => key + 1)
+    setWizardOpen(true)
+    openPage('types')
+  }
+
   useEffect(() => { if (!selectedTypeId || activePage !== 'types' || wizardOpen) return; const frame = requestAnimationFrame(() => document.querySelector('.type-object-workspace-panel')?.scrollIntoView({block:'start'})); return () => cancelAnimationFrame(frame) }, [selectedTypeId, treeStructureRequestVersion])
 
   const [deletingType, setDeletingType] = useState<TypeRow | null>(null)
@@ -146,7 +159,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         <p className="v2-nav-heading">Espace projet</p>
         {[
           {id: 'project', label: 'Projet', ids: ['overview']},
-          {id: 'design', label: 'Conception', ids: ['types', 'instances', 'communications', 'exchanges', 'tree']},
+          {id: 'design', label: 'Conception', ids: ['types', 'generic', 'instances', 'communications', 'exchanges', 'tree']},
           {id: 'code', label: 'Programme', ids: ['generated', 'functions']},
           {id: 'delivery', label: 'Livrables', ids: ['transfers']},
         ].map(group => <section className="v2-nav-group" key={group.id}>
@@ -169,8 +182,8 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
           {project && <ProjectHome csrf={csrf} project={project} onChanged={() => void load()} beforeProjectChange={() => (!typeDraftDirty && !wizardOpen && !Object.values(codeDirty).some(Boolean)) || window.confirm('Changer de projet ferme les formulaires et brouillons non enregistrés. Continuer ?')} onSelectProject={() => onWorkspaceChanged?.()} onOpenTransfers={() => openPage('transfers')} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-types" aria-labelledby="tab-types" hidden={activePage !== 'types'}>
-          <div className="type-page-actions"><button className="button primary" onClick={()=>{if(!typeDraftDirty || window.confirm('Discard unsaved type changes and create a new type?')) setWizardOpen(true)}}>＋ Create type</button></div>
-          {wizardOpen && project && <V2TypeWizard project={project} csrf={csrf} onChanged={()=>void load()} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
+          <div className="type-page-actions"><button className="button primary" onClick={() => openWizard()}>＋ Créer un type</button></div>
+          {wizardOpen && project && <V2TypeWizard key={wizardKey} initialGenericId={wizardGenericId} project={project} csrf={csrf} onChanged={()=>void load()} onCancel={()=>setWizardOpen(false)} onCreated={id=>{setWizardOpen(false);setTypeDraftDirty(false);setQuery('');setTypeKind('all');if(id)setSelectedTypeId(id);void load()}}/>}
           <div hidden={wizardOpen}>
           <WorkspacePanel id="type-catalogue" title="Types d’équipements" className="type-catalogue-workspace-panel"><section className="v2-panel object-catalogue">
             <div className="v2-panel-head"><div><h2>Equipment types</h2><p>Select a model to open its object view.</p></div><div className="catalogue-filters"><label className="v2-filter"><span>Kind</span><select aria-label="Filter types by kind" value={typeKind} onChange={e=>setTypeKind(e.target.value)}><option value="all">All kinds</option>{typeKinds.map(kind=><option key={kind}>{kind}</option>)}</select></label><input aria-label="Search types" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search types"/><select aria-label="Sort names" value={sortOrder} onChange={e=>setSortOrder(e.target.value)}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></div></div>
@@ -179,6 +192,10 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
           {deletingType && project && <V2TypeDelete typeId={deletingType.id} typeName={deletingType.name} revision={project.revision!} csrf={csrf} onClose={()=>setDeletingType(null)} onDeleted={()=>{setDeletingType(null);setTypeDraftDirty(false);setNotice(`Type ${deletingType.name} supprimé du catalogue partagé.`);void load()}}/>}
           {selectedTypeId && <WorkspacePanel id={`type-object-${selectedTypeId}`} title={types.find(type=>type.id===selectedTypeId)?.name || 'Éditeur du type'} className="type-object-workspace-panel"><div className="type-editor-navigation"><button className="button secondary" onClick={goBack}>← {typeOpenedFromTree ? 'Retour à l’arborescence' : 'Retour au catalogue'}</button></div><V2ObjectView kind="type" objectId={selectedTypeId} initialStructure={treeStructureSelection?.typeId === selectedTypeId ? treeStructureSelection.name : undefined} initialStructureVersion={treeStructureRequestVersion} csrf={csrf} projectRevision={project?.revision} onDirtyChange={setTypeDraftDirty} onSaved={()=>void load()}/></WorkspacePanel>}
           </div>
+        </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-generic" aria-labelledby="tab-generic" hidden={activePage !== 'generic'}>
+          {project && <GenericObjects templates={project.generic_objects || []} revision={project.revision ?? 0}
+            csrf={csrf} onChanged={() => void load()} onUse={openWizard} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-instances" aria-labelledby="tab-instances" hidden={activePage !== 'instances'}>
           {project && <><div className="type-page-actions"><button className="button secondary" disabled={busy} onClick={()=>void downloadPost('/plc/export/instances','instances-and-types.xml')}>Exporter les instances et leurs types en XML</button></div><WorkspacePanel id="instances:table" title="Instances du projet"><V2Instances project={project} csrf={csrf} openInstanceName={treeInstanceName} onSaved={()=>void load()} onCommunications={()=>openPage('communications')} onProgram={()=>openPage('generated')} onOpenInstanceHandled={()=>setTreeInstanceName('')}/></WorkspacePanel></>}

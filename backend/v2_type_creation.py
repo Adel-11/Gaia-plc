@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
+from backend.v2_generic_objects import Inheritance, materialize
 
 IEC_RESERVED = {"ACTION", "ARRAY", "AT", "BOOL", "CASE", "CONFIGURATION", "CONSTANT", "DATE", "DINT", "ELSE", "ELSIF", "END_ACTION", "END_CASE", "END_CONFIGURATION", "END_FOR", "END_FUNCTION", "END_FUNCTION_BLOCK", "END_IF", "END_PROGRAM", "END_REPEAT", "END_RESOURCE", "END_STRUCT", "END_TYPE", "END_VAR", "END_WHILE", "EXIT", "FALSE", "FOR", "FUNCTION", "FUNCTION_BLOCK", "IF", "INT", "LREAL", "PROGRAM", "REAL", "REPEAT", "RESOURCE", "RETURN", "STRING", "STRUCT", "TIME", "TRUE", "TYPE", "UDINT", "UINT", "VAR", "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_TEMP", "VAR_EXTERNAL", "WHILE", "WORD"}
 ROLES = {"Equipment": ["PA", "COM", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "EXC", "INT"]}
@@ -23,6 +24,7 @@ class TypeCreate(BaseModel):
     communication: str = ""
     folder: str = ""
     copy_from: str | None = None
+    generic: Inheritance | None = None
     standard_modes_from: str | None = None
     duts: list[dict] | None = None
     body: str | None = None
@@ -421,6 +423,14 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         if any(str(t.get("name", "")).casefold() == request.name.casefold() for t in current.get("types", [])):
             errors.append(f"Type {request.name} already exists (names are case-insensitive).")
         if errors: return None, errors, warnings
+        if request.generic:
+            if request.copy_from or request.kind != "Equipment":
+                return None, ["Choisis un équipement et une seule source de création."], warnings
+            try:
+                duts, body = materialize(current, request.generic)
+            except ValueError as exc:
+                return None, [str(exc)], warnings
+            request = request.model_copy(update={"duts": duts, "body": body, "processing_code": None})
         src = next((t for t in current.get("types", []) if str(t.get("id")) == request.copy_from or str(t.get("name")) == request.copy_from), None) if request.copy_from else None
         if request.copy_from and src is None: return None, ["Source type for copy was not found."], warnings
         typ = copy.deepcopy(src) if src else {"duts": [], "rtu": {}, "rtu_default": {}, "templates": {}}

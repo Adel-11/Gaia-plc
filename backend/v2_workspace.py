@@ -90,7 +90,7 @@ def _lock(session):
 
 def _changes(previous,state):
     previous=previous or {};changes=[];activities={}
-    for key,label in COLLECTIONS.items():
+    for key,label in {**COLLECTIONS, 'generic_objects': 'Objets génériques'}.items():
         if digest(previous.get(key))==digest(state.get(key)):continue
         old=previous.get(key,[]);new=state.get(key,[])
         names=[]
