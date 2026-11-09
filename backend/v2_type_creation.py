@@ -8,8 +8,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
-from backend.v2_generic_objects import Inheritance, materialize
+from pydantic import BaseModel, Field
+from backend.v2_generic_objects import Inheritance, Signal, Variables, _declared, materialize
 
 IEC_RESERVED = {"ACTION", "ARRAY", "AT", "BOOL", "CASE", "CONFIGURATION", "CONSTANT", "DATE", "DINT", "ELSE", "ELSIF", "END_ACTION", "END_CASE", "END_CONFIGURATION", "END_FOR", "END_FUNCTION", "END_FUNCTION_BLOCK", "END_IF", "END_PROGRAM", "END_REPEAT", "END_RESOURCE", "END_STRUCT", "END_TYPE", "END_VAR", "END_WHILE", "EXIT", "FALSE", "FOR", "FUNCTION", "FUNCTION_BLOCK", "IF", "INT", "LREAL", "PROGRAM", "REAL", "REPEAT", "RESOURCE", "RETURN", "STRING", "STRUCT", "TIME", "TRUE", "TYPE", "UDINT", "UINT", "VAR", "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_TEMP", "VAR_EXTERNAL", "WHILE", "WORD"}
 ROLES = {"Equipment": ["PA", "COM", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "EXC", "INT"]}
@@ -25,6 +25,7 @@ class TypeCreate(BaseModel):
     folder: str = ""
     copy_from: str | None = None
     generic: Inheritance | None = None
+    signals: list[Signal] = Field(default_factory=list, max_length=100)
     standard_modes_from: str | None = None
     duts: list[dict] | None = None
     body: str | None = None
@@ -423,8 +424,10 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         if any(str(t.get("name", "")).casefold() == request.name.casefold() for t in current.get("types", [])):
             errors.append(f"Type {request.name} already exists (names are case-insensitive).")
         if errors: return None, errors, warnings
+        if request.signals and request.kind != "Equipment":
+            return None, ["Les signaux de terrain sont réservés aux équipements."], warnings
         if request.generic:
-            if request.copy_from or request.kind != "Equipment":
+            if request.copy_from or request.signals or request.kind != "Equipment":
                 return None, ["Choisis un équipement et une seule source de création."], warnings
             try:
                 duts, body = materialize(current, request.generic)
@@ -526,6 +529,21 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         typ["templates"] = {}
         if not any(d.get("role") == "INT" for d in typ["duts"]):
             typ["duts"].append({"id": f"{request.name}:DUT_INT", "name": f"DUT_INT_{request.name}", "role": "INT", "members": [{"id": f"{request.name}:INT:0", "position": 0, "name": "SPARE", "iec_type": "BOOL"}]})
+        if request.signals:
+            try:
+                declarations, inputs, outputs = _declared(Variables(signals=request.signals), current)
+            except ValueError as exc:
+                return None, [str(exc)], warnings
+            prepared_roles = set()
+            for role, member in declarations.values():
+                dut = next(d for d in typ["duts"] if d["role"] == role)
+                rows = dut["members"]
+                if not src and role not in prepared_roles and len(rows) == 1 and rows[0].get("name") == "SPARE":
+                    rows.clear()
+                prepared_roles.add(role)
+                if any(str(row["name"]).casefold() == member["name"].casefold() for row in rows):
+                    errors.append(f"{dut['name']}.{member['name']} existe déjà.")
+                rows.append({**member, "position": len(rows)})
         known_types = {str(name) for existing in current.get("types", [])
                        for name in [existing.get("name"), *(dut.get("name") for dut in existing.get("duts", []))] if name}
         known_types.update(str(d.get("name")) for d in typ["duts"] if d.get("name"))
@@ -560,6 +578,8 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         normalized["fb"]["body"] = typ["fb"].get("body", "")
         normalized["fb"]["custom_code"] = typ["fb"].get("custom_code", "")
         from backend.v2_fb_flow import ensure_flow
+        if "flow" in typ["fb"]:
+            normalized["fb"]["flow"] = copy.deepcopy(typ["fb"]["flow"])
         ensure_flow(normalized["fb"])
         state["types"][-1] = normalized
         if request.processing_code is not None:
@@ -568,6 +588,14 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
             if code and not code.endswith(("\n", "\r")): code += "\n"
             flow_errors = update_flow(normalized, state, processing_code=code)
             errors.extend(flow_errors)
+        if request.signals and not errors:
+            from backend.v2_fb_flow import ASSIGN, flow_view, update_flow
+            mappings = flow_view(normalized["fb"])["mappings"]
+            for section, assignments in (("inputs", inputs), ("outputs", outputs)):
+                for assignment in assignments:
+                    match = ASSIGN.fullmatch(assignment)
+                    mappings.append({"section": section, "source": match[3], "destination": match[2]})
+            errors.extend(update_flow(normalized, state, mappings=mappings))
         state.setdefault("workbooks", {})[normalized["source_file"]] = _book_for_type(engine, normalized, normalized["source_file"])
         return state, errors, warnings
 

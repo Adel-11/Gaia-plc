@@ -1,0 +1,11 @@
+.raw-st-backdrop{position:fixed;inset:0;z-index:1400;background:#15203388;display:grid;place-items:center;padding:12px}
+.raw-st-dialog{display:flex;flex-direction:column;width:min(1280px,98vw);height:min(92dvh,1040px);background:white;color:#23384a;border-radius:12px;overflow:hidden}
+.raw-st-dialog>header,.raw-st-dialog>footer,.raw-st-part-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid #dce5ec}
+.raw-st-dialog>header h2,.raw-st-dialog>header p,.raw-st-part-head h3{margin:0}
+.raw-st-dialog>header p{margin-top:.3rem;color:#466073}
+.raw-st-dialog>footer{justify-content:flex-end;border-top:1px solid #dce5ec;border-bottom:0}
+.raw-st-body{flex:1;min-height:0;overflow:auto;display:grid;align-content:start;gap:1rem;padding:1rem}
+.raw-st-part{display:grid;grid-template-rows:auto minmax(180px,1fr);resize:vertical;overflow:auto;height:340px;min-height:230px;border:1px solid #dce5ec;border-radius:8px}
+.raw-st-part-head{justify-content:flex-start;flex-wrap:wrap}
+.raw-st-part-head button{margin-inline-start:auto}
+.raw-st-part .ov-editor-wrap{min-height:0;height:100%}

@@ -63,7 +63,9 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   const [signals, setSignals] = useState<GenericSignal[]>(initialTemplate?.signals ?? [])
   const [logicMembers, setLogicMembers] = useState<GenericMember[]>(initialTemplate?.members ?? [])
   const [inheritProcessing, setInheritProcessing] = useState(true)
-  const steps = generic ? ['Identité', 'Signaux', 'Variables et logique', 'Vérification'] : ['Identité', 'Blocs', 'Vérification']
+  const equipment = kind === 'Equipment'
+  const [manualProcessing, setManualProcessing] = useState<string | null>(null)
+  const steps = generic ? ['Identité', 'Signaux', 'Variables et logique', 'Vérification'] : equipment ? ['Identité', 'Signaux', 'Blocs', 'Vérification'] : ['Identité', 'Blocs', 'Vérification']
   const reviewStep = steps.length - 1
   const [catalog, setCatalog] = useState<CatalogOptions>({ sections: BASE_SECTIONS, prefixes: BASE_PREFIXES })
   const [projectRevision, setProjectRevision] = useState<number>(Number(project?.revision || 0))
@@ -100,6 +102,8 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     setSelectedRole((roles[next] || roles.Equipment)[0])
     setCopyFrom('')
     setGeneric(undefined)
+    setSignals([])
+    setManualProcessing(null)
   }
   const copyType = (id: string) => {
     setCopyFrom(id)
@@ -117,6 +121,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     const template = value.startsWith('generic:')
       ? genericTemplates.find(item => item.id === value.slice('generic:'.length)) : undefined
     setGeneric(template)
+    setManualProcessing(null)
     setPreview(null)
     setReviewed(false)
     if (template) {
@@ -126,13 +131,14 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
       setLogicMembers(template.members)
       setInheritProcessing(true)
     } else {
+      setSignals([])
       copyType(value.slice('type:'.length))
     }
   }
   const payload = () => ({
     revision: projectRevision, name: name.trim(), kind, description,
-    ...(generic ? { generic: { template_id: generic.id, signals, members: logicMembers, inherit_processing: inheritProcessing } } : {
-      copy_from: copyFrom || null,
+    ...(generic ? { generic: { template_id: generic.id, signals, members: logicMembers, inherit_processing: inheritProcessing, processing: manualProcessing } } : {
+      copy_from: copyFrom || null, signals: equipment ? signals : [],
       duts: duts.map(d => ({ role: d.role, members: d.members.map(m => ({ ...m })) })),
       processing_code: processingCode, custom_code: customCode,
     }),
@@ -184,8 +190,8 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         <aside className="tw-flow-note">Le type créé garde sa propre copie des variables et du code.</aside>
       </div></WorkspacePanel>}
 
-      {generic && step === 1 && <WorkspacePanel id="wizard:generic-signals" title="Adapter les signaux du modèle">
-        <p>Renomme, ajoute ou retire les signaux. Les entrées créent aussi des variables internes et des sorties EXC à relier dans le programme.</p>
+      {equipment && step === 1 && <WorkspacePanel id="wizard:generic-signals" title={generic ? 'Adapter les signaux du modèle' : 'Signaux de terrain'}>
+        <p>Ajoute des E/S physiques, des signaux Modbus RTU ou Modbus TCP. Les entrées sont disponibles dans le traitement et dans EXC.</p>
         <SignalFields signals={signals} onChange={rows => { setSignals(rows); setPreview(null); setReviewed(false) }} />
       </WorkspacePanel>}
 
@@ -198,9 +204,15 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
           </label>
           {inheritProcessing && <details><summary>Voir le ST d’origine</summary><pre className="generic-code">{generic.processing}</pre></details>}
         </>}
+        {manualProcessing === null ? <button className="tw-secondary" type="button"
+          onClick={() => { setManualProcessing(inheritProcessing ? generic.processing : ''); setPreview(null); setReviewed(false) }}>Modifier le ST</button> :
+          <label className="generic-processing">ST du traitement
+            <textarea rows={8} spellCheck={false} value={manualProcessing} onChange={e => { setManualProcessing(e.target.value); setPreview(null); setReviewed(false) }}/>
+            <button className="tw-secondary" type="button" onClick={() => { setManualProcessing(null); setPreview(null); setReviewed(false) }}>Revenir au traitement hérité</button>
+          </label>}
       </WorkspacePanel>}
 
-      {!generic && step === 1 && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
+      {!generic && step === (equipment ? 2 : 1) && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
         {activeDut && <><div className="tw-section-head"><div><h3>DUT_{activeDut.role}_{name || 'Type'}</h3><p>{activeDut.members.length} members in this block</p></div><label className="tw-existing">Copy members from<select value="" onChange={e => { const [typeId, role] = e.target.value.split('|'); const t = types.find(item => String(item.id) === typeId); const source = t?.duts?.find((d: AnyRow) => d.role === role); if (source) replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: source.members.map((m: AnyRow) => ({ id: m.id, name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || 'INTERNAL', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '' })) } : d)) }}><option value="">Choose a type and block</option>{types.flatMap(t => (t.duts || []).filter((d: AnyRow) => d.role === activeDut.role).map((d: AnyRow) => <option key={`${t.id}|${d.role}`} value={`${t.id}|${d.role}`}>{t.name} · {d.role}</option>))}</select></label></div>
           <WorkspacePanel id={`wizard-members-${activeDut.role}`} title={`Membres ${activeDut.role}`}><div className="tw-table-wrap"><table className="tw-table"><thead><tr>{['Order','Member','IEC type','Comment group','Default','Unit','Comment',''].map(h => <th key={h} title={({Order:'Member order is preserved in the generated declaration.',Member:'Canonical member name is the selected prefix joined to the basename.', 'IEC type':'IEC 61131-3 Structured Text data type.','Comment group':'Comment separator grouping inside this DUT, not an ST VAR_INPUT/VAR_OUTPUT section.',Default:'Initial value in the ST declaration.',Unit:'Engineering unit for this member.',Comment:'Documentation comment emitted with this member.'} as Record<string,string>)[h]}>{h}</th>)}</tr></thead><tbody>{activeDut.members.map((m, i) => { const parts = memberParts(m.name); return <tr key={i}>
             <td className="tw-order"><button type="button" aria-label={`Move ${m.name || i + 1} up`} disabled={i === 0} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i - 1, 0, item); return { ...d, members } }))}>↑</button><button type="button" aria-label={`Move ${m.name || i + 1} down`} disabled={i === activeDut.members.length - 1} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i + 1, 0, item); return { ...d, members } }))}>↓</button></td>

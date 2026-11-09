@@ -6,6 +6,8 @@ type Props = { duts: Dut[]; fbName: string; active: string; onSelect: (name: str
 type Viewport = { x: number; y: number; zoom: number }
 const W = 1000, H = 520, NODE_H = 62
 
+const compactName = (name: string, max: number) => name.length > max ? name.slice(0, max - 1) + '…' : name
+
 export default function ObjectCanvas({ duts, fbName, active, onSelect, objectKey }: Props) {
   const uid = useId().replace(/:/g, '')
   const svg = useRef<SVGSVGElement>(null)
@@ -52,11 +54,11 @@ export default function ObjectCanvas({ duts, fbName, active, onSelect, objectKey
         {lnodes.map(({ dut, x, y }) => <path key={`line-${dut.name}`} className="oc-line" d={`M ${x + 246} ${y + NODE_H / 2} C 350 ${y + NODE_H / 2}, 352 ${H / 2}, 390 ${H / 2}`} markerEnd={`url(#${uid}-arrow)`}/>)}
         {rnodes.map(({ dut, x, y }) => <path key={`line-${dut.name}`} className="oc-line" d={`M 610 ${H / 2} C 650 ${H / 2}, 650 ${y + NODE_H / 2}, ${x} ${y + NODE_H / 2}`} markerEnd={`url(#${uid}-arrow)`}/>)}
         {lnodes.map(({ dut, x, y }) => <g key={dut.name} className={`oc-node ${active === dut.name ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${dut.name}, ${dut.role || 'DUT'}`} aria-pressed={active === dut.name} onClick={() => onSelect(dut.name)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(dut.name) } }}>
-          <rect x={x} y={y} width="246" height={NODE_H} rx="10"/><circle className="oc-dot" cx={x + 22} cy={y + 22} r="5"/><text className="oc-kicker" x={x + 36} y={y + 24}>{dut.role || 'DUT'}</text><text className="oc-name" x={x + 18} y={y + 47}>{dut.name}</text></g>)}
+          <rect x={x} y={y} width="246" height={NODE_H} rx="10"/><circle className="oc-dot" cx={x + 22} cy={y + 22} r="5"/><text className="oc-kicker" x={x + 36} y={y + 24}>{dut.role || 'DUT'}</text><text className="oc-name" x={x + 18} y={y + 47}>{compactName(dut.name, 26)}</text><title>{dut.name}</title></g>)}
         <g className={`oc-node oc-fb ${active === '__fb' ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${fbName}, Function block`} aria-pressed={active === '__fb'} onClick={() => onSelect('__fb')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect('__fb') } }}>
-          <rect x="390" y={fbY} width="220" height={NODE_H} rx="12"/><text className="oc-kicker" x="410" y={fbY + 24}>FUNCTION BLOCK</text><text className="oc-name" x="410" y={fbY + 47}>{fbName}</text></g>
+          <rect x="390" y={fbY} width="220" height={NODE_H} rx="12"/><text className="oc-kicker" x="410" y={fbY + 24}>FUNCTION BLOCK</text><text className="oc-name" x="410" y={fbY + 47}>{compactName(fbName, 23)}</text><title>{fbName}</title></g>
         {rnodes.map(({ dut, x, y }) => <g key={dut.name} className={`oc-node oc-int ${active === dut.name ? 'is-active' : ''}`} role="button" tabIndex={0} aria-label={`${dut.name}, ${dut.role || 'INT'}`} aria-pressed={active === dut.name} onClick={() => onSelect(dut.name)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(dut.name) } }}>
-          <rect x={x} y={y} width="246" height={NODE_H} rx="10"/><circle className="oc-dot" cx={x + 22} cy={y + 22} r="5"/><text className="oc-kicker" x={x + 36} y={y + 24}>{dut.role || 'INT'}</text><text className="oc-name" x={x + 18} y={y + 47}>{dut.name}</text></g>)}
+          <rect x={x} y={y} width="246" height={NODE_H} rx="10"/><circle className="oc-dot" cx={x + 22} cy={y + 22} r="5"/><text className="oc-kicker" x={x + 36} y={y + 24}>{dut.role || 'INT'}</text><text className="oc-name" x={x + 18} y={y + 47}>{compactName(dut.name, 26)}</text><title>{dut.name}</title></g>)}
       </g>
     </svg>
     <div className="oc-hint">Drag the canvas to pan · Use + / − or the mouse wheel to zoom · Press 0 to fit</div>

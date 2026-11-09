@@ -8,6 +8,7 @@ import re
 import secrets
 import uuid
 import zipfile
+from typing import Literal
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,6 +29,8 @@ class ObjectEdit(BaseModel):
     body: str | None = None
     custom_code: str | None = None
     processing_code: str | None = None
+    prefix_code: str | None = None
+    section_overrides: dict[Literal["inputs", "outputs"], str | None] | None = None
     mappings: list[dict] | None = None
     local_variables: list[dict] | None = None
 
@@ -86,7 +89,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
                  "exchange_calls": [copy.deepcopy(c) for c in state.get("exchange_calls", []) if instance_name and instance_name in {str(c.get("instance_a_id")), str(c.get("instance_b_id"))}]}
         if kind == "type": links = {key: [] for key in links}
         duts = copy.deepcopy(typ.get("duts", []))
+        overrides = state.get("st_overrides") or {}
         for dut in duts:
+            dut["manual_declaration"] = overrides.get(dut.get("name"), {}).get("declaration") is not None
             lines = [f"TYPE {dut.get('name')} :", "STRUCT"]
             section = None
             for member_index, member in enumerate(dut.get("members", [])):
@@ -101,6 +106,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
             lines.extend(["END_STRUCT", "END_TYPE"])
             dut["st"] = "\n".join(lines)
         fb = copy.deepcopy(typ.get("fb", {}))
+        fb_override = overrides.get(fb.get("name"), {})
+        fb["manual_body"] = fb_override.get("body") is not None
+        fb["manual_declaration"] = fb_override.get("declaration") is not None
         # Render the real generated interface, including timers and extra locals.
         from backend.v2_plc import build_program, _new_fb, NS as XML_NS
         from backend.v2_codesys import _st
@@ -128,6 +136,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
             from backend.v2_local_vars import append as append_local_vars
             append_local_vars(pou, fb.get("local_variables"), ((state.get("snapshot") or {}).get("generator_locals") or {}).get(fb.get("name"), []) if not fb.get("interface_xml") else [])
         declaration = []
+        local_declaration = []
         if pou is not None:
             interface = pou.find(XML_NS + "interface")
             if interface is not None:
@@ -138,8 +147,17 @@ def register_v2_routes(app, get_session, current_user, csrf):
                         continue
                     rendered = copy.deepcopy(group)
                     rendered.tag = XML_NS + "globalVars"
-                    declaration.append(_st(rendered).replace("VAR_GLOBAL", labels[local], 1))
+                    text = _st(rendered).replace("VAR_GLOBAL", labels[local], 1)
+                    declaration.append(text)
+                    if local == "localVars":
+                        managed = {v["name"].casefold() for v in fb.get("local_variables", [])}
+                        for variable in rendered.findall(XML_NS + "variable"):
+                            if str(variable.get("name")).casefold() in managed:
+                                rendered.remove(variable)
+                        if rendered.findall(XML_NS + "variable"):
+                            local_declaration.append(_st(rendered).replace("VAR_GLOBAL", "VAR", 1))
         fb["declaration"] = "\n\n".join(declaration)
+        fb["local_declaration_base"] = "\n\n".join(local_declaration)
         from backend.v2_fb_flow import flow_view, variable_options
         fb.update(flow_view(fb))
         fb["variable_options"] = variable_options(typ, state)
@@ -238,7 +256,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
         from backend.v2_fb_flow import update_flow
         from backend.v2_member_sync import member_deltas, sync_fb, sync_consumers
         edits = member_deltas(original, typ)
-        mappings, sync_errors, updates = sync_fb(typ, edits, body.mappings, body.processing_code)
+        mappings, sync_errors, updates = sync_fb(
+            typ, edits, body.mappings, body.processing_code, body.prefix_code, body.section_overrides,
+        )
         flow_errors = sync_errors or update_flow(typ, state, mappings=mappings)
         if flow_errors: return {"token": None, "errors": flow_errors, "warnings": [], "changes": []}
         if body.local_variables is not None:
@@ -311,6 +331,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if body.body is not None and body.body != original.get("fb", {}).get("body"): changes.append("Updated FB body")
         if body.custom_code is not None and body.custom_code != original.get("fb", {}).get("custom_code"): changes.append("Updated FB custom code")
         if body.processing_code is not None and body.processing_code != original.get("fb", {}).get("flow", {}).get("processing_code"): changes.append("Updated PROCESSING source")
+        if body.prefix_code is not None: changes.append("ST avant les entrées mis à jour")
+        if body.section_overrides is not None:
+            for section, code in body.section_overrides.items():
+                changes.append(f"{section.upper()} : {'ST manuel' if code is not None else 'génération par le mapping'}")
         if typ.get("fb", {}).get("flow", {}).get("legacy_migrated"): changes.append("Legacy handwritten INPUTS / OUTPUTS code is now editable in PROCESSING.")
         if body.mappings is not None: changes.append("Reviewed INPUTS / OUTPUTS mappings")
         token = secrets.token_urlsafe(32)

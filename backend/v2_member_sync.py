@@ -71,17 +71,32 @@ def _code(owner, field, roots, label, errors):
     return before != owner[field]
 
 
-def sync_fb(typ, edits, mappings=None, processing_code=None):
-    from backend.v2_fb_flow import ensure_flow, update_flow, flow_view, render_flow
+def sync_fb(typ, edits, mappings=None, processing_code=None, prefix_code=None, section_overrides=None):
+    from backend.v2_fb_flow import ensure_flow, flow_view, render_flow
     fb = typ.setdefault("fb", {})
     flow = ensure_flow(fb)
-    if processing_code is not None: flow["processing_code"] = processing_code
+    if prefix_code is not None:
+        flow["prefix"] = prefix_code + ("\n" if prefix_code and not prefix_code.endswith("\n") else "")
+    if processing_code is not None:
+        flow["processing_code"] = processing_code + ("\n" if processing_code and not processing_code.endswith("\n") else "")
+    if section_overrides is not None:
+        manual = flow.setdefault("section_overrides", {})
+        for section, code in section_overrides.items():
+            if code is None:
+                manual.pop(section, None)
+            else:
+                manual[section] = code
+        if manual and not flow.get("input_header"):
+            flow.update(input_header="// INPUTS\n", processing_header="\n// PROCESSING\n", output_header="\n// OUTPUTS\n")
     roots = {("intern" if k == "INT" else k.lower()): v for k, v in edits.items()}
     errors, changes = [], []
     label = fb.get("name") or typ["name"]
     if roots:
         for field in ("prefix", "processing_code"):
             if _code(flow, field, roots, label, errors): changes.append(f"{label} : références ST mises à jour")
+        for section in ("inputs", "outputs"):
+            if _code(flow.get("section_overrides", {}), section, roots, label, errors):
+                changes.append(f"{label} : références ST mises à jour ({section})")
         if _code(fb, "custom_code", roots, label, errors): changes.append(f"{label} : références du code personnalisé mises à jour")
         fb["body"] = render_flow(flow)
         maps = copy.deepcopy(mappings if mappings is not None else flow_view(fb)["mappings"])

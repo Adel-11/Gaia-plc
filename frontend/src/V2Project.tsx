@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import TransferHub from './TransferHub'
-import V2ObjectView, { StEditor } from './V2ObjectView'
+import V2ObjectView from './V2ObjectView'
+import RawStEditor from './RawStEditor'
 import V2Communications from './V2Communications'
 import V2Instances from './V2Instances'
 import V2TypeWizard from './V2TypeWizard'
@@ -74,10 +75,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [treeCodeRequestVersion, setTreeCodeRequestVersion] = useState(0)
   const [treeStructureSelection, setTreeStructureSelection] = useState<{ typeId: string; name: string } | null>(null)
   const [treeStructureRequestVersion, setTreeStructureRequestVersion] = useState(0)
-  const [treeInspector, setTreeInspector] = useState<{ name: string; kind: string; folder?: string; declaration?: string; body?: string } | null>(null)
-  const [treeInspectorError, setTreeInspectorError] = useState('')
-  const [treeInspectorOpen, setTreeInspectorOpen] = useState(false)
-  const [treeInspectorLoading, setTreeInspectorLoading] = useState(false)
+  const [treeInspectorName, setTreeInspectorName] = useState('')
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardGenericId, setWizardGenericId] = useState<string>()
   const [wizardKey, setWizardKey] = useState(0)
@@ -97,7 +95,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
   const [busy, setBusy] = useState(false)
   const goBack = () => {
     if (wizardOpen) { setWizardOpen(false); return }
-    if (treeInspectorOpen) { setTreeInspectorOpen(false); setTreeInspector(null); setTreeInspectorError(''); return }
+    if (treeInspectorName) { setTreeInspectorName(''); return }
     if (activePage === 'types' && selectedTypeId) { if (typeDraftDirty && !window.confirm('Discard unsaved type changes?')) return; setTypeDraftDirty(false); setSelectedTypeId(typeSelectionHistory[typeSelectionHistory.length - 1] || ''); setTypeSelectionHistory(old => old.slice(0, -1)); if (!typeSelectionHistory.length && typeOpenedFromTree) { setPageHistory(old=>old[old.length-1]==='tree'?old.slice(0,-1):old); setActivePage('tree'); window.location.hash='tree'; requestAnimationFrame(()=>window.scrollTo({top:pageScroll.current.tree||0})) } return }
     if (codeDirty[activePage] && !window.confirm('Le code contient des modifications non enregistrées. Quitter cette page ? Votre brouillon reste conservé.')) return
     const previous = pageHistory[pageHistory.length - 1]; if (!previous) return
@@ -137,14 +135,13 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
     if (object.type_id && object.role) { if (selectType(String(object.type_id), true)) { setTreeStructureSelection({ typeId: String(object.type_id), name: object.role.toUpperCase() === 'FB' ? '__fb' : object.name }); setTreeStructureRequestVersion(version => version + 1); openPage('types') } return }
     const matching = types.find(type => type.id === object.name || type.name === object.name)
     if (matching) { if (selectType(matching.id, true)) openPage('types'); return }
-    if (['FUNCTION','FC','FNC','EXCHANGE'].includes(object.kind.toUpperCase())) {
+    if (/^(FNC_|FC_EXC_)/.test(object.name)) {
       setTreeCodeSelection({ category: 'functions', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('functions'); return
     }
-    if (['GFC','GFB','PROGRAM','ACTION','METHOD'].includes(object.kind.toUpperCase())) {
+    if (/^(?:GFC_(?:(?:COM|IO)_(?:IN|OUT)|EXC)|GFB_(?:INST|UPI)|PLC_PRG)$/.test(object.name)) {
       setTreeCodeSelection({ category: 'generated', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('generated'); return
     }
-    setTreeInspector(null); setTreeInspectorError(''); setTreeInspectorOpen(true); setTreeInspectorLoading(true)
-    void request<{ name: string; kind: string; folder?: string; declaration?: string; body?: string }>(`/plc/object/${encodeURIComponent(object.name)}`).then(setTreeInspector).catch(e => setTreeInspectorError(e instanceof Error ? e.message : 'Impossible d’ouvrir cet objet')).finally(() => setTreeInspectorLoading(false))
+    setTreeInspectorName(object.name)
   }
 
 
@@ -176,7 +173,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         <div className="v2-nav-foot">Gaia Refinery<span>Révision {project?.revision ?? '—'}</span></div>
       </nav>
       <div className="v2-page-body">
-        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{activePage === 'overview' ? project?.project_name || active.title : active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools">{(treeInspectorOpen || (activePage === 'types' && selectedTypeId) || pageHistory.length > 0) && <button className="button secondary" onClick={goBack}>← Retour</button>}<button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
+        <header className="v2-page-banner"><div><p className="v2-page-kicker">Gaia PLC Generator</p><h1>{activePage === 'overview' ? project?.project_name || active.title : active.title}</h1><p>{active.description}</p></div><div className="v2-page-tools">{(treeInspectorName || (activePage === 'types' && selectedTypeId) || pageHistory.length > 0) && <button className="button secondary" onClick={goBack}>← Retour</button>}<button className="button secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Actualisation…' : 'Actualiser'}</button></div></header>
         {error && <div className="v2-alert error" role="alert"><b>Could not complete request</b><span>{error}</span></div>}{notice && <div className="v2-alert success" role="status">{notice}</div>}
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-overview" aria-labelledby="tab-overview" hidden={activePage !== 'overview'}>
           {project && <ProjectHome csrf={csrf} project={project} onChanged={() => void load()} beforeProjectChange={() => (!typeDraftDirty && !wizardOpen && !Object.values(codeDirty).some(Boolean)) || window.confirm('Changer de projet ferme les formulaires et brouillons non enregistrés. Continuer ?')} onSelectProject={() => onWorkspaceChanged?.()} onOpenTransfers={() => openPage('transfers')} />}
@@ -218,7 +215,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-transfers" aria-labelledby="tab-transfers" hidden={activePage !== 'transfers'}>
           {project && <TransferHub csrf={csrf} project={project} revision={project.revision} onChanged={()=>void load()}/>}
         </div>
-    {treeInspectorOpen && <div className="plc-object-inspector-backdrop" role="presentation"><section className="plc-object-inspector" role="dialog" aria-modal="true" aria-labelledby="plc-object-inspector-title"><header><div><p className="eyebrow">CODESYS OBJECT</p><h2 id="plc-object-inspector-title">{treeInspector?.name || 'Objet PLC'}</h2><p>{treeInspector?.kind}{treeInspector?.folder ? ` · ${treeInspector.folder}` : ''} · lecture seule</p></div><button type="button" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Retour</button></header><div className="plc-object-inspector-body">{treeInspectorLoading ? <p>Chargement de l’objet…</p> : treeInspectorError ? <div className="v2-alert error" role="alert">{treeInspectorError}</div> : treeInspector && <StEditor value={[treeInspector.declaration, treeInspector.body].filter(Boolean).join('\n\n')} readOnly label={`${treeInspector.name} · Structured Text`}/>}</div><footer><button type="button" className="button secondary" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Fermer</button></footer></section></div>}
+    {treeInspectorName && <RawStEditor name={treeInspectorName} csrf={csrf} onClose={() => setTreeInspectorName('')} onSaved={() => void load()}/>}
     <footer className="page-footer">
       <span>GAIA IO GENERATOR <b>·</b> PROJECT V2</span>
       <span>Phase {project?.phase ?? 1} · Build {import.meta.url.match(/\/index-([\w-]+)\.js$/)?.[1] ?? 'local'} <i/> Connected</span>

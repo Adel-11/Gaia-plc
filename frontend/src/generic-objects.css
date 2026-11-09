@@ -86,3 +86,26 @@
 @media (max-width: 900px) {
   .generic-library-grid, .generic-signal-grid { grid-template-columns: minmax(0, 1fr); }
 }
+.generic-signal-picker { display:grid; gap:1rem; }
+.generic-transport-tabs { display:flex; flex-wrap:wrap; gap:.5rem; }
+.generic-transport { --signal-accent:#28725f; --signal-surface:#eaf6f1; }
+.generic-transport.rtu { --signal-accent:#914a23; --signal-surface:#fff2e7; }
+.generic-transport.tcp { --signal-accent:#2a5e99; --signal-surface:#eaf3ff; }
+.generic-transport-tabs button { border:1px solid var(--signal-accent); border-radius:.5rem; padding:.55rem .8rem; background:var(--signal-surface); color:var(--signal-accent); font-weight:650; }
+.generic-transport-tabs button[aria-pressed=true] { background:var(--signal-accent); color:white; }
+.generic-transport-note { margin:0; color:#465a67; }
+.generic-counts .generic-transport { background:var(--signal-surface); color:var(--signal-accent); }
+.generic-signal-group { border-inline-start:5px solid var(--channel); }
+.generic-signal-group legend { color:var(--channel); }
+.io-input-analog { --channel:#167260; }
+.io-output-analog { --channel:#6550a0; }
+.io-input-digital { --channel:#42661b; }
+.io-output-digital { --channel:#a23663; }
+.rtu-input-analog { --channel:#99521b; }
+.rtu-output-analog { --channel:#a6312b; }
+.rtu-input-digital { --channel:#7c5610; }
+.rtu-output-digital { --channel:#863d21; }
+.tcp-input-analog { --channel:#275f9b; }
+.tcp-output-analog { --channel:#5c4b99; }
+.tcp-input-digital { --channel:#156f89; }
+.tcp-output-digital { --channel:#3b4b8e; }

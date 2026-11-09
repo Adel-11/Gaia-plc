@@ -46,7 +46,9 @@ def _decl(obj):
                 sections.append(_st(clone).replace("VAR_GLOBAL",label,1))
     ptype=el.get("pouType","program").upper()
     if ptype=="FUNCTION":
-        ret=el.find(NS+"interface/"+NS+"returnType/*"); suffix=" : "+(etree.QName(ret).localname.upper() if ret is not None else "BOOL")
+        ret=el.find(NS+"interface/"+NS+"returnType/*")
+        return_type = etree.QName(ret).localname if ret is not None else "BOOL"
+        suffix=" : "+(ret.get("name", "BOOL") if return_type == "derived" else return_type.upper())
         header=f"FUNCTION {el.get('name','')}"+suffix
     else: header=f"{('FUNCTION_BLOCK' if ptype=='FUNCTIONBLOCK' else 'PROGRAM')} {el.get('name','')}"
     return header+("\n"+"\n\n".join(sections) if sections else "")
@@ -63,6 +65,7 @@ def _objects(state):
     result=[]
     names=set(GENERATED)|{n for n in built if n.startswith("FC_EXC_")}|{f.get("name") for f in state.get("functions",[]) if f.get("name","").startswith("FNC_")}
     for name in sorted(names):
+        manual = (state.get("st_overrides") or {}).get(name, {})
         obj=built.get(name,{"name":name,"kind":"POU","folder":"Functions"})
         kind="exchange" if name.startswith("FC_EXC_") else "function" if name.startswith("FNC_") else "generated" if name in GENERATED else "generated"
         full_body=_body(obj); body=full_body
@@ -76,6 +79,7 @@ def _objects(state):
         status="new" if name not in semantic_snapshots else "changed" if v2_plc_validation._changed(name,obj,semantic_snapshots) else "unchanged"
         diff="".join(difflib.unified_diff(ref.splitlines(True),full_body.splitlines(True),fromfile=f"reference/{name}",tofile=f"current/{name}"))
         entry={"name":name,"kind":kind,"category":kind,"folder":obj.get("folder",""),"body":body,"custom_code":custom,
+          "manual_body":manual.get("body") is not None, "manual_declaration":manual.get("declaration") is not None,
           "declaration":_decl(obj), "local_variables": (function_model or {}).get("local_variables", []) if name not in GENERATED else (state.get("generated_local_variables") or {}).get(name, []),
           "full_body":full_body,"changed":status!="unchanged","status":status,"reference_body":ref,"diff":diff,"dependencies":sorted(v2_plc_validation._refs(obj))}
         if name in membership:
@@ -96,6 +100,8 @@ def register_code_routes(app,get_session,current_user,csrf):
         state=v2_store.load_project(session)
         if state is None: raise HTTPException(503,"The v2 project has not been initialized")
         return state
+    from backend.v2_st_overrides import register_source_routes
+    register_source_routes(app, get_session, current_user, csrf, project)
     @app.get("/api/v2/code")
     def get_code(session=Depends(get_session), user=Depends(current_user)):
         state=project(session)

@@ -1,0 +1,96 @@
+import { useEffect, useId, useState } from 'react'
+import { StEditor } from './V2ObjectView'
+import './st-source.css'
+
+type Source = {
+  name: string; kind: string; revision: number
+  declaration: string; body: string | null; manual_declaration: boolean; manual_body: boolean
+}
+type Part = 'declaration' | 'body'
+type Draft = Partial<Record<Part, string | null>>
+
+export default function RawStEditor({ name, csrf, onClose, onSaved }: {
+  name: string; csrf: string; onClose: () => void; onSaved: () => void
+}) {
+  const title = useId()
+  const [source, setSource] = useState<Source>()
+  const [draft, setDraft] = useState<Draft>({})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const url = `/api/v2/code/source/${encodeURIComponent(name)}`
+  const dirty = Object.keys(draft).length > 0
+  const close = () => {
+    if (!busy && (!dirty || window.confirm('Fermer et abandonner le brouillon ST ?'))) onClose()
+  }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch(url, { signal: controller.signal }).then(async response => {
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.detail || 'Impossible de charger le ST.')
+      setSource(result)
+    }).catch(cause => { if (!controller.signal.aborted) setError(cause.message) })
+    return () => controller.abort()
+  }, [url])
+
+  const save = async () => {
+    if (!source || !dirty) return
+    setBusy(true); setError('')
+    try {
+      const response = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        body: JSON.stringify({ revision: source.revision, ...draft }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.detail || 'Impossible d’enregistrer le ST.')
+      onSaved()
+      onClose()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Impossible d’enregistrer le ST.')
+    } finally { setBusy(false) }
+  }
+
+  const renderPart = (part: Part, label: string) => {
+    if (!source || source[part] === null) return null
+    const original = source[part] || ''
+    const manual = source[`manual_${part}`]
+    const modified = part in draft
+    const reset = modified && draft[part] === null
+    return <section className="raw-st-part">
+      <div className="raw-st-part-head">
+        <h3>{label}</h3>
+        <span>{reset ? 'Retour au modèle à l’enregistrement' : manual || modified ? 'ST manuel' : 'Issu du modèle'}</span>
+        {reset ? <button type="button" onClick={() => setDraft(previous => {
+          const next = { ...previous }; delete next[part]; return next
+        })}>Annuler le retour</button> :
+          (manual || modified) && <button type="button" disabled={busy} onClick={() => {
+            if (manual) setDraft(previous => ({ ...previous, [part]: null }))
+            else setDraft(previous => { const next = { ...previous }; delete next[part]; return next })
+          }}>Revenir au modèle</button>}
+      </div>
+      <StEditor label={label} value={draft[part] ?? original} readOnly={busy || reset}
+        onChange={value => setDraft(previous => {
+          const next = { ...previous }
+          if (value === original) delete next[part]
+          else next[part] = value
+          return next
+        })}/>
+    </section>
+  }
+
+  return <div className="raw-st-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
+    <section className="raw-st-dialog" role="dialog" aria-modal="true" aria-labelledby={title}
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() } }}>
+      <header><div><h2 id={title}>{name} · ST complet</h2><p>Le texte modifié est utilisé à l’export. Les formulaires et mappings restent disponibles si tu reviens au modèle.</p></div>
+        <button type="button" className="button secondary" disabled={busy} onClick={close}>Fermer</button>
+      </header>
+      <div className="raw-st-body">
+        {error && <p className="v2-alert error" role="alert">{error}</p>}
+        {!source && !error && <p>Chargement du code…</p>}
+        {renderPart('declaration', 'Déclaration ST')}
+        {renderPart('body', 'Corps ST')}
+      </div>
+      <footer><button type="button" className="button primary" disabled={!dirty || busy} onClick={() => void save()}>{busy ? 'Enregistrement…' : 'Enregistrer le ST'}</button></footer>
+    </section>
+  </div>
+}

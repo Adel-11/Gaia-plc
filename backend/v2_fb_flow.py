@@ -57,7 +57,16 @@ def convert_body(body):
 def render_flow(flow):
     def part(segments):
         return ''.join(s.get('code','') if s.get('kind') == 'preserved' else s.get('original', '\t' + s['destination'] + ' := ' + s['source'] + ';\n') for s in segments)
-    return flow.get('prefix','') + flow.get('input_header','') + part(flow.get('input_segments',[])) + flow.get('processing_header','') + flow.get('processing_code','') + flow.get('output_header','') + part(flow.get('output_segments',[]))
+    overrides = flow.get('section_overrides', {})
+    def line_end(text):
+        return text + '\n' if text and not text.endswith(('\n', '\r')) else text
+    inputs = line_end(overrides['inputs']) if 'inputs' in overrides else part(flow.get('input_segments', []))
+    outputs = overrides['outputs'] if 'outputs' in overrides else part(flow.get('output_segments', []))
+    return (
+        flow.get('prefix', '') + flow.get('input_header', '') + inputs
+        + flow.get('processing_header', '') + flow.get('processing_code', '')
+        + flow.get('output_header', '') + outputs
+    )
 
 
 def ensure_flow(fb):

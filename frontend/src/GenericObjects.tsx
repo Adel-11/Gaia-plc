@@ -5,11 +5,14 @@ import './generic-objects.css'
 
 type Direction = 'input' | 'output'
 type SignalKind = 'analog' | 'digital'
+type Transport = 'io' | 'rtu' | 'tcp'
+const transports: Record<Transport, string> = { io: 'E/S physiques', rtu: 'Modbus RTU', tcp: 'Modbus TCP' }
 export type GenericSignal = {
   id: string
   name: string
   direction: Direction
   kind: SignalKind
+  transport?: Transport
   iec_type: string
   unit?: string
   comment?: string
@@ -35,6 +38,8 @@ export type GenericTemplate = {
   signals: GenericSignal[]
   members: GenericMember[]
   processing: string
+  parent_id?: string | null
+  parent_name?: string
 }
 
 const groups: { direction: Direction; kind: SignalKind; label: string; prefix: string }[] = [
@@ -44,6 +49,9 @@ const groups: { direction: Direction; kind: SignalKind; label: string; prefix: s
   { direction: 'output', kind: 'digital', label: 'Sorties TOR', prefix: 'COMMANDE' },
 ]
 const analogTypes = ['DWORD', 'REAL', 'WORD', 'INT', 'UINT', 'DINT', 'UDINT', 'LREAL', 'BYTE']
+const modbusAnalogTypes = ['WORD', 'INT', 'UINT', 'REAL']
+const signalTransport = (signal: GenericSignal) => signal.transport ?? 'io'
+const signalRole = (signal: GenericSignal) => signalTransport(signal) === 'io' ? 'IO' : 'COM'
 const codeRole = (role: GenericMember['role']) => role === 'INT' ? 'INTERN' : role
 const memberRoles: { role: GenericMember['role']; label: string }[] = [
   { role: 'PA', label: 'Paramètres' },
@@ -53,12 +61,13 @@ const memberRoles: { role: GenericMember['role']; label: string }[] = [
   { role: 'INT', label: 'Variables internes' },
 ]
 const ioName = (signal: GenericSignal) =>
-  signal.io_name?.trim() || `${signal.direction === 'input' ? 'INPUT' : 'OUTPUT'}_${signal.name}`
+  signal.io_name?.trim() || `${signalRole(signal) === 'COM' ? signalTransport(signal).toUpperCase() + '_' : ''}${signal.direction === 'input' ? 'INPUT' : 'OUTPUT'}_${signal.name}`
 const internName = (signal: GenericSignal) => signal.internal_name?.trim() || signal.name
 const excName = (signal: GenericSignal) => signal.exchange_name?.trim() || `OUTPUT_${signal.name}`
 
 function generatedMembers(signals: GenericSignal[], role: GenericMember['role']) {
-  if (role === 'IO') return signals.map(signal => ({ name: ioName(signal), type: signal.iec_type, id: signal.id }))
+  if (role === 'IO' || role === 'COM') return signals.filter(signal => signalRole(signal) === role)
+    .map(signal => ({ name: ioName(signal), type: role === 'COM' && signal.iec_type === 'REAL' ? 'DUT_Union_Real_Word' : signal.iec_type, id: signal.id }))
   if (role === 'INT') return signals.map(signal => ({ name: internName(signal), type: signal.iec_type, id: signal.id }))
   if (role === 'EXC') return signals.filter(signal => signal.direction === 'input')
     .map(signal => ({ name: excName(signal), type: signal.iec_type, id: signal.id }))
@@ -73,14 +82,23 @@ function freshName(prefix: string, names: string[]) {
 }
 
 export function SignalFields({ signals, onChange }: { signals: GenericSignal[]; onChange: (rows: GenericSignal[]) => void }) {
+  const [transport, setTransport] = useState<Transport>('io')
   const edit = (id: string, update: Partial<GenericSignal>) =>
     onChange(signals.map(signal => signal.id === id ? { ...signal, ...update } : signal))
 
-  return <div className="generic-signal-grid">
+  return <div className="generic-signal-picker">
+    <div className="generic-transport-tabs" role="group" aria-label="Famille de signaux">
+      {(Object.keys(transports) as Transport[]).map(key =>
+        <button type="button" key={key} className={`generic-transport ${key}`} aria-pressed={transport === key} onClick={() => setTransport(key)}>
+          {transports[key]} <span>{signals.filter(signal => signalTransport(signal) === key).length}</span>
+        </button>)}
+    </div>
+    {transport !== 'io' && <p className="generic-transport-note">Les signaux sont déclarés dans COM. Assigne les adresses sur l’instance dans Communications. Un REAL utilise deux mots à mapper.</p>}
+    <div className="generic-signal-grid">
     {groups.map(group => {
-      const rows = signals.filter(signal => signal.direction === group.direction && signal.kind === group.kind)
-      return <fieldset className="generic-signal-group" key={group.label}>
-        <legend>{group.label} <span>{rows.length}</span></legend>
+      const rows = signals.filter(signal => signalTransport(signal) === transport && signal.direction === group.direction && signal.kind === group.kind)
+      return <fieldset className={`generic-signal-group ${transport}-${group.direction}-${group.kind}`} key={group.label}>
+        <legend>{group.label}{transport !== 'io' ? (group.kind === 'analog' ? ' · registres' : ' · bits') : ''} <span>{rows.length}</span></legend>
         {rows.map(signal => <div className="generic-signal-row" key={signal.id}>
           <div className="generic-row-fields">
             <label>Nom du signal
@@ -90,7 +108,7 @@ export function SignalFields({ signals, onChange }: { signals: GenericSignal[]; 
             {signal.kind === 'analog' && <>
               <label>Type IEC
                 <select value={signal.iec_type} onChange={event => edit(signal.id, { iec_type: event.target.value })}>
-                  {analogTypes.map(type => <option key={type}>{type}</option>)}
+                  {(transport === 'io' ? analogTypes : modbusAnalogTypes).map(type => <option key={type}>{type}</option>)}
                 </select>
               </label>
               <label>Unité
@@ -102,11 +120,11 @@ export function SignalFields({ signals, onChange }: { signals: GenericSignal[]; 
               aria-label={`Retirer le signal ${signal.name}`}
               onClick={() => onChange(signals.filter(row => row.id !== signal.id))}>Retirer</button>
           </div>
-          <code>IO.{ioName(signal)} · {signal.iec_type}</code>
+          <code>{signalRole(signal)}.{ioName(signal)} · {signal.iec_type}</code>
           <details className="generic-variable-details">
             <summary>Noms dans les DUT</summary>
             <div className="generic-row-fields">
-              <label>Variable IO
+              <label>Variable {signalRole(signal)}
                 <input value={signal.io_name ?? ''} placeholder={ioName(signal)} maxLength={80}
                   onChange={event => edit(signal.id, { io_name: event.target.value })} />
               </label>
@@ -125,12 +143,14 @@ export function SignalFields({ signals, onChange }: { signals: GenericSignal[]; 
         <button type="button" className="button secondary" onClick={() => onChange([...signals, {
           id: crypto.randomUUID(),
           name: freshName(group.prefix, signals.map(signal => signal.name)),
+          transport,
           direction: group.direction,
           kind: group.kind,
-          iec_type: group.kind === 'analog' ? 'DWORD' : 'BOOL',
+          iec_type: group.kind === 'analog' ? transport === 'io' ? 'DWORD' : 'WORD' : 'BOOL',
         }])}>＋ Ajouter {group.direction === 'input' ? 'une entrée' : 'une sortie'}</button>
       </fieldset>
     })}
+    </div>
   </div>
 }
 
@@ -156,7 +176,7 @@ export function LogicFields({ members, signals, onChange, onRemoveSignal }: {
     <p><strong>{memberRoles.find(item => item.role === role)?.label}</strong></p>
     {generated.length > 0 && <div className="generic-generated">
       <p>Retirer un signal retire aussi les variables IO, INT et EXC associées.</p>
-      {generated.map(member => <div className="generic-generated-row" key={member.id}><code>{codeRole(role)}.{member.name} · {member.type}</code>{role === 'IO' && onRemoveSignal && <button type="button" className="button secondary" aria-label={`Retirer le signal ${member.name}`} onClick={() => onRemoveSignal(member.id)}>Retirer le signal</button>}</div>)}
+      {generated.map(member => <div className="generic-generated-row" key={member.id}><code>{codeRole(role)}.{member.name} · {member.type}</code>{(role === 'IO' || role === 'COM') && onRemoveSignal && <button type="button" className="button secondary" aria-label={`Retirer le signal ${member.name}`} onClick={() => onRemoveSignal(member.id)}>Retirer le signal</button>}</div>)}
     </div>}
     <datalist id={typeList}>{['BOOL', ...analogTypes, 'TIME', 'TON', 'TOF', 'TP'].map(type => <option key={type} value={type} />)}</datalist>
     {selected.map(member => <div className="generic-signal-row" key={member.id}>
@@ -219,6 +239,10 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
     setNotice('')
     setError('')
   }
+  const derive = (parent: GenericTemplate, name = '') => open({
+    ...emptyDraft, name, description: parent.description, parent_id: parent.id, parent_name: parent.name,
+    signals: parent.signals, members: parent.members, processing: parent.processing,
+  })
   const edit = (changes: Partial<Draft>) => setDraft(current => current ? { ...current, ...changes } : current)
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -264,6 +288,18 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
   if (draft) return <form className="generic-editor" onSubmit={save}>
     <WorkspacePanel id="generic:identity" title={draft.id ? 'Modifier le modèle' : 'Créer un modèle générique'}>
       <div className="generic-identity">
+        {!draft.id && <label>Hériter d’un modèle générique
+          <select value={draft.parent_id ?? ''} onChange={event => {
+            const parent = templates.find(template => template.id === event.target.value)
+            if (parent) derive(parent, draft.name)
+            else open({ ...emptyDraft, name: draft.name })
+          }}>
+            <option value="">Aucun parent</option>
+            {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </select>
+          <small>Copie les signaux, les variables et le ST dans ce nouveau modèle.</small>
+        </label>}
+        {draft.id && draft.parent_name && <p>Modèle parent : {draft.parent_name}</p>}
         <label>Nom du modèle<input autoFocus required value={draft.name} maxLength={100}
           onChange={event => edit({ name: event.target.value })} placeholder="Capteur de niveau" /></label>
         <label>Description<textarea value={draft.description} maxLength={1000} rows={2}
@@ -298,18 +334,20 @@ export default function GenericObjects({ templates, revision, csrf, onChanged, o
     <div className="generic-library-grid">
       {templates.map(template => <article className="generic-card" key={template.id}>
         <header><h2>{template.name}</h2><span>{template.builtin ? 'Modèle de départ' : 'Ce projet'}</span></header>
+        {template.parent_name && <small>Hérité de {template.parent_name}</small>}
         <p>{template.description || 'Structure et logique de base personnalisées.'}</p>
         <div className="generic-counts">
-          {groups.map(group => <span key={group.label}>
-            <strong>{template.signals.filter(signal => signal.direction === group.direction && signal.kind === group.kind).length}</strong> {group.label.toLowerCase()}
+          {(Object.keys(transports) as Transport[]).map(key => <span className={`generic-transport ${key}`} key={key}>
+            <strong>{template.signals.filter(signal => signalTransport(signal) === key).length}</strong> {transports[key]}
           </span>)}
         </div>
         <div className="generic-actions">
           <button type="button" className="button primary" onClick={() => onUse(template.id)}>Créer un type</button>
           <button type="button" className="button secondary" onClick={() => open(template.builtin
-            ? { ...template, id: '', name: `${template.name} – copie` } : template)}>
+            ? { ...template, id: '', parent_id: template.id, parent_name: template.name, name: `${template.name} – copie` } : template)}>
             {template.builtin ? 'Personnaliser une copie' : 'Modifier le modèle'}
           </button>
+          {!template.builtin && <button type="button" className="button secondary" onClick={() => derive(template)}>Créer un modèle dérivé</button>}
           {!template.builtin && <button type="button" className="button secondary" disabled={busy} onClick={() => void remove(template)}>Supprimer le modèle</button>}
         </div>
       </article>)}

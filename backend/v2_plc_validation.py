@@ -102,11 +102,12 @@ def _refs(obj: dict) -> set[str]:
         if _local(node) == "derived" and node.get("name"):
             refs.add(node.get("name"))
     # Generated ST is embedded as XHTML text. DUT names are also used in declarations.
-    text = "\n".join(element.xpath(".//*[local-name()='ST']/*[local-name()='xhtml']/text()"))
+    text = "\n".join(element.xpath(".//*[local-name()='ST' or local-name()='InterfaceAsPlainText']/*[local-name()='xhtml']/text()"))
     text = _st_code(text)
     refs.update(re.findall(r"\bDUT_[A-Za-z0-9_]+\b", text))
     refs.update(re.findall(r"\b((?:FC_EXC|FNC|GFC)_[A-Za-z0-9_]+)\s*\(", text))
     refs.update(re.findall(r"\b(GVL_[A-Za-z0-9_]+)\.", text))
+    refs.discard(obj.get("name"))
     return refs
 
 
@@ -414,13 +415,21 @@ def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict]) -> dict
             errors.append(f"Exported object {name} is missing from ProjectStructure.")
     for name in sorted(object_names - ids_by_name.keys()):
         errors.append(f"Exported object {name} has no ObjectId.")
+    from backend.v2_st_overrides import plain_declaration
     declared_gvls: dict[str, set[str]] = {}
     for gvl in root.xpath("//*[local-name()='globalVars']"):
         gname = _name(gvl)
-        declared_gvls[gname] = {v.get("name") for v in gvl.xpath("./*[local-name()='variable']") if v.get("name")}
+        declaration = plain_declaration(gvl)
+        declared_gvls[gname] = (
+            _plain_variables(declaration) if declaration is not None else
+            {v.get("name") for v in gvl.xpath("./*[local-name()='variable']") if v.get("name")}
+        )
     for pou in root.xpath("//*[local-name()='pou']"):
         body = _st_code(pou.xpath("string(./*[local-name()='body']/*[local-name()='ST']/*[local-name()='xhtml'])"))
         decl = " ".join(pou.xpath(".//*[local-name()='derived']/@name"))
+        plain = plain_declaration(pou)
+        if plain is not None:
+            decl = _st_code(plain)
         # Conservative ST symbol scan: only qualified global references are required to resolve.
         for gvlname, member in re.findall(r"\b(GVL_[A-Za-z0-9_]+)\.([A-Za-z_][A-Za-z0-9_]*)", body):
             if gvlname in declared_gvls and member not in declared_gvls[gvlname]:
@@ -434,6 +443,8 @@ def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict]) -> dict
                 errors.append(f"{_name(pou)} references undeclared type {type_name}.")
         known_objects = object_names | set(_snapshot_nodes(state)) | {str(o.get("name")) for o in (state.get("snapshot") or {}).get("objects", []) if o.get("name")}
         known_variables = set(pou.xpath(".//*[local-name()='interface']//*[local-name()='variable']/@name"))
+        if plain is not None:
+            known_variables.update(_plain_variables(plain))
         snap_pou = _snapshot_nodes(state).get(_name(pou))
         if snap_pou is not None and _local(snap_pou) == "pou":
             known_variables.update(snap_pou.xpath(".//*[local-name()='interface']//*[local-name()='variable']/@name"))
@@ -480,13 +491,25 @@ def _check_dut_refs(root: etree._Element, state: dict, object_names: set[str], e
             errors.append("Array dimension requires integer lower and upper bounds.")
 
 
+def _plain_variables(declaration):
+    """Find names for basic cross-reference checks on manually edited declarations."""
+    return {
+        name.strip() for group in re.findall(
+            r"(?im)(?:^|;)\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?:AT\s+%[\w*.]+\s*)?:(?!=)",
+            _st_code(declaration),
+        ) for name in group.split(",")
+    }
+
+
 def _check_member_references(root: etree._Element, state: dict, errors: list[str], warnings: list[str]) -> None:
+    from backend.v2_st_overrides import plain_declaration
     snapshot = _snapshot_nodes(state)
     program_nodes = {**snapshot}
     for node in root.xpath("//*[local-name()='globalVars' or local-name()='pou' or local-name()='dataType']"):
         name = _name(node)
         if name: program_nodes[name] = node
     type_nodes = {name: node for name, node in program_nodes.items() if _local(node) == "dataType"}
+    manual = {name for name, node in program_nodes.items() if plain_declaration(node) is not None}
 
     def declared(node):
         return {v.get("name"): v for v in node.xpath("./*[local-name()='variable']") if v.get("name")}
@@ -529,12 +552,14 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
             parts = [re.fullmatch(r"([A-Za-z0-9_]+)(?:\[(-?\d+)\])?", part).groups() for part in parts]
             type_name = None
             if root_name.startswith("GVL_"):
+                if root_name in manual: continue
                 scope = globals_by_name.get(root_name)
                 if scope is None:
                     if root_name not in globals_by_name and root_name not in snapshot:
                         errors.append(f"{_name(pou)} references {root_name}, which is neither exported nor in the known CODESYS snapshot.")
                     continue
             else:
+                if _name(pou) in manual: continue
                 local_scope = local_by_pou.get(_name(pou), {})
                 local_var = local_scope.get(root_name)
                 if local_var is None:
@@ -552,6 +577,7 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
                     type_name, bounds = variable_type(var)
                     scope = None
                 else:
+                    if type_name in manual: break
                     member_map = members(type_name)
                     if member_map is None:
                         # Primitive types may only be followed by bit indices.

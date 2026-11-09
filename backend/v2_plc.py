@@ -532,6 +532,10 @@ def build_program(state, include_union: bool = False) -> dict:
     for name, obj in objs.items():
         append_local_vars(obj["element"], locals_by_pou.get(name), imported_locals.get(name, []))
         _set_object_id(obj["element"], name, state)
+    from backend.v2_st_overrides import apply_overrides
+    for name, override in (state.get("st_overrides") or {}).items():
+        if name in objs:
+            apply_overrides(objs[name], override)
     return objs
 
 

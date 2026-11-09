@@ -12,6 +12,7 @@ from backend import v2_store as store
 
 ROLES = ("PA", "COM", "EXC", "IO", "INT")
 ANALOG_TYPES = {"BYTE", "WORD", "DWORD", "INT", "UINT", "DINT", "UDINT", "REAL", "LREAL"}
+MODBUS_TYPES = {"WORD", "INT", "UINT", "REAL"}
 QUALIFIED = re.compile(
     r"//[^\r\n]*|\(\*.*?\*\)|'(?:\$[^\r\n]|''|[^'])*'|\"(?:\$[^\r\n]|\"\"|[^\"])*\""
     r"|(?<![\w.])(PA|COM|EXC|IO|INTERN)\s*\.\s*([A-Za-z_]\w*)",
@@ -25,6 +26,7 @@ class Signal(BaseModel):
     direction: Literal["input", "output"]
     kind: Literal["analog", "digital"]
     iec_type: str = Field(max_length=20)
+    transport: Literal["io", "tcp", "rtu"] = "io"
     unit: str = Field(default="", max_length=80)
     comment: str = Field(default="", max_length=500)
     io_name: str = Field(default="", max_length=80)
@@ -54,11 +56,13 @@ class GenericSave(Variables):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=1000)
     processing: str = Field(default="", max_length=30000)
+    parent_id: str | None = Field(default=None, max_length=64)
 
 
 class Inheritance(Variables):
     template_id: str = Field(min_length=1, max_length=64)
     inherit_processing: bool = True
+    processing: str | None = Field(default=None, max_length=30000)
 
 
 def _signal(name, direction="input", kind="digital"):
@@ -81,6 +85,25 @@ STARTERS = (
         "signals": [_signal("AUTORISATION"), _signal("DEFAUT"), _signal("MARCHE", "output")],
         "members": [{"id": "start-request", "role": "EXC", "name": "INPUT_DEMANDE_MARCHE", "iec_type": "BOOL"}],
         "processing": "INTERN.MARCHE := EXC.INPUT_DEMANDE_MARCHE AND INTERN.AUTORISATION AND NOT INTERN.DEFAUT;",
+    },
+    {
+        "id": "hmi-local", "builtin": True, "name": "IHM seule · mode local",
+        "description": "Reçoit une demande de marche de l’IHM et l’autorise uniquement en mode local. Publie le mode et l’état de l’autorisation.",
+        "signals": [],
+        "members": [
+            {"id": "local-request", "role": "COM", "name": "HMI_INPUT_MODE_LOCAL", "iec_type": "BOOL"},
+            {"id": "start-request", "role": "COM", "name": "HMI_INPUT_MARCHE", "iec_type": "BOOL"},
+            {"id": "local-state", "role": "COM", "name": "HMI_OUTPUT_MODE_LOCAL", "iec_type": "BOOL"},
+            {"id": "start-state", "role": "COM", "name": "HMI_OUTPUT_MARCHE_AUTORISEE", "iec_type": "BOOL"},
+            {"id": "local", "role": "INT", "name": "MODE_LOCAL", "iec_type": "BOOL"},
+            {"id": "start", "role": "INT", "name": "MARCHE_AUTORISEE", "iec_type": "BOOL"},
+        ],
+        "processing": (
+            "INTERN.MODE_LOCAL := COM.HMI_INPUT_MODE_LOCAL;\n"
+            "INTERN.MARCHE_AUTORISEE := INTERN.MODE_LOCAL AND COM.HMI_INPUT_MARCHE;\n"
+            "COM.HMI_OUTPUT_MODE_LOCAL := INTERN.MODE_LOCAL;\n"
+            "COM.HMI_OUTPUT_MARCHE_AUTORISEE := INTERN.MARCHE_AUTORISEE;"
+        ),
     },
 )
 
@@ -117,21 +140,27 @@ def _declared(variables, state):
         name = signal.name.strip()
         iec_type = signal.iec_type.upper()
         inbound = signal.direction == "input"
-        if signal.kind == "digital" and iec_type != "BOOL" or signal.kind == "analog" and iec_type not in ANALOG_TYPES:
+        analog_types = ANALOG_TYPES if signal.transport == "io" else MODBUS_TYPES
+        if (signal.kind == "digital" and iec_type != "BOOL") or (signal.kind == "analog" and iec_type not in analog_types):
             raise ValueError(f"Le type {iec_type} ne convient pas au signal {name}.")
-        port = signal.io_name.strip() or f"{'INPUT' if inbound else 'OUTPUT'}_{name}"
+        role = "IO" if signal.transport == "io" else "COM"
+        prefix = "" if role == "IO" else f"{signal.transport.upper()}_"
+        port = signal.io_name.strip() or f"{prefix}{'INPUT' if inbound else 'OUTPUT'}_{name}"
+        union = role == "COM" and iec_type == "REAL"
+        port_type = "DUT_Union_Real_Word" if union else iec_type
+        port_path = f"{role}.{port}" + (".Real_value" if union else "")
         intern = signal.internal_name.strip() or name
         section = "INPUT (field to plc)" if inbound else "OUTPUT (plc to field)"
         details = {"unit": signal.unit, "comment": signal.comment}
-        add(("signal", signal.id, "io"), "IO", port, iec_type, section, **details)
+        add(("signal", signal.id, "io"), role, port, port_type, section, **details)
         add(("signal", signal.id, "internal"), "INT", intern, iec_type, "Signaux internes", **details)
         if inbound:
             exchange = signal.exchange_name.strip() or f"OUTPUT_{name}"
             add(("signal", signal.id, "exchange"), "EXC", exchange, iec_type, "Mesures et états", **details)
-            inputs.append(f"INTERN.{intern} := IO.{port};")
+            inputs.append(f"INTERN.{intern} := {port_path};")
             outputs.append(f"EXC.{exchange} := INTERN.{intern};")
         else:
-            outputs.append(f"IO.{port} := INTERN.{intern};")
+            outputs.append(f"{port_path} := INTERN.{intern};")
 
     for member in variables.members:
         add(("member", member.id), member.role, member.name.strip(), member.iec_type.strip(),
@@ -169,7 +198,12 @@ def materialize(state, inheritance):
         raise ValueError("Le modèle générique n’existe plus.")
     before, _, _ = _declared(Variables.model_validate(template), state)
     after, inputs, outputs = _declared(inheritance, state)
-    processing = _rewrite(template["processing"], before, after) if inheritance.inherit_processing else ""
+    if inheritance.processing == template["processing"] and inheritance.inherit_processing:
+        processing = _rewrite(inheritance.processing, before, after)
+    elif inheritance.processing is not None:
+        processing = _rewrite(inheritance.processing, after, after)
+    else:
+        processing = _rewrite(template["processing"], before, after) if inheritance.inherit_processing else ""
     body = "\n".join(["// INPUTS", *inputs, "// PROCESSING", processing, "// OUTPUTS", *outputs, ""])
     duts = [
         {"role": role, "members": [member for assigned, member in after.values() if assigned == role]
@@ -195,13 +229,24 @@ def register_generic_routes(app, get_session, current_user, csrf):
         if not name or any(item["id"] != body.id and item["name"].casefold() == name.casefold()
                            for item in templates(state)):
             raise HTTPException(422, "Choisis un nom de modèle unique.")
+        parent_id = existing.get("parent_id") if existing else body.parent_id
+        parent = next((item for item in templates(state) if item["id"] == parent_id), None)
+        if parent_id and not parent and not existing:
+            raise HTTPException(422, "Le modèle parent n’est plus disponible.")
         try:
             declared, _, _ = _declared(body, state)
-            _rewrite(body.processing, declared, declared)
+            source = existing or parent
+            previous = _declared(Variables.model_validate(source), state)[0] if source else declared
+            if source and body.processing == source.get("processing", ""):
+                processing = _rewrite(body.processing, previous, declared)
+            else:
+                processing = _rewrite(body.processing, declared, declared)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         item = body.model_dump(exclude={"revision", "id"})
-        item.update(id=body.id or uuid4().hex, name=name, builtin=False)
+        item.update(id=body.id or uuid4().hex, name=name, builtin=False, processing=processing, parent_id=parent_id)
+        if parent_id:
+            item["parent_name"] = existing.get("parent_name") if existing else parent["name"]
         if existing is None:
             custom.append(item)
         else:

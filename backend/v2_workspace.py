@@ -95,7 +95,7 @@ def _lock(session):
 
 def _changes(previous,state):
     previous=previous or {};changes=[];activities={}
-    for key,label in {**COLLECTIONS, 'generic_objects': 'Objets génériques'}.items():
+    for key,label in {**COLLECTIONS, 'generic_objects': 'Objets génériques', 'st_overrides': 'ST manuel'}.items():
         if digest(previous.get(key))==digest(state.get(key)):continue
         old=previous.get(key,[]);new=state.get(key,[])
         names=[]
@@ -181,6 +181,8 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     if catalog:session.refresh(catalog)
     if catalog and state.get('_catalog_revision',catalog.revision)!=catalog.revision:raise ValueError('Le catalogue partagé a changé ; actualisez avant de réessayer')
     current=overlay(raw,json.loads(catalog.payload)) if raw and catalog else raw
+    from backend.v2_st_overrides import discard_removed_overrides
+    discard_removed_overrides(current, state)
     shared=_catalog(state);changed=catalog is not None and digest(shared)!=digest(json.loads(catalog.payload))
     affected=[]
     if changed:
@@ -197,6 +199,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
             if old is None or catalog_id(old) != library:
                 continue
             before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
+            discard_removed_overrides(before, proposed)
             if sync_dut_refs:
                 from backend.v2_member_sync import member_deltas, sync_consumers
                 old_types = {str(t["id"]): t for t in before.get("types", [])}
