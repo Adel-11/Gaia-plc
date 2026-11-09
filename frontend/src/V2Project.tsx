@@ -219,7 +219,10 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
           {project && <TransferHub csrf={csrf} project={project} revision={project.revision} onChanged={()=>void load()}/>}
         </div>
     {treeInspectorOpen && <div className="plc-object-inspector-backdrop" role="presentation"><section className="plc-object-inspector" role="dialog" aria-modal="true" aria-labelledby="plc-object-inspector-title"><header><div><p className="eyebrow">CODESYS OBJECT</p><h2 id="plc-object-inspector-title">{treeInspector?.name || 'Objet PLC'}</h2><p>{treeInspector?.kind}{treeInspector?.folder ? ` · ${treeInspector.folder}` : ''} · lecture seule</p></div><button type="button" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Retour</button></header><div className="plc-object-inspector-body">{treeInspectorLoading ? <p>Chargement de l’objet…</p> : treeInspectorError ? <div className="v2-alert error" role="alert">{treeInspectorError}</div> : treeInspector && <StEditor value={[treeInspector.declaration, treeInspector.body].filter(Boolean).join('\n\n')} readOnly label={`${treeInspector.name} · Structured Text`}/>}</div><footer><button type="button" className="button secondary" onClick={()=>{setTreeInspectorOpen(false);setTreeInspector(null);setTreeInspectorError('')}}>Fermer</button></footer></section></div>}
-    <footer className="page-footer"><span>GAIA IO GENERATOR <b>·</b> PROJECT V2</span><span>Phase {project?.phase ?? 1} <i/> Connected</span></footer>
+    <footer className="page-footer">
+      <span>GAIA IO GENERATOR <b>·</b> PROJECT V2</span>
+      <span>Phase {project?.phase ?? 1} · Build {import.meta.url.match(/\/index-([\w-]+)\.js$/)?.[1] ?? 'local'} <i/> Connected</span>
+    </footer>
       </div>
     </div>
   </div></PanelPreferencesProvider>

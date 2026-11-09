@@ -14,6 +14,7 @@ from backend import v2_store as store,v2_workspace as ws
 class NewProject(BaseModel):
     name:str=Field(min_length=1,max_length=128)
     copy_current:bool=False
+    isolated_catalog:bool|None=None
 class SelectProject(BaseModel):id:int
 class RenameProject(BaseModel):
     name:str=Field(min_length=1,max_length=128)
@@ -53,7 +54,8 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         projects=[]
         for p in session.scalars(select(store.V2Project).order_by(store.V2Project.name)).all():
             _,raw=ws._raw(session,p.id)
-            projects.append({'id':p.id,'name':p.name,'version':(raw or {}).get('version','1.0.0'),'updated_at':_iso(p.updated_at)})
+            projects.append({'id':p.id,'name':p.name,'version':(raw or {}).get('version','1.0.0'),'updated_at':_iso(p.updated_at),
+                             'isolated_catalog':(raw or {}).get('isolated_catalog') is True})
         history=session.scalars(select(ws.VersionEvent).where(ws.VersionEvent.project_id==state['project_id']).order_by(ws.VersionEvent.id.desc()).limit(300)).all()
         return {'active_project_id':state['project_id'],'projects':projects,'version':state['version'],'activity':state['activity'],'is_admin':user.is_admin,'history':[{'version':e.version,'date':_iso(e.created_at),'comment':e.comment,'username':e.username,'kind':e.kind} for e in history]}
     @app.post('/api/v2/workspace/select')
@@ -67,6 +69,9 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         if not name:raise HTTPException(422,'Le nom du projet est obligatoire')
         if session.scalar(select(store.V2Project.id).where(func.lower(store.V2Project.name)==name.lower())):raise HTTPException(409,'Ce nom de projet existe déjà')
         source=project(session)
+        isolate = body.isolated_catalog if body.isolated_catalog is not None else source.get('isolated_catalog') is True
+        if source.get('isolated_catalog') and not isolate:
+            raise HTTPException(422, 'Depuis un projet isolé, créez un autre projet isolé ou revenez à un projet partagé.')
         if body.copy_current:state=copy.deepcopy(source)
         else:
             state=copy.deepcopy(load_hmi_pack() if is_hmi(source) else engine.load_pack())
@@ -84,6 +89,10 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         pid=(session.scalar(select(func.max(store.V2Project.id))) or 0)+1
         for key in ('revision','project_id','version','activity','_program_digests','_catalog_revision','v7_archive_revision'):state.pop(key,None)
         state['project_name']=name
+        if isolate:
+            state.update(project_id=pid, isolated_catalog=True)
+        else:
+            state.pop('isolated_catalog', None)
         session.info['workspace_id']=pid
         try:result=store.save_project(session,state,user.username,expected_revision=0)
         except ValueError as exc:raise HTTPException(409,str(exc)) from exc
@@ -151,8 +160,14 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             payload=json.loads(raw,parse_constant=lambda x: (_ for _ in ()).throw(ValueError('Nombre invalide')))
             if payload.get('format')!='gaia-generator-v2-backup' or not isinstance(payload.get('state'),dict):raise ValueError('Format de sauvegarde invalide')
             state=payload['state']
-            if ws.catalog_id(state) != ws.catalog_id(current):
+            if ws.profile_catalog_id(state) != ws.profile_catalog_id(current):
                 raise ValueError('Cette sauvegarde appartient à une autre version du programme PLC')
+            if state.get('isolated_catalog') and not current.get('isolated_catalog'):
+                raise ValueError('Restaurez cette sauvegarde dans un projet au catalogue isolé.')
+            if current.get('isolated_catalog'):
+                state['isolated_catalog'] = True
+            else:
+                state.pop('isolated_catalog', None)
             state.pop('v7_archive_revision', None)
             if current.get('v7_archive_revision'):
                 state['v7_archive_revision'] = current['v7_archive_revision']
@@ -165,7 +180,10 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             objects=v2_plc.build_program(state);xml=v2_plc.serialize_program(objects,state,list(objects));check=v2_plc_validation.validate_xml(xml,state,objects)
             errors+=check['errors']
         except (ValueError,TypeError,KeyError,AttributeError) as exc:return {'token':None,'errors':[str(exc)],'warnings':[],'changes':[]}
-        changes=[f'Restaurer le projet actif « {current["project_name"]} » depuis {Path(file.filename or "backup.json").name}', 'Les types de la sauvegarde remplacent le catalogue partagé, sous réserve de compatibilité avec les autres projets.']
+        catalog_effect = ('Les types de la sauvegarde remplacent le catalogue isolé de ce projet.'
+                          if current.get('isolated_catalog') else
+                          'Les types de la sauvegarde remplacent le catalogue partagé, sous réserve de compatibilité avec les autres projets.')
+        changes=[f'Restaurer le projet actif « {current["project_name"]} » depuis {Path(file.filename or "backup.json").name}', catalog_effect]
         if errors:return {'token':None,'errors':errors,'warnings':check['warnings'],'changes':changes}
         token=secrets.token_urlsafe(32)
         session.add(ImportPreview(token=token,owner_id=user.id,state_payload=ws.dump(state),diff_payload=ws.dump({'kind':'workspace-restore','base_revision':current['revision'],'project_id':current['project_id'],'filename':Path(file.filename or 'backup.json').name}),expires_at=datetime.now(timezone.utc)+timedelta(hours=1)));session.commit()

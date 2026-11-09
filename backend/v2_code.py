@@ -170,18 +170,6 @@ def register_code_routes(app,get_session,current_user,csrf):
         current=project(session)
         if current.get("revision",0)!=meta.get("base_revision"): raise HTTPException(409,"Project changed after preview; create a new preview")
         state=json.loads(preview.state_payload)
-        if req.local_variables is not None:
-            from backend.v2_local_vars import normalize, validate_removal
-            try:
-                local_variables = normalize(req.local_variables, state)
-                if isgen:
-                    before_locals = (current.get("generated_local_variables") or {}).get(req.name, [])
-                    validate_removal(before_locals, local_variables, req.name, (state.get("generated_custom_code") or {}).get(req.name))
-                else:
-                    validate_removal(fn.get("local_variables", []), local_variables, req.name, target.get("body"), target.get("custom_code"))
-            except ValueError as exc: return {"token":None,"errors":[str(exc)],"warnings":[],"changes":[]}
-            if isgen: state.setdefault("generated_local_variables", {})[req.name] = local_variables
-            else: target["local_variables"] = local_variables
         try:
             objects=v2_plc.build_program(state); xml=v2_plc.serialize_program(objects,state,list(objects)); checked=v2_plc_validation.validate_xml(xml,state,objects)
             oldobj=v2_plc.build_program(current); oldxml=v2_plc.serialize_program(oldobj,current,list(oldobj)); baseline=set(v2_plc_validation.validate_xml(oldxml,current,oldobj)["errors"])

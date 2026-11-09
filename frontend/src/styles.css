@@ -115,7 +115,7 @@
 .v2-workspace .v2-content :is(input,select,textarea,button):focus-visible{outline:3px solid color-mix(in srgb,var(--page-accent) 45%,white);outline-offset:2px}
 .v2-workspace .v2-content table th,.v2-workspace .v2-content table td{font-size:16px}
 .v2-workspace .v2-content table td small{font-size:14px}
-@media(max-width:850px){.v2-workspace{grid-template-columns:1fr}.v2-page-nav{position:sticky;top:58px;height:auto;overflow-x:auto;overflow-y:hidden;flex-direction:row;gap:5px;padding:8px 12px;border-right:0;border-bottom:1px solid #344047;scrollbar-width:thin}.v2-page-nav:before{display:none}.v2-page-tab{width:auto;min-width:max-content;min-height:45px;padding:7px 11px}.v2-tab-label strong{font-size:13px}.v2-tab-label small{display:none}.v2-tab-icon{width:23px;height:23px}.v2-page-body{padding:19px 17px 28px}.v2-page-banner{align-items:flex-start;flex-direction:column;padding:15px 17px}.v2-page-tools{justify-content:flex-start}}
+@media(max-width:850px){.v2-workspace{grid-template-columns:1fr}.v2-page-nav{position:sticky;top:58px;height:auto;overflow-x:auto;overflow-y:hidden;flex-direction:row;gap:5px;padding:8px 12px;border-right:0;border-bottom:1px solid #344047}.v2-page-nav:before{display:none}.v2-page-tab{width:auto;min-width:max-content;min-height:45px;padding:7px 11px}.v2-tab-label strong{font-size:13px}.v2-tab-label small{display:none}.v2-tab-icon{width:23px;height:23px}.v2-page-body{padding:19px 17px 28px}.v2-page-banner{align-items:flex-start;flex-direction:column;padding:15px 17px}.v2-page-tools{justify-content:flex-start}}
 @media(max-width:520px){.v2-page-body{padding:14px 11px 22px}.v2-page-banner{gap:12px;margin-bottom:15px;padding:13px}.v2-page-banner h1{font-size:24px}.v2-page-banner p{font-size:14px}.v2-page-tools{width:100%}.v2-page-tools .button{flex:1}}
 
 /* Match the component's outer content root and its inner two-column layout. */
@@ -178,3 +178,15 @@
 .transfer-hub{display:grid;gap:18px}.transfer-tabs{display:flex;gap:8px;border-bottom:1px solid #c9d2d5;overflow-x:auto}.transfer-tabs button{padding:11px 16px;border:0;border-bottom:3px solid transparent;background:transparent;color:#394950;font-weight:700;white-space:nowrap}.transfer-tabs button.active{border-color:#176b70;color:#14565a}.transfer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.transfer-grid>.v2-panel{padding:20px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}.transfer-review{grid-column:1/-1}.transfer-review>div{display:flex;gap:10px}.transfer-review input[type=file],.transfer-grid input[type=file]{max-width:100%}
 
 .template-download{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;padding:10px 0;border-bottom:1px solid #dbe1e3}.template-download span{display:grid;gap:4px}.template-download small{color:#607078}
+
+/* Keep scrollbars easy to grab in tables, dialogs and code editors. */
+@media (forced-colors: none) {
+  ::-webkit-scrollbar { width: 16px; height: 16px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background-color: #e6edf3; }
+  ::-webkit-scrollbar-thumb {
+    background-color: #6d8297;
+    border: 2px solid #e6edf3;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: #4a6178; }
+}

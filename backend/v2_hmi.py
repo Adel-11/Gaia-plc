@@ -249,11 +249,19 @@ def upgrade_named_project(session, name):
     _, previous = workspace._raw(session, project.id)
     if project.name.casefold() != name.casefold() or is_hmi(previous):
         return False
+    isolated = previous.get("isolated_catalog") is True
+    if isolated:
+        replacement.update(project_id=project.id, isolated_catalog=True)
     library = workspace.catalog_id(replacement)
     catalog = session.get(workspace.SharedCatalog, library)
-    if catalog is not None:
+    if catalog is not None and not isolated:
         raise ValueError("A different PanelView catalog already exists")
-    session.add(workspace.SharedCatalog(id=library, revision=1, payload=workspace.dump(workspace._catalog(replacement))))
+    payload = workspace.dump(workspace._catalog(replacement))
+    if catalog is None:
+        session.add(workspace.SharedCatalog(id=library, revision=1, payload=payload))
+    else:
+        catalog.revision += 1
+        catalog.payload = payload
     replacement.update(project_name=project.name, v7_archive_revision=project.current_revision_id)
     if previous.get("generic_objects"):
         replacement["generic_objects"] = deepcopy(previous["generic_objects"])

@@ -54,9 +54,14 @@ def _raw(session,pid):
     revision=session.get(store.V2ProjectRevision,project.current_revision_id) if project and project.current_revision_id else None
     return project,json.loads(revision.state_payload) if revision else None
 
-def catalog_id(state):
-    """Projects share a catalog within their PLC program profile."""
+def profile_catalog_id(state):
     return 2 if (state or {}).get('program_profile') == 'hmi-v8' else 1
+
+def catalog_id(state):
+    """Use a project-specific library for isolated workspaces."""
+    if state and state.get('isolated_catalog') is True:
+        return -int(state['project_id'])
+    return profile_catalog_id(state)
 
 def ensure_workspace(session):
     counter=session.get(WorkspaceCounter,1)

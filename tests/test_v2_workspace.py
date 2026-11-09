@@ -37,6 +37,39 @@ def test_projects_isolate_instances_share_types_and_reject_cross_project_tokens(
     assert c.post('/api/v2/workspace/select',headers=h,json={'id':second['project_id']}).status_code==200
     assert not c.get('/api/v2/project').json()['instances']
 
+def test_isolated_catalog_type_change_does_not_touch_shared_project(workspace):
+    app, client, headers = workspace
+    original = client.get('/api/v2/project').json()
+    original_history = client.get('/api/v2/workspace').json()['history']
+    created = client.post('/api/v2/workspace/projects', headers=headers, json={
+        'name': 'QA isolated', 'copy_current': True, 'isolated_catalog': True,
+    })
+    assert created.status_code == 200, created.text
+    project_id = created.json()['id']
+    isolated = client.get('/api/v2/project').json()
+    assert isolated['types'] == original['types']
+    assert isolated['instances'] == original['instances']
+    projects = client.get('/api/v2/workspace').json()['projects']
+    assert next(p for p in projects if p['id'] == project_id)['isolated_catalog']
+
+    from backend import v2_store as store
+    with app.state.session_factory() as session:
+        session.info['workspace_id'] = project_id
+        state = store.load_project(session)
+        state['types'][0]['description'] = 'Change in QA only'
+        store.save_project(session, state, 'workspace-admin', state['revision'])
+        session.commit()
+
+    isolated = client.get('/api/v2/project').json()
+    assert isolated['types'][0]['description'] == 'Change in QA only'
+    assert isolated['version'] == '1.0.1'
+    assert client.post('/api/v2/workspace/select', headers=headers, json={'id': original['project_id']}).status_code == 200
+    production = client.get('/api/v2/project').json()
+    assert production['types'] == original['types']
+    assert production['revision'] == original['revision']
+    assert client.get('/api/v2/workspace').json()['history'] == original_history
+
+
 def test_version_patch_minor_repeat_download_major_and_backup(workspace):
     app,c,h=workspace
     initial=c.get('/api/v2/project').json();v=initial['version'].split('.')

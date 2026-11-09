@@ -248,6 +248,21 @@ def test_catalog_and_virtual_io_review_apply_persists_and_connects(tmp_path, mon
         final = next(row for row in updated["virtual_io"] if row["id"] == virtual["id"])
         assert final["GVL_IO member"] == "GVL_IO.IO_ADM100W_1.SPARE"
 
+        delete = {"revision": updated["revision"], "action": "delete", "id": virtual["id"]}
+        blocked = client.post("/api/v2/io/preview", headers=headers, json=delete).json()
+        assert not blocked["token"] and "Déconnectez" in blocked["errors"][0]
+        disconnected = client.post("/api/v2/io/preview", headers=headers, json={**delete, "action": "disconnect"}).json()
+        assert disconnected["token"], disconnected
+        applied = client.post("/api/v2/io/apply", headers=headers, json={"token": disconnected["token"]})
+        assert applied.status_code == 200, applied.text
+        deleted = client.post("/api/v2/io/preview", headers=headers, json={**delete, "revision": applied.json()["revision"]}).json()
+        assert deleted["token"] and all(row["id"] != virtual["id"] for row in deleted["virtual_io"]), deleted
+        applied = client.post("/api/v2/io/apply", headers=headers, json={"token": deleted["token"]})
+        assert applied.status_code == 200, applied.text
+        final_config = client.get("/api/v2/configuration").json()
+        assert all(row["id"] != virtual["id"] for row in final_config["virtual_io"])
+        assert final_config["io_channels"] == updated["io_channels"]
+
 
 def test_non_exchange_workbook_import_preserves_upi_binding_recipe():
     state = copy.deepcopy(load_pack())

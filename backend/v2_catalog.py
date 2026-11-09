@@ -148,6 +148,13 @@ def register_catalog_routes(app, get_session, current_user, csrf):
                     raise ValueError("The generated GVL_IOMAP variable is already used by a physical channel")
                 rows.append(row)
                 changes.append(f"Create virtual {direction} {name} : {iec_type}")
+            elif action == "delete":
+                if not row:
+                    raise ValueError("Signal E/S virtuel introuvable.")
+                if any(row.get(key) for key in ("instance_id", "Instance", "GVL_IO member")):
+                    raise ValueError("Déconnectez le signal E/S virtuel avant de le supprimer.")
+                rows.remove(row)
+                changes.append(f"Supprimer le signal E/S virtuel {_virtual_io_name(row)} ({row.get('GVL_IOMAP variable', '')})")
             elif action in {"connect", "disconnect"}:
                 if not row: raise ValueError("Virtual I/O channel not found")
                 if action == "disconnect":
@@ -176,7 +183,7 @@ def register_catalog_routes(app, get_session, current_user, csrf):
                     row.update(instance_id=instance_name, Instance=instance_name, member_name=body.member_name,
                                **{"GVL_IO member": target, "Status": "VIRTUAL"})
                     changes.append(f"Connect virtual I/O {row['name']} to {instance_name}.IO.{body.member_name}")
-            else: raise ValueError("Action must be create, connect, or disconnect")
+            else: raise ValueError("Action must be create, connect, disconnect, or delete")
         except (ValueError, TypeError, KeyError) as exc:
             errors.append(str(exc))
         if errors: return {"token": None, "errors": errors, "warnings": [], "changes": changes, "virtual_io": rows}
