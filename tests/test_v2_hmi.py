@@ -111,5 +111,19 @@ def test_startup_upgrade_archives_gaia_and_preserves_other_projects(tmp_path, mo
         assert client.get("/api/v2/workspace/archive-v7").status_code == 404
 
     with TestClient(create_app(**settings)) as client:
-        assert client.post("/api/login", json=credentials).status_code == 200
+        login = client.post("/api/login", json=credentials)
+        assert login.status_code == 200
         assert client.get("/api/v2/project").json()["revision"] == upgraded["revision"]
+        csrf = {"X-CSRF-Token": login.json()["csrf_token"]}
+        history = client.get("/api/v2/workspace").json()["history"]
+        original_version = next(entry for entry in history if entry["version"] == gaia["version"])
+        preview = client.post("/api/v2/workspace/history/restore/preview", headers=csrf, json={
+            "revision": upgraded["revision"], "target_revision": original_version["revision"],
+        }).json()
+        assert any("Gaia V7" in change for change in preview["changes"])
+        restored = client.post("/api/v2/workspace/restore/apply", headers=csrf, json={"token": preview["token"]})
+        assert restored.status_code == 200, restored.text
+        assert client.get("/api/v2/project").json()["types"] == gaia["types"]
+        from backend.v2_hmi import upgrade_named_project
+        with client.app.state.session_factory() as session:
+            assert upgrade_named_project(session, "Gaia") is False

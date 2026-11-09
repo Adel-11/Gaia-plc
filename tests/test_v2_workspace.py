@@ -105,6 +105,99 @@ def test_version_patch_minor_repeat_download_major_and_backup(workspace):
     assert restored.get('token') and not restored['errors'],restored
     result=c.post('/api/v2/workspace/restore/apply',headers=h,json={'token':restored['token']});assert result.status_code==200,result.text
 
+def test_restore_history_isolates_old_catalog_and_keeps_last_saved_state(workspace):
+    app, client, headers = workspace
+    primary = client.get('/api/v2/project').json()
+    created = client.post('/api/v2/workspace/projects', headers=headers, json={
+        'name': 'Historique QA', 'copy_current': True,
+    }).json()
+    pid = created['id']
+    old_revision = created['revision']
+    from backend import v2_store as store
+    with app.state.session_factory() as session:
+        session.info['workspace_id'] = pid
+        state = store.load_project(session)
+        state['types'][0]['description'] = 'Édition du catalogue partagé'
+        store.save_project(session, state, 'workspace-admin', state['revision'])
+        session.commit()
+
+    backup = client.post('/api/v2/workspace/backup', headers=headers).json()['state']
+    prior_revision = backup['revision']
+    assert backup['version'] == '1.0.1'
+    prepare = '/api/v2/workspace/history/restore/preview'
+    wrong_project = client.post(prepare, headers=headers, json={
+        'revision': prior_revision, 'target_revision': primary['revision'],
+    })
+    assert wrong_project.status_code == 404
+    preview = client.post(prepare, headers=headers, json={
+        'revision': prior_revision, 'target_revision': old_revision,
+    }).json()
+    assert preview['version'] == '1.0.0'
+    assert any('catalogue de ce projet deviendra isolé' in change for change in preview['changes'])
+    assert client.get('/api/v2/project').json()['revision'] == prior_revision
+    restored = client.post('/api/v2/workspace/restore/apply', headers=headers, json={'token': preview['token']})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['version'] == '1.0.2'
+    state = client.get('/api/v2/project').json()
+    assert state['types'] == primary['types']
+    history = client.get('/api/v2/workspace').json()['history']
+    assert history[0]['kind'] == 'history_restore'
+    assert history[0]['comment'] == 'Restauration de la version 1.0.0'
+    assert next(entry for entry in history if entry['version'] == '1.0.1')['revision'] == prior_revision
+
+    undo = client.post(prepare, headers=headers, json={
+        'revision': state['revision'], 'target_revision': prior_revision,
+    }).json()
+    restored = client.post('/api/v2/workspace/restore/apply', headers=headers, json={'token': undo['token']})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['version'] == '1.0.3'
+    assert client.get('/api/v2/project').json()['types'] == backup['types']
+    assert client.post('/api/v2/workspace/select', headers=headers, json={'id': primary['project_id']}).status_code == 200
+    main = client.get('/api/v2/project').json()
+    assert main['types'] == backup['types']
+    assert client.get('/api/v2/workspace').json()['history'][0]['kind'] != 'history_restore'
+
+
+def test_delete_project_retires_its_history_and_stale_selection(workspace):
+    app, client, headers = workspace
+    original = client.get('/api/v2/project').json()
+    delete_url = '/api/v2/workspace/delete'
+    protected = client.post(delete_url, headers=headers, json={
+        'project_id': original['project_id'], 'revision': original['revision'], 'name': original['project_name'],
+    })
+    assert protected.status_code == 409
+
+    project = client.post('/api/v2/workspace/projects', headers=headers, json={
+        'name': 'Jetable QA', 'copy_current': True, 'isolated_catalog': True,
+    }).json()
+    with TestClient(app) as other:
+        login = other.post('/api/login', json={'username':'workspace-admin','password':'workspace-test-password'})
+        other_headers = {'X-CSRF-Token': login.json()['csrf_token']}
+        assert other.post('/api/v2/workspace/select', headers=other_headers, json={'id': project['id']}).status_code == 200
+        wrong = client.post(delete_url, headers=headers, json={
+            'project_id': project['id'], 'revision': project['revision'] - 1, 'name': 'Jetable QA',
+        })
+        assert wrong.status_code == 409
+        deleted = client.post(delete_url, headers=headers, json={
+            'project_id': project['id'], 'revision': project['revision'], 'name': 'Jetable QA',
+        })
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()['active_project_id'] == original['project_id']
+        assert other.post('/api/v2/workspace/backup', headers=other_headers).status_code == 409
+        assert other.get('/api/v2/project').json()['project_id'] == original['project_id']
+
+    from backend import v2_store as store, v2_workspace as ws
+    from sqlalchemy import select
+    with app.state.session_factory() as session:
+        assert session.get(ws.SharedCatalog, -project['id']) is None
+        assert session.scalar(select(store.V2ProjectRevision).where(
+            store.V2ProjectRevision.project_id == project['id'],
+        )) is None
+        assert session.scalar(select(ws.VersionEvent).where(ws.VersionEvent.project_id == project['id'])) is None
+    assert client.get('/api/v2/project').json()['revision'] == original['revision']
+    created_again = client.post('/api/v2/workspace/projects', headers=headers, json={'name': 'Jetable QA'}).json()
+    assert created_again['id'] > project['id']
+
 def test_account_creation_admin_only_and_all_projects_visible(workspace):
     app,c,h=workspace
     assert c.get('/api/v2/workspace').json()['is_admin']

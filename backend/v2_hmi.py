@@ -236,7 +236,7 @@ def upgrade_named_project(session, name):
     if project is None:
         return False
     _, raw = workspace._raw(session, project.id)
-    if raw is None or is_hmi(raw):
+    if raw is None or is_hmi(raw) or raw.get("program_profile_pinned"):
         return False
     replacement = deepcopy(load_hmi_pack())
     convert_project(replacement)
@@ -247,7 +247,7 @@ def upgrade_named_project(session, name):
     revision = workspace._lock(session)
     session.refresh(project)
     _, previous = workspace._raw(session, project.id)
-    if project.name.casefold() != name.casefold() or is_hmi(previous):
+    if project.name.casefold() != name.casefold() or not previous or is_hmi(previous) or previous.get("program_profile_pinned"):
         return False
     isolated = previous.get("isolated_catalog") is True
     if isolated:

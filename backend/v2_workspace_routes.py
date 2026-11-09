@@ -1,12 +1,13 @@
 """Authenticated named workspace, user administration and backup routes."""
 from __future__ import annotations
 import copy,io,json,re,secrets,zipfile
+from bisect import bisect_left
 from datetime import datetime,timedelta,timezone
 from pathlib import Path
 from fastapi import Depends,HTTPException,Request,UploadFile,File
 from fastapi.responses import Response
 from pydantic import BaseModel,Field
-from sqlalchemy import select,func
+from sqlalchemy import delete, select,func
 from pwdlib import PasswordHash
 from backend.db import User,ImportPreview
 from backend import v2_store as store,v2_workspace as ws
@@ -16,6 +17,13 @@ class NewProject(BaseModel):
     copy_current:bool=False
     isolated_catalog:bool|None=None
 class SelectProject(BaseModel):id:int
+class DeleteProject(BaseModel):
+    project_id: int
+    revision: int
+    name: str = Field(min_length=1, max_length=128)
+class RestoreVersion(BaseModel):
+    revision: int
+    target_revision: int
 class RenameProject(BaseModel):
     name:str=Field(min_length=1,max_length=128)
     revision:int
@@ -56,8 +64,22 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             _,raw=ws._raw(session,p.id)
             projects.append({'id':p.id,'name':p.name,'version':(raw or {}).get('version','1.0.0'),'updated_at':_iso(p.updated_at),
                              'isolated_catalog':(raw or {}).get('isolated_catalog') is True})
-        history=session.scalars(select(ws.VersionEvent).where(ws.VersionEvent.project_id==state['project_id']).order_by(ws.VersionEvent.id.desc()).limit(300)).all()
-        return {'active_project_id':state['project_id'],'projects':projects,'version':state['version'],'activity':state['activity'],'is_admin':user.is_admin,'history':[{'version':e.version,'date':_iso(e.created_at),'comment':e.comment,'username':e.username,'kind':e.kind} for e in history]}
+        history=session.scalars(select(ws.VersionEvent).where(ws.VersionEvent.project_id==state['project_id']).order_by(ws.VersionEvent.id.desc())).all()
+        revisions = session.scalars(select(store.V2ProjectRevision.revision)
+                                    .where(store.V2ProjectRevision.project_id == state['project_id'])
+                                    .order_by(store.V2ProjectRevision.revision)).all()
+        # Backups and other saves can add a snapshot without changing the version.
+        # Restore the last saved state of each version, including before a rollback.
+        entries = []
+        upper_bound = state['revision'] + 1
+        for event in history:
+            index = bisect_left(revisions, upper_bound) - 1
+            revision = revisions[index] if index >= 0 and revisions[index] >= event.revision else event.revision
+            entries.append({'revision':revision,'version':event.version,'date':_iso(event.created_at),
+                            'comment':event.comment,'username':event.username,'kind':event.kind})
+            upper_bound = event.revision
+        return {'active_project_id':state['project_id'],'projects':projects,'version':state['version'],
+                'activity':state['activity'],'is_admin':user.is_admin,'history':entries}
     @app.post('/api/v2/workspace/select')
     def select_project(body:SelectProject,request:Request,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
         if session.get(store.V2Project,body.id) is None:raise HTTPException(404,'Projet introuvable')
@@ -85,9 +107,9 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             from backend.v2_instance_editor import _sync_workbooks
             _sync_workbooks(state);synchronize_workbooks(state)
         # Reserve a project identity under the same global write lock as all revisions.
-        ws._lock(session)
-        pid=(session.scalar(select(func.max(store.V2Project.id))) or 0)+1
-        for key in ('revision','project_id','version','activity','_program_digests','_catalog_revision','v7_archive_revision'):state.pop(key,None)
+        sequence = ws._lock(session)
+        pid=max(sequence, (session.scalar(select(func.max(store.V2Project.id))) or 0)+1)
+        for key in ('revision','project_id','version','activity','_program_digests','_catalog_revision','v7_archive_revision','program_profile_pinned'):state.pop(key,None)
         state['project_name']=name
         if isolate:
             state.update(project_id=pid, isolated_catalog=True)
@@ -98,6 +120,29 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         except ValueError as exc:raise HTTPException(409,str(exc)) from exc
         session.commit();request.session['project_id']=pid
         return {'id':pid,'revision':result['revision'],'version':result['version']}
+    @app.post('/api/v2/workspace/delete')
+    def delete_project(body:DeleteProject,request:Request,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
+        admin(user)
+        if body.project_id == 1:
+            raise HTTPException(409, 'Le projet principal ne peut pas être supprimé.')
+        if body.project_id != session.info['workspace_id']:
+            raise HTTPException(409, 'Sélectionnez le projet à supprimer.')
+        ws._lock(session)
+        session.expire_all()
+        target, state = ws._raw(session, body.project_id)
+        if target is None or state is None:
+            raise HTTPException(404, 'Projet introuvable')
+        if state['revision'] != body.revision or target.name != body.name.strip():
+            raise HTTPException(409, 'Le projet a changé. Actualisez avant de le supprimer.')
+        session.delete(target)
+        session.flush()
+        session.execute(delete(ws.VersionEvent).where(ws.VersionEvent.project_id == body.project_id))
+        session.execute(delete(store.V2ProjectRevision).where(store.V2ProjectRevision.project_id == body.project_id))
+        if state.get('isolated_catalog'):
+            session.execute(delete(ws.SharedCatalog).where(ws.SharedCatalog.id == -body.project_id))
+        session.commit()
+        request.session['project_id'] = 1
+        return {'active_project_id': 1}
     @app.post('/api/v2/workspace/rename')
     def rename(body:RenameProject,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
         state=project(session)
@@ -152,6 +197,56 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         payload = {'format': 'gaia-generator-v2-backup', 'version': 2, 'state': json.loads(archive.state_payload)}
         filename = _filename(state['project_name'], '-archive-V7.json')
         return attachment(json.dumps(payload, ensure_ascii=False, indent=2).encode(), filename, 'application/json')
+
+    @app.post('/api/v2/workspace/history/restore/preview')
+    def preview_history_restore(body:RestoreVersion,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
+        current = project(session)
+        if body.revision != current['revision']:
+            raise HTTPException(409, 'Le projet a changé. Actualisez son historique.')
+        revision = session.scalar(select(store.V2ProjectRevision).where(
+            store.V2ProjectRevision.project_id == current['project_id'],
+            store.V2ProjectRevision.revision == body.target_revision,
+        ))
+        event = session.scalar(select(ws.VersionEvent).where(
+            ws.VersionEvent.project_id == current['project_id'],
+            ws.VersionEvent.revision <= body.target_revision,
+        ).order_by(ws.VersionEvent.revision.desc()).limit(1))
+        if revision is None or event is None:
+            raise HTTPException(404, 'Version introuvable dans ce projet.')
+        if event.version == current['version'] or revision.revision >= current['revision']:
+            raise HTTPException(409, 'Choisissez une version antérieure.')
+
+        state = json.loads(revision.state_payload)
+        profile_changed = ws.profile_catalog_id(state) != ws.profile_catalog_id(current)
+        catalog_changed = ws.digest(ws._catalog(state)) != ws.digest(ws._catalog(current))
+        isolate = not current.get('isolated_catalog') and (profile_changed or catalog_changed)
+        state.update(project_id=current['project_id'], project_name=current['project_name'],
+                     revision=current['revision'], _catalog_revision=current['_catalog_revision'])
+        if current.get('isolated_catalog') or isolate:
+            state['isolated_catalog'] = True
+        if profile_changed or current.get('program_profile_pinned'):
+            state['program_profile_pinned'] = True
+        if current.get('v7_archive_revision'):
+            state['v7_archive_revision'] = current['v7_archive_revision']
+
+        changes = [f"Reprendre le contenu de la version {event.version} dans « {current['project_name']} »."]
+        if profile_changed:
+            profile = 'PanelView V8' if is_hmi(state) else 'Gaia V7'
+            changes.append(f"Revenir au programme {profile}.")
+        if isolate:
+            changes.append("Le catalogue de ce projet deviendra isolé pour reprendre ses anciens types.")
+        changes.extend(ws._changes(current, state)[0])
+        warnings = list(dict.fromkeys(ws._compatibility_errors(copy.deepcopy(state))))
+        if warnings:
+            warnings = ["Cette version contient des points à vérifier avant l’export PLC.", *warnings[:8]]
+        token = secrets.token_urlsafe(32)
+        metadata = {'kind':'history-restore', 'base_revision':current['revision'],
+                    'project_id':current['project_id'], 'version':event.version}
+        session.add(ImportPreview(token=token, owner_id=user.id, state_payload=ws.dump(state),
+                                  diff_payload=ws.dump(metadata), expires_at=datetime.now(timezone.utc)+timedelta(hours=1)))
+        session.commit()
+        return {'token':token, 'version':event.version, 'changes':changes, 'warnings':warnings}
+
     @app.post('/api/v2/workspace/restore/preview')
     async def preview_restore(file:UploadFile=File(...),session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):
         current=project(session);raw=await file.read(20*1024*1024+1)
@@ -171,6 +266,10 @@ def register_workspace_routes(app,get_session,current_user,csrf):
             state.pop('v7_archive_revision', None)
             if current.get('v7_archive_revision'):
                 state['v7_archive_revision'] = current['v7_archive_revision']
+            if current.get('program_profile_pinned'):
+                state['program_profile_pinned'] = True
+            else:
+                state.pop('program_profile_pinned', None)
             if not isinstance(state.get('types'),list) or not isinstance(state.get('workbooks'),dict):raise ValueError('Le modèle et les classeurs sont requis')
             for name in state['workbooks']:
                 if Path(name).name!=name or (name not in engine.PROJECT_FILES and not re.fullmatch(r'TYPE_[A-Za-z0-9_]+\.xlsx',name)):raise ValueError('Nom de classeur non autorisé')
@@ -195,10 +294,13 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         expires=row.expires_at.replace(tzinfo=timezone.utc) if row.expires_at.tzinfo is None else row.expires_at
         if expires<=datetime.now(timezone.utc):raise HTTPException(404,'Aperçu expiré')
         meta=json.loads(row.diff_payload)
-        if meta.get('kind')!='workspace-restore' or meta.get('project_id')!=current['project_id']:raise HTTPException(409,'Ce projet ne correspond pas à la sauvegarde préparée')
+        if meta.get('kind') not in {'workspace-restore','history-restore'} or meta.get('project_id')!=current['project_id']:raise HTTPException(409,'Ce projet ne correspond pas à la sauvegarde préparée')
         if meta['base_revision']!=current['revision']:raise HTTPException(409,'Le projet a changé depuis la préparation')
         state=json.loads(row.state_payload)
-        session.info['version_event']={'kind':'backup_import','name':meta['filename']}
+        session.info['version_event'] = (
+            {'kind':'history_restore', 'name':meta['version']} if meta['kind'] == 'history-restore' else
+            {'kind':'backup_import', 'name':meta['filename']}
+        )
         try:result=store.save_project(session,state,user.username,expected_revision=state['revision'])
         except ValueError as exc:raise HTTPException(409,str(exc)) from exc
         session.delete(row);session.commit()

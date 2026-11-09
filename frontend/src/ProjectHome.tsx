@@ -3,7 +3,8 @@ import './project-home.css'
 import WorkspacePanel from './WorkspacePanel'
 
 type ProjectSummary = { id: number; name: string; version?: string; revision?: number; updated_at?: string; isolated_catalog?: boolean }
-type VersionEntry = { version?: string; date?: string; comment?: string; username?: string; kind?: string }
+type VersionEntry = { revision: number; version: string; date?: string; comment?: string; username?: string; kind?: string }
+type RestorePreview = { token: string; changes: string[]; warnings: string[] }
 type ActivityItem = { at?: string; name?: string; filename?: string; username?: string; [key: string]: unknown }
 type Workspace = { active_project_id?: number; projects: ProjectSummary[]; version?: string; history?: VersionEntry[]; activity?: Record<string, ActivityItem | ActivityItem[] | null>; is_admin?: boolean; users?: User[] }
 type User = { id: number; username: string; is_admin?: boolean; created_at?: string }
@@ -11,7 +12,7 @@ type Props = { csrf: string; project: any; onChanged: () => void; onSelectProjec
 
 const activityLabels: Record<string, string> = {
   types: 'Types modifiés', instances: 'Instances modifiées', program_export: 'Programme exporté', program_import: 'Programme importé',
-  functions: 'Fonctions échange modifiées', generated_custom_code: 'Code généré modifié', tcp_clients: 'Clients TCP modifiés', tcp_points: 'Points TCP modifiés', rtu_lines: 'Lignes RTU modifiées', rtu_slaves: 'Esclaves RTU modifiés', rtu_channels: 'Canaux RTU modifiés', io_modules: 'Modules E/S modifiés', io_channels: 'Canaux E/S modifiés', virtual_io: 'E/S virtuelles modifiées', pa_values: 'Valeurs PA modifiées', exchange_functions: 'Fonctions échange modifiées', exchange_functions_detail: 'Détails de fonction échange modifiés', exchange_calls: 'Appels de fonctions échange modifiés', workbooks: 'Classeurs modifiés', catalog_options: 'Options de catalogue modifiées', excel_export: 'Excel exporté', backup: 'Sauvegarde créée', code: 'Code modifié', io: 'E/S modifiées', excel_import: 'Excel importé', backup_import: 'Sauvegarde restaurée', rename: 'Projet renommé', major: 'Version majeure créée', restore: 'Projet restauré',
+  functions: 'Fonctions échange modifiées', generated_custom_code: 'Code généré modifié', tcp_clients: 'Clients TCP modifiés', tcp_points: 'Points TCP modifiés', rtu_lines: 'Lignes RTU modifiées', rtu_slaves: 'Esclaves RTU modifiés', rtu_channels: 'Canaux RTU modifiés', io_modules: 'Modules E/S modifiés', io_channels: 'Canaux E/S modifiés', virtual_io: 'E/S virtuelles modifiées', pa_values: 'Valeurs PA modifiées', exchange_functions: 'Fonctions échange modifiées', exchange_functions_detail: 'Détails de fonction échange modifiés', exchange_calls: 'Appels de fonctions échange modifiés', workbooks: 'Classeurs modifiés', catalog_options: 'Options de catalogue modifiées', excel_export: 'Excel exporté', backup: 'Sauvegarde créée', code: 'Code modifié', io: 'E/S modifiées', excel_import: 'Excel importé', backup_import: 'Sauvegarde restaurée', rename: 'Projet renommé', major: 'Version majeure créée', restore: 'Projet restauré', history_restore: 'Version restaurée',
 }
 const formatDate = (value?: string) => { if (!value) return 'Date inconnue'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }).format(date) }
 function errorMessage(value: unknown): string { if (typeof value === 'string') return value; if (Array.isArray(value)) return value.map(errorMessage).filter(Boolean).join(' · '); if (value && typeof value === 'object') { const row = value as Record<string, unknown>; return errorMessage(row.message ?? row.detail ?? row.msg ?? row.error) }; return '' }
@@ -31,11 +32,15 @@ export default function ProjectHome({ csrf, project, onChanged, onSelectProject,
   const [newName, setNewName] = useState(''), [copyCurrent, setCopyCurrent] = useState(false), [rename, setRename] = useState('')
   const [isolateCatalog, setIsolateCatalog] = useState(false)
   const [majorComment, setMajorComment] = useState(''), [majorOpen, setMajorOpen] = useState(false)
+  const [restore, setRestore] = useState<{ entry: VersionEntry; preview?: RestorePreview }>()
+  const [deleteName, setDeleteName] = useState<string>()
+  const [dialogError, setDialogError] = useState('')
   const [adminOpen, setAdminOpen] = useState(false), [users, setUsers] = useState<User[]>([])
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [newAdmin, setNewAdmin] = useState(false)
   const currentId = Number(workspace?.active_project_id ?? project?.id ?? 0)
   const currentProject = workspace?.projects?.find(item => item.id === currentId) || project || null
   const sourceIsIsolated = Boolean(currentProject?.isolated_catalog)
+  const oldVersions = workspace?.history?.filter(entry => entry.version !== workspace.version) ?? []
   const loadWorkspace = useCallback(async () => { try { const value = await api<Workspace>('/workspace'); setWorkspace(value) } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de charger l’espace de travail') } }, [])
   useEffect(() => { void loadWorkspace() }, [loadWorkspace, project?.revision])
   useEffect(() => { setRename(workspace?.projects?.find(item => item.id === workspace.active_project_id)?.name || '') }, [workspace?.active_project_id])
@@ -67,6 +72,55 @@ export default function ProjectHome({ csrf, project, onChanged, onSelectProject,
   const approveProjectChange = async () => beforeProjectChange ? await beforeProjectChange() : true
   const refresh = async (message?: string) => { await loadWorkspace(); onChanged(); if (message) setNotice(message) }
   const post = async <T,>(path: string, body: unknown): Promise<T> => api<T>(path, { method: 'POST', body: JSON.stringify(body) }, csrf)
+  const previewVersion = async (revision: number) => {
+    const entry = oldVersions.find(version => version.revision === revision)
+    if (!entry || busy) return
+    setRestore({ entry })
+    setDialogError('')
+    setBusy(true)
+    try {
+      const preview = await post<RestorePreview>('/workspace/history/restore/preview', {
+        revision: project.revision, target_revision: entry.revision,
+      })
+      setRestore({ entry, preview })
+    } catch (e) {
+      setDialogError(e instanceof Error ? e.message : 'Impossible de préparer la restauration.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const restoreVersion = async () => {
+    if (!restore?.preview || busy || !(await approveProjectChange())) return
+    setBusy(true)
+    setDialogError('')
+    try {
+      await post('/workspace/restore/apply', { token: restore.preview.token })
+      setRestore(undefined)
+      onSelectProject(currentId)
+    } catch (e) {
+      setDialogError(e instanceof Error ? e.message : 'Impossible de restaurer cette version.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const deleteProject = async (event: FormEvent) => {
+    event.preventDefault()
+    const name = deleteName?.trim()
+    if (busy || !name || name !== currentProject?.name || !(await approveProjectChange())) return
+    setBusy(true)
+    setDialogError('')
+    try {
+      const result = await post<{ active_project_id: number }>('/workspace/delete', {
+        project_id: currentId, revision: project.revision, name,
+      })
+      setDeleteName(undefined)
+      onSelectProject(result.active_project_id)
+    } catch (e) {
+      setDialogError(e instanceof Error ? e.message : 'Impossible de supprimer le projet.')
+    } finally {
+      setBusy(false)
+    }
+  }
   const createProject = async (event: FormEvent) => { event.preventDefault(); if (!newName.trim() || !(await approveProjectChange())) return; setBusy(true); setError(''); try { const result = await post<{ id: number }>('/workspace/projects', { name: newName.trim(), copy_current: copyCurrent, isolated_catalog: sourceIsIsolated || isolateCatalog }); setNewName(''); setCopyCurrent(false); setIsolateCatalog(false); await refresh('Le projet a été créé et sélectionné.'); if (result.id) onSelectProject(result.id) } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de créer le projet') } finally { setBusy(false) } }
   const selectProject = async (id: number) => { if (!id || id === currentId || !(await approveProjectChange())) return; setBusy(true); setError(''); try { await post('/workspace/select', { id }); await loadWorkspace(); onSelectProject(id) } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de sélectionner le projet') } finally { setBusy(false) } }
   const renameProject = async (event: FormEvent) => { event.preventDefault(); if (!rename.trim()) return; setBusy(true); setError(''); try { await post('/workspace/rename', { name: rename.trim(), revision: Number(project?.revision ?? currentProject?.revision ?? 0) }); const savedName = rename.trim(); await refresh('Le nom du projet a été mis à jour.'); setRename(savedName) } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de renommer le projet') } finally { setBusy(false) } }
@@ -85,13 +139,53 @@ export default function ProjectHome({ csrf, project, onChanged, onSelectProject,
           Catalogue isolé (tests)
         </label>
         <small id="isolated-catalog-help">Les types sont copiés dans le projet de test. Les changements restent dans ce projet.</small>
-        <button type="submit" disabled={busy || !newName.trim()}>Créer un projet</button></form><form onSubmit={renameProject}><label>Renommer le projet actif<input value={rename} onChange={e => setRename(e.target.value)} required /></label><button type="submit" disabled={busy || !rename.trim()}>Renommer</button></form></div></section></WorkspacePanel>
+        <button type="submit" disabled={busy || !newName.trim()}>Créer un projet</button></form><form onSubmit={renameProject}><label>Renommer le projet actif<input value={rename} onChange={e => setRename(e.target.value)} required /></label><button type="submit" disabled={busy || !rename.trim()}>Renommer</button></form></div>
+      {workspace?.is_admin && currentId > 1 && <div className="ph-delete-project">
+        <button type="button" className="ph-danger" disabled={busy} onClick={() => { setDialogError(''); setDeleteName('') }}>Supprimer le projet actif</button>
+      </div>}
+    </section></WorkspacePanel>
     <WorkspacePanel id="project:summary" title="Project summary"><section className="ph-metrics" aria-label="Résumé du projet">{counts.map(([label, value]) => <article key={label}><strong>{value}</strong><span>{label}</span></article>)}</section></WorkspacePanel>
     <WorkspacePanel id="project:recent-by-domain" title="Recent activity by domain"><section className="ph-recent-grid" aria-label="Activité récente par domaine">{highlightedActivity.map(row => <article key={row.key}><b>{row.label}</b>{row.latest ? <><span>{row.latest.name || row.latest.filename || 'Activité du projet'}</span><time>{formatDate(row.latest.at)}</time></> : <span className="ph-not-yet">Pas encore…</span>}</article>)}</section></WorkspacePanel>
     <section className="ph-card ph-actions-card"><div className="ph-card-title"><div><h2>Fichiers du projet</h2><p>XML CODESYS, Excel et sauvegardes sont regroupés dans Imports / Exports.</p></div><button type="button" onClick={onOpenTransfers}>Ouvrir Imports / Exports</button></div></section>
-    <WorkspacePanel id="project:history-activity" title="Version history and recent activity"><section className="ph-lower-grid"><article className="ph-card"><div className="ph-card-title"><div><h2>Historique des versions</h2><p>z : modification · y : import/export modifié · x : version majeure commentée.</p></div></div>{workspace?.history?.length ? <div className="ph-table-wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Commentaire</th><th>Utilisateur</th></tr></thead><tbody>{workspace.history.map((entry, i) => <tr key={`${entry.version}-${i}`}><td><b>{entry.version || '—'}</b></td><td>{formatDate(entry.date)}</td><td>{entry.comment || '—'}</td><td>{entry.username || '—'}</td></tr>)}</tbody></table></div> : <p className="ph-empty">Aucune version historique.</p>}</article>
+    <WorkspacePanel id="project:history-activity" title="Version history and recent activity"><section className="ph-lower-grid"><article className="ph-card"><div className="ph-card-title"><div><h2>Historique des versions</h2><p>z : modification · y : import/export modifié · x : version majeure commentée.</p></div></div>
+      <label className="ph-picker ph-restore-picker">Restaurer une version précédente
+        <select value={restore?.entry.revision ?? ''} disabled={busy || !oldVersions.length}
+          onChange={e => void previewVersion(Number(e.target.value))}>
+          <option value="">{oldVersions.length ? 'Choisir une version…' : 'Aucune version précédente'}</option>
+          {oldVersions.map(entry => <option key={entry.revision} value={entry.revision}>
+            {entry.version} · {formatDate(entry.date)}{entry.comment ? ` · ${entry.comment}` : ''}
+          </option>)}
+        </select>
+      </label>{workspace?.history?.length ? <div className="ph-table-wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Commentaire</th><th>Utilisateur</th></tr></thead><tbody>{workspace.history.slice(0, 300).map(entry => <tr key={entry.revision}><td><b>{entry.version || '—'}</b></td><td>{formatDate(entry.date)}</td><td>{entry.comment || '—'}</td><td>{entry.username || '—'}</td></tr>)}</tbody></table></div> : <p className="ph-empty">Aucune version historique.</p>}</article>
       <article className="ph-card"><div className="ph-card-title"><div><h2>Activité récente</h2><p>Changements et fichiers liés au projet actif.</p></div></div>{activityRows.length ? <ul className="ph-activity">{activityRows.slice(0, 12).map(row => <li key={row.key}><span className="ph-activity-dot"/><div><b>{row.label}</b><span>{row.item.name || row.item.filename || row.item.username || 'Activité du projet'}</span><time>{formatDate(row.item.at)}</time></div></li>)}</ul> : <p className="ph-empty">Aucune activité récente.</p>}</article></section></WorkspacePanel>
     {workspace?.is_admin && <WorkspacePanel id="project:administration" title="User administration"><section className="ph-card ph-admin"><button type="button" className="ph-admin-toggle" aria-expanded={adminOpen} onClick={() => void loadUsers()}><span><b>Administration des utilisateurs</b><small>Gérer les comptes qui ont accès aux projets</small></span><strong>{adminOpen ? '−' : '+'}</strong></button>{adminOpen && <div className="ph-admin-body"><form onSubmit={addUser}><label>Nom d’utilisateur<input value={username} autoComplete="off" onChange={e => setUsername(e.target.value)} required /></label><label>Mot de passe temporaire<input type="password" value={password} autoComplete="new-password" onChange={e => setPassword(e.target.value)} required /></label><label className="ph-check"><input type="checkbox" checked={newAdmin} onChange={e => setNewAdmin(e.target.checked)} />Administrateur</label><button type="submit" disabled={busy || !username.trim() || !password}>Créer le compte</button></form>{users.length ? <div className="ph-user-list">{users.map(user => <div key={user.id}><b>{user.username}</b><span>{user.is_admin ? 'Administrateur' : 'Utilisateur'}</span><time>{formatDate(user.created_at)}</time></div>)}</div> : <p className="ph-empty">Aucun compte à afficher.</p>}</div>}</section></WorkspacePanel>}
+    {restore && <div className="ph-backdrop"><section className="ph-modal" role="dialog" aria-modal="true" aria-labelledby="ph-restore-title">
+      <header><h2 id="ph-restore-title">Restaurer la version {restore.entry.version}</h2>
+        <button type="button" aria-label="Fermer" disabled={busy} onClick={() => setRestore(undefined)}>×</button></header>
+      <div className="ph-modal-body">
+        <p>{formatDate(restore.entry.date)}{restore.entry.comment ? ` · ${restore.entry.comment}` : ''}</p>
+        <p>La restauration crée une nouvelle version de travail. L’état actuel restera disponible dans l’historique.</p>
+        {busy && !restore.preview && <p role="status">Préparation de la restauration…</p>}
+        {restore.preview && <ul>{restore.preview.changes.map(change => <li key={change}>{change}</li>)}</ul>}
+        {!!restore.preview?.warnings.length && <details><summary>Points à vérifier avant l’export PLC</summary>
+          <ul>{restore.preview.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
+        </details>}
+        {dialogError && <p className="ph-alert" role="alert">{dialogError}</p>}
+      </div>
+      <footer><button type="button" disabled={busy} onClick={() => setRestore(undefined)}>Annuler</button>
+        <button type="button" disabled={busy || !restore.preview} onClick={() => void restoreVersion()}>Restaurer cette version</button></footer>
+    </section></div>}
+    {deleteName !== undefined && <div className="ph-backdrop"><section className="ph-modal" role="dialog" aria-modal="true" aria-labelledby="ph-delete-title">
+      <header><h2 id="ph-delete-title">Supprimer « {currentProject?.name} »</h2>
+        <button type="button" aria-label="Fermer" disabled={busy} onClick={() => setDeleteName(undefined)}>×</button></header>
+      <form onSubmit={deleteProject}>
+        <p>Le projet et son historique seront supprimés définitivement. Saisis son nom pour confirmer.</p>
+        <label>Nom du projet<input autoFocus value={deleteName} disabled={busy} onChange={e => setDeleteName(e.target.value)}/></label>
+        {dialogError && <p className="ph-alert" role="alert">{dialogError}</p>}
+        <footer><button type="button" disabled={busy} onClick={() => setDeleteName(undefined)}>Annuler</button>
+          <button className="ph-danger" type="submit" disabled={busy || deleteName.trim() !== currentProject?.name}>Supprimer définitivement</button></footer>
+      </form>
+    </section></div>}
     {majorOpen && <div className="ph-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setMajorOpen(false) }}><section className="ph-modal" role="dialog" aria-modal="true" aria-labelledby="ph-major-title"><header><h2 id="ph-major-title">Créer une version majeure</h2><button type="button" aria-label="Fermer" onClick={() => setMajorOpen(false)}>×</button></header><form onSubmit={makeMajor}><p>La version actuelle <b>{workspace?.version || currentProject?.version || '—'}</b> deviendra une nouvelle version majeure. Ajoutez un commentaire à l’historique.</p><label>Commentaire obligatoire<textarea value={majorComment} onChange={e => setMajorComment(e.target.value)} required rows={3}/></label><footer><button type="button" onClick={() => setMajorOpen(false)}>Annuler</button><button type="submit" disabled={busy || !majorComment.trim()}>Créer la version</button></footer></form></section></div>}
   </main>
 }

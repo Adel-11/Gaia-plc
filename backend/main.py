@@ -420,7 +420,15 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
         if factory is None:
             raise HTTPException(503, "Database is not ready")
         with factory() as session:
-            session.info["workspace_id"] = int(request.session.get("project_id", 1))
+            project_id = int(request.session.get("project_id", 1))
+            if project_id != 1:
+                from backend.v2_store import V2Project
+                if session.get(V2Project, project_id) is None:
+                    if request.method not in {"GET", "HEAD"}:
+                        raise HTTPException(409, "Ce projet a été supprimé. Actualisez la page.")
+                    request.session["project_id"] = 1
+                    project_id = 1
+            session.info["workspace_id"] = project_id
             yield session
 
     def current_user(request: Request, session: Session = Depends(get_session)) -> User:

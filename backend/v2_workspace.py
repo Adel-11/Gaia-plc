@@ -122,6 +122,9 @@ def _persist(session,pid,state,previous,username,revision,event=None):
         version='1.0.0';history_kind='created';comment='Création du projet'
     elif event and event['kind']=='major':
         version=f'{parts[0]+1}.0.0';history_kind='major';comment=event['comment']
+    elif event and event['kind']=='history_restore':
+        version=f'{parts[0]}.{parts[1]}.{parts[2]+1}'
+        history_kind='history_restore';comment=f"Restauration de la version {event['name']}"
     elif event and event['kind'] in ('program_export','program_import'):
         fingerprint=event['digest']
         digest_key=event.get('digest_key',event['kind'])
@@ -169,18 +172,24 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     if state.get('project_id') not in (None,pid):raise ValueError('Le projet a changé depuis la préparation de cette action')
     blocks_only=session.info.pop('type_blocks_only',False)
     sync_dut_refs=session.info.pop('sync_dut_references',False)
+    event=session.info.pop('version_event',None)
     revision=_lock(session)
     project=session.get(store.V2Project,pid)
     if project:session.refresh(project)
     _,raw=_raw(session,pid)
     if expected_revision is not None and int(expected_revision)!=(raw or {}).get('revision',0):raise ValueError(f"Project revision conflict: expected {expected_revision}, current is {(raw or {}).get('revision',0)}")
     library = catalog_id(state)
-    if raw is not None and catalog_id(raw) != library:
+    previous_library = catalog_id(raw) if raw is not None else library
+    isolated_by_restore = previous_library != library and library == -pid and event and event['kind'] == 'history_restore'
+    if previous_library != library and not isolated_by_restore:
         raise ValueError('La sauvegarde appartient à une autre version du programme PLC')
     catalog=session.get(SharedCatalog,library)
-    if catalog:session.refresh(catalog)
-    if catalog and state.get('_catalog_revision',catalog.revision)!=catalog.revision:raise ValueError('Le catalogue partagé a changé ; actualisez avant de réessayer')
-    current=overlay(raw,json.loads(catalog.payload)) if raw and catalog else raw
+    previous_catalog = session.get(SharedCatalog, previous_library) if isolated_by_restore else catalog
+    if previous_catalog:session.refresh(previous_catalog)
+    if previous_catalog and state.get('_catalog_revision',previous_catalog.revision)!=previous_catalog.revision:raise ValueError('Le catalogue partagé a changé ; actualisez avant de réessayer')
+    if isolated_by_restore and catalog is not None:
+        raise ValueError('Le catalogue isolé existe déjà ; actualisez avant de réessayer')
+    current=overlay(raw,json.loads(previous_catalog.payload)) if raw and previous_catalog else raw
     from backend.v2_st_overrides import discard_removed_overrides
     discard_removed_overrides(current, state)
     shared=_catalog(state);changed=catalog is not None and digest(shared)!=digest(json.loads(catalog.payload))
@@ -219,7 +228,6 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
                 errors=[e for e in _compatibility_errors(proposed) if e not in baseline_errors]
             if errors:raise ValueError(f"Catalogue incompatible avec le projet {other.name} : {errors[0]}")
             affected.append((other.id,before,proposed))
-    event=session.info.pop('version_event',None)
     saved=_persist(session,pid,state,current,username,revision,event)
     if catalog is None:
         catalog=SharedCatalog(id=library,revision=1,payload=dump(shared));session.add(catalog)
