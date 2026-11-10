@@ -155,7 +155,22 @@ def _folder_map(root):
 
 def _pou_text(obj, text):
     body = obj["element"].find(NS + "body/" + NS + "ST/" + HNS + "xhtml")
-    if body is not None: body.text = text
+    if body is not None:
+        from backend.v2_plc_validation import _st_for_compare
+        source = body.text or ""
+        if _st_for_compare(source) != _st_for_compare(text) or _tcp_labels_changed(source, text):
+            body.text = text
+
+
+def _tcp_labels_changed(source, generated):
+    from backend.v2_hmi import TCP_COPY
+
+    def labels(st):
+        return [(left, right, address, re.sub(r"\s*\((?:low|high) word\)$", "", name.strip(), flags=re.I))
+                for left, right, address, name in TCP_COPY.findall(st)]
+
+    current = labels(generated)
+    return bool(current and current != labels(source))
 
 
 def _append_custom(obj, code, function_name=None):
@@ -467,11 +482,17 @@ def build_program(state, include_union: bool = False) -> dict:
         if name and name not in objs:
             objs[name]={"name":name,"kind":"POU","folder":(state.get("object_folders") or {}).get(name,"Functions/FC_EXC"),"element":_new_exchange_function(fn,{str(t.get("name")):t for t in state.get("types",[])})}
     # The structured model owns authored ST; unchanged reference objects still retain their exact V7 source text.
+    from backend.v2_fb_flow import convert_body, render_flow, repair_migrated_flow
     for typ in state.get("types", []):
         fb = typ.get("fb", {}); name = fb.get("name")
         if name in objs and fb.get("body") is not None:
             body=objs[name]["element"].find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
-            if body is not None: body.text=fb["body"]
+            if body is not None:
+                model = dict(fb)
+                source = body.text or ""
+                repair_migrated_flow(model, source)
+                if model["body"] != render_flow(convert_body(source)):
+                    body.text = model["body"]
         if name in objs: _append_custom(objs[name],fb.get("custom_code"),name if name and objs[name]["element"].get("pouType")=="function" else None)
     for fn in state.get("functions", []):
         name=fn.get("name"); code=fn.get("custom_code")

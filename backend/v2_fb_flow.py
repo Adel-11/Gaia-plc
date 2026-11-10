@@ -31,37 +31,55 @@ def _segments(code, section):
     return result
 
 
-def convert_body(body):
+def _render_segments(segments):
+    return ''.join(s.get('code', '') if s.get('kind') == 'preserved' else
+                   s.get('original', '\t' + s['destination'] + ' := ' + s['source'] + ';\n') for s in segments)
+
+
+def convert_body(body, *, legacy_order=False):
     body = str(body or '')
     heads = [HEAD(name).search(body) for name in ('INPUTS','PROCESSING','OUTPUTS')]
     if all(heads) and heads[0].end() <= heads[1].start() < heads[2].start():
         a,b,c = heads
         input_segments = _segments(body[a.end():b.start()], 'inputs')
         output_segments = _segments(body[c.end():], 'outputs')
-        # Old workbooks sometimes put handwritten behavior beside the copied
-        # interface assignments. Keep that text, in its original order, in
-        # the one editable processing area. Mapping assignments remain in the
-        # generated interface sections.
-        input_legacy = ''.join(s.get('code', '') for s in input_segments if s.get('kind') == 'preserved')
-        output_legacy = ''.join(s.get('code', '') for s in output_segments if s.get('kind') == 'preserved')
+        if legacy_order:
+            # Reproduce the old output solely to identify untouched migrations.
+            input_legacy = _render_segments(s for s in input_segments if s['kind'] == 'preserved')
+            output_legacy = _render_segments(s for s in output_segments if s['kind'] == 'preserved')
+            input_segments = [s for s in input_segments if s['kind'] == 'mapping']
+            output_segments = [s for s in output_segments if s['kind'] == 'mapping']
+        else:
+            from backend.v2_plc_validation import _st_for_compare
+
+            def handwritten(segments):
+                return [i for i, s in enumerate(segments)
+                        if s['kind'] == 'preserved' and _st_for_compare(s['code'])]
+
+            # Only leading input copies and trailing output copies can be moved
+            # to generated sections without crossing handwritten instructions.
+            input_split = next(iter(handwritten(input_segments)), len(input_segments))
+            output_split = max(handwritten(output_segments), default=-1) + 1
+            input_legacy = _render_segments(input_segments[input_split:])
+            output_legacy = _render_segments(output_segments[:output_split])
+            input_segments = input_segments[:input_split]
+            output_segments = output_segments[output_split:]
         processing = input_legacy + body[b.end():c.start()] + output_legacy
         return {'version':1,'prefix':body[:a.start()], 'input_header':a.group(),
-                'input_segments':[s for s in input_segments if s.get('kind') == 'mapping'],
+                'input_segments':input_segments,
                 'processing_header':b.group(), 'processing_code':processing,
-                'output_header':c.group(), 'output_segments':[s for s in output_segments if s.get('kind') == 'mapping'],
+                'output_header':c.group(), 'output_segments':output_segments,
                 'legacy_migrated':bool(input_legacy or output_legacy)}
     return {'version':1,'prefix':'','input_header':'','input_segments':[], 'processing_header':'',
             'processing_code':body,'output_header':'','output_segments':[]}
 
 
 def render_flow(flow):
-    def part(segments):
-        return ''.join(s.get('code','') if s.get('kind') == 'preserved' else s.get('original', '\t' + s['destination'] + ' := ' + s['source'] + ';\n') for s in segments)
     overrides = flow.get('section_overrides', {})
     def line_end(text):
         return text + '\n' if text and not text.endswith(('\n', '\r')) else text
-    inputs = line_end(overrides['inputs']) if 'inputs' in overrides else part(flow.get('input_segments', []))
-    outputs = overrides['outputs'] if 'outputs' in overrides else part(flow.get('output_segments', []))
+    inputs = line_end(overrides['inputs']) if 'inputs' in overrides else _render_segments(flow.get('input_segments', []))
+    outputs = overrides['outputs'] if 'outputs' in overrides else _render_segments(flow.get('output_segments', []))
     return (
         flow.get('prefix', '') + flow.get('input_header', '') + inputs
         + flow.get('processing_header', '') + flow.get('processing_code', '')
@@ -73,16 +91,22 @@ def ensure_flow(fb):
     if not isinstance(fb.get('flow'), dict) or render_flow(fb['flow']) != str(fb.get('body') or ''):
         fb['flow'] = convert_body(fb.get('body',''))
     flow = fb['flow']
-    legacy_input = ''.join(s.get('code', '') for s in flow.get('input_segments', []) if s.get('kind') == 'preserved')
-    legacy_output = ''.join(s.get('code', '') for s in flow.get('output_segments', []) if s.get('kind') == 'preserved')
-    if legacy_input or legacy_output:
-        flow['input_segments'] = [s for s in flow.get('input_segments', []) if s.get('kind') == 'mapping']
-        flow['output_segments'] = [s for s in flow.get('output_segments', []) if s.get('kind') == 'mapping']
-        flow['processing_code'] = legacy_input + flow.get('processing_code', '') + legacy_output
-        flow['legacy_migrated'] = True
     if flow.get('legacy_migrated'):
         fb['body'] = render_flow(flow)
     return flow
+
+
+def repair_migrated_flow(fb, source):
+    """Repair the old migration only when the saved body still matches it exactly."""
+    flow = fb.get('flow') or {}
+    if not source or not flow.get('legacy_migrated') or flow.get('section_overrides'):
+        return False
+    original_conversion = convert_body(source, legacy_order=True)
+    if not original_conversion.get('legacy_migrated') or fb.get('body') != render_flow(original_conversion):
+        return False
+    fb['flow'] = convert_body(source)
+    fb['body'] = render_flow(fb['flow'])
+    return fb['body'] != render_flow(original_conversion) or fb['flow'] != flow
 
 
 def flow_view(fb):
@@ -157,11 +181,18 @@ def update_flow(typ, state, mappings=None, processing_code=None):
 
 
 def convert_project(state):
+    from backend.v2_codesys import _st
+    from backend.v2_plc import _source, _source_objects
+
+    references = _source_objects(_source(state))
     changed = False
     for typ in state.get('types',[]):
         fb = typ.get('fb', {})
         old_flow = copy.deepcopy(fb.get('flow'))
         old_body = str(fb.get('body') or '')
+        source = references.get(fb.get('name'))
+        if source is not None:
+            repair_migrated_flow(fb, _st(source))
         ensure_flow(fb)
         if old_flow != fb.get('flow') or old_body != str(fb.get('body') or ''):
             changed = True

@@ -386,7 +386,7 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                 if hmi_project:
                     from backend.v2_hmi import upgrade_named_project
                     upgrade_named_project(session, hmi_project)
-                # Move legacy handwritten INPUTS/OUTPUTS text into the editable PROCESSING section.
+                # Initialize the editable FB sections and repair untouched legacy conversions.
                 from backend.v2_fb_flow import convert_project
                 v2_existing = v2_store.load_project(session)
                 if v2_existing is not None and convert_project(v2_existing):

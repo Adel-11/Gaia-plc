@@ -10,8 +10,9 @@ import openpyxl
 
 from backend.main import create_app
 from backend.v2_addressing import allocate_tcp_points, client_ranges
-from backend.v2_codesys import _ids, _objects
+from backend.v2_codesys import _ids, _objects, _st
 from backend.v2_engine import export_workbook, import_workbook, validate_project
+from backend.v2_fb_flow import convert_body, convert_project, render_flow
 from backend.v2_hmi import PROFILE, REFERENCE, RETIRED, load_hmi_pack
 from backend.v2_plc import build_program, serialize_program
 from backend.v2_plc_validation import validate_xml
@@ -34,6 +35,13 @@ def test_panelview_program_and_workbooks_match_the_codesys_reference():
 
     root = etree.parse(str(REFERENCE)).getroot()
     expected = _objects(root)
+    # Production persisted the previous conversion before export.
+    for typ in state['types']:
+        fb = typ['fb']
+        fb['flow'] = convert_body(fb['body'], legacy_order=True)
+        fb['body'] = render_flow(fb['flow'])
+    assert convert_project(state)
+    assert not convert_project(state)
     ids, id_errors = _ids(root, expected)
     assert not id_errors
     objects = build_program(state)
@@ -49,6 +57,8 @@ def test_panelview_program_and_workbooks_match_the_codesys_reference():
     for name, node in expected.items():
         for signature in checks[etree.QName(node).localname]:
             assert signature(actual[name]) == signature(node), (name, signature.__name__)
+        if etree.QName(node).localname == "pou":
+            assert _st(actual[name]) == _st(node), name
 
     for filename in state["workbooks"]:
         content = export_workbook(state, filename)
@@ -61,6 +71,16 @@ def test_panelview_program_and_workbooks_match_the_codesys_reference():
     points = allocate_tcp_points(state, "DOSENSOR_1", "HMI")
     assert all(point["Client"] == "HMI" for point in points)
     assert min(point["Modbus address"] for point in points if point["table"] == "coils") == 1
+
+
+def test_flow_repair_preserves_edits_made_after_the_old_conversion():
+    state = deepcopy(load_hmi_pack())
+    fb = next(t['fb'] for t in state['types'] if t['name'] == 'DIP1500')
+    fb['flow'] = convert_body(fb['body'], legacy_order=True)
+    fb['flow']['processing_code'] += '\nINTERN.CMD_RUN := FALSE;\n'
+    edited = fb['body'] = render_flow(fb['flow'])
+    convert_project(state)
+    assert fb['body'] == edited
 
 
 def test_startup_upgrade_archives_gaia_and_preserves_other_projects(tmp_path, monkeypatch):

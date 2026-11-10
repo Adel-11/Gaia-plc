@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from backend.v2_engine import load_pack
 from backend.v2_fb_flow import convert_body, render_flow, flow_view, update_flow, convert_project
 from backend.v2_plc import build_program, serialize_program
-from backend.v2_plc_validation import validate_xml
+from backend.v2_plc_validation import _st_for_compare, validate_xml
 from backend.main import create_app
 
 
@@ -18,22 +18,20 @@ def test_auto_conversion_moves_legacy_section_code_once_and_is_idempotent():
         assert render_flow(typ['fb']['flow']) == typ['fb']['body']
         assert flow_view(typ['fb'])['mappings']
         assert update_flow(typ, state, mappings=flow_view(typ['fb'])['mappings']) == []
-        if expected.get('legacy_migrated'):
-            assert typ['fb']['body'] != original[typ['name']]
-            assert typ['fb']['flow'].get('legacy_migrated')
-        else:
-            assert typ['fb']['body'] == original[typ['name']]
+        assert _st_for_compare(typ['fb']['body']) == _st_for_compare(original[typ['name']])
     program = build_program(state)
     assert validate_xml(serialize_program(program, state, list(program)), state, program)['errors'] == []
 
 
 def test_legacy_conditions_comments_and_calculations_move_into_processing_once():
-    source = '// INPUTS\n(*\nINTERN.A := COM.A;\n*)\nIF COM.EN THEN\n INTERN.A := COM.A;\nEND_IF\nINTERN.A := COM.A + 1;\nINTERN.B := COM.B;\n// PROCESSING\nINTERN.A := 3;\n// OUTPUTS\nCOM.B := INTERN.B;\nINTERN.D := INTERN.C + 1;\n'
+    source = '// INPUTS\nINTERN.EN := COM.EN;\n(*\nINTERN.A := COM.A;\n*)\nIF COM.EN THEN\n INTERN.A := COM.A;\nEND_IF\nINTERN.A := COM.A + 1;\nINTERN.B := COM.B;\n// PROCESSING\nINTERN.A := 3;\n// OUTPUTS\nCOM.B := INTERN.B;\nINTERN.D := INTERN.C + 1;\nCOM.D := INTERN.D;\n'
     flow = convert_body(source)
     body = render_flow(flow)
     fb = {'body': source, 'flow': flow}
     assert len(flow_view(fb)['mappings']) == 2
     view = flow_view(fb)
+    assert [m['destination'] for m in view['mappings']] == ['INTERN.EN', 'COM.D']
+    assert _st_for_compare(body) == _st_for_compare(source)
     assert 'preserved_sections' not in view
     assert 'IF COM.EN' in view['processing_code']
     assert 'INTERN.A := COM.A + 1;' in view['processing_code']
