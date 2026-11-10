@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { StEditor } from './V2ObjectView'
+import type { VariableOption } from './FbMappingEditor'
 import './st-source.css'
 
 type Source = {
@@ -9,8 +10,8 @@ type Source = {
 type Part = 'declaration' | 'body'
 type Draft = Partial<Record<Part, string | null>>
 
-export default function RawStEditor({ name, csrf, onClose, onSaved }: {
-  name: string; csrf: string; onClose: () => void; onSaved: () => void
+export default function RawStEditor({ name, csrf, onClose, onSaved, insertVariables }: {
+  name: string; csrf: string; onClose: () => void; onSaved: () => void; insertVariables?: VariableOption[]
 }) {
   const title = useId()
   const [source, setSource] = useState<Source>()
@@ -68,7 +69,7 @@ export default function RawStEditor({ name, csrf, onClose, onSaved }: {
             else setDraft(previous => { const next = { ...previous }; delete next[part]; return next })
           }}>Revenir au modèle</button>}
       </div>
-      <StEditor label={label} value={draft[part] ?? original} readOnly={busy || reset}
+      <StEditor label={label} value={draft[part] ?? original} readOnly={busy || reset} insertVariables={part === 'body' ? insertVariables : undefined}
         onChange={value => setDraft(previous => {
           const next = { ...previous }
           if (value === original) delete next[part]

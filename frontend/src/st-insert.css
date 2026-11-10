@@ -1,0 +1,28 @@
+.st-insert-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ov-editor-wrap .ov-editor-toolbar:has(.st-insert-tools button[aria-haspopup]) { height: auto; min-height: 33px; flex-basis: auto; gap: 8px; padding-block: 3px; }
+.st-insert-menu {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  width: min(370px, calc(100vw - 16px));
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px;
+  color: #263341;
+  background: #fff;
+  border: 1px solid #d4dce7;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px #13243a36;
+}
+.st-insert-tabs, .st-insert-filters { display: flex; gap: 6px; margin-bottom: 7px; }
+.st-insert-filters input { width: 100%; min-width: 0; }
+.st-insert-menu button { cursor: pointer; }
+.st-insert-tabs button, .st-insert-filters input, .st-insert-filters select { padding: 6px; border: 1px solid #d4dce7; border-radius: 5px; background: #fff; }
+.st-insert-tabs button[aria-pressed=true] { color: #153e76; background: #e8f0fc; border-color: #91afd7; }
+.st-insert-results { overflow: auto; min-height: 0; max-height: 260px; }
+.st-insert-results button { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; width: 100%; padding: 7px; text-align: left; border: 0; background: #fff; color: inherit; }
+.st-insert-results button:hover, .st-insert-results button:focus-visible { background: #e8f0fc; }
+.st-insert-results code { overflow-wrap: anywhere; }
+.st-insert-results small { flex-shrink: 0; max-width: 38%; overflow-wrap: anywhere; color: #486177; }
+.st-insert-results p { margin: 6px; font-size: 13px; }

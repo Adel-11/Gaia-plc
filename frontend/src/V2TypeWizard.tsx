@@ -3,6 +3,7 @@ import './type-wizard.css'
 import WorkspacePanel from './WorkspacePanel'
 import { LogicFields, SignalFields } from './GenericObjects'
 import type { GenericMember, GenericSignal, GenericTemplate } from './GenericObjects'
+import { StEditor, draftVariables } from './V2ObjectView'
 
 type Member = { id?: string; name: string; iec_type: string; section?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string }
 type Dut = { role: string; members: Member[] }
@@ -46,10 +47,18 @@ function startingBlocks(kind: string, panelView: boolean) {
 }
 const label = (key: string) => key.replaceAll('_', ' ')
 
-async function request<T>(path: string, body: unknown, csrf: string): Promise<T> {
-  const response = await fetch(`/api/v2${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) }, body: JSON.stringify(body) })
+async function request<T>(path: string, body: unknown, csrf: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`/api/v2${path}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) }, body: JSON.stringify(body), signal })
   if (!response.ok) { let message = `${response.status} ${response.statusText}`; try { const data = await response.json(); const detail = data.detail || data.message || data.error; message = typeof detail === 'string' ? detail : JSON.stringify(detail || message) } catch { /* ignore non-JSON errors */ }; throw new Error(message) }
   return response.json() as Promise<T>
+}
+
+function GeneratedMembers({ duts }: { duts: Dut[] }) {
+  const rows = duts.flatMap(dut => dut.members.map(member => ({ ...member, role: dut.role })))
+  if (!rows.length) return null
+  return <div className="tw-table-wrap"><table className="tw-table tw-generated-table"><thead><tr><th>DUT</th><th>Variable</th><th>Type IEC</th></tr></thead>
+    <tbody>{rows.map((member, i) => <tr key={`${member.role}:${i}`}><td>{member.role}</td><td><code>{member.name}</code></td><td>{member.iec_type}</td></tr>)}</tbody>
+  </table></div>
 }
 
 export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onChanged, initialGenericId }: Props) {
@@ -72,12 +81,40 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   const [duts, setDuts] = useState<Dut[]>(() => startingBlocks('Equipment', panelView).duts), [selectedRole, setSelectedRole] = useState('PA')
   const [processingCode, setProcessingCode] = useState(() => startingBlocks('Equipment', panelView).processing), [customCode, setCustomCode] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null), [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const variableInput = useMemo(() => ({ signals, members: generic ? logicMembers : [] }), [signals, generic, logicMembers])
+  const [variableResult, setVariableResult] = useState<{ input: typeof variableInput; duts?: Dut[]; error?: string }>()
+  const liveResult = variableResult?.input === variableInput ? variableResult : undefined
+  const generatedDuts = liveResult?.duts || []
+  const generatedMembers = (role: string) => generatedDuts.find(dut => dut.role === role)?.members || []
+  const replacedSpare = (dut: Dut) => !copyFrom && generatedMembers(dut.role).length > 0 &&
+    dut.members.length === 1 && dut.members[0].name === 'SPARE'
+  const hasVariableInput = variableInput.signals.length > 0 || variableInput.members.length > 0
+  useEffect(() => {
+    if (!equipment || !hasVariableInput) return
+    const controller = new AbortController()
+    const delay = window.setTimeout(() => {
+      void request<{ duts: Dut[] }>('/types/variables/preview', variableInput, csrf, controller.signal)
+        .then(({ duts }) => { if (!controller.signal.aborted) setVariableResult({ input: variableInput, duts }) })
+        .catch(cause => { if (!controller.signal.aborted) setVariableResult({ input: variableInput, error: cause.message }) })
+    }, 180)
+    return () => { window.clearTimeout(delay); controller.abort() }
+  }, [variableInput, csrf, equipment, hasVariableInput])
+  const previewStatus = equipment && hasVariableInput && (!liveResult
+    ? <p role="status">Mise à jour des DUT…</p>
+    : liveResult.error && <p className="tw-error" role="alert">{liveResult.error}</p>)
+  const effectiveDuts = generic ? generatedDuts : duts.map(dut => {
+    const generated = generatedMembers(dut.role)
+    return { ...dut, members: [...(replacedSpare(dut) ? [] : dut.members), ...generated] }
+  })
+  const insertVariables = draftVariables(effectiveDuts)
+  const memberCount = (role: string) => effectiveDuts.find(dut => dut.role === role)?.members.length || 0
   const activeDut = duts.find(d => d.role === selectedRole) || duts[0]
   useEffect(() => { setProjectRevision(Number(project?.revision || 0)) }, [project?.revision])
   useEffect(() => { let live = true; fetch('/api/v2/catalog/options', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(value => { if (live && value) setCatalog({ sections: [...new Set([...BASE_SECTIONS, ...(value.sections || [])])], prefixes: [...new Set([...BASE_PREFIXES, ...(value.prefixes || [])])] }) }).catch(() => {}); return () => { live = false } }, [])
   const duplicate = useMemo(() => types.some(t => String(t.name || '').toLowerCase() === name.trim().toLowerCase()), [types, name])
   const validIdentity = Boolean(name.trim()) && !duplicate && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name.trim())
   const replaceDuts = (next: Dut[]) => { setDuts(next); setPreview(null); setReviewed(false) }
+  const editCode = (setCode: (code: string) => void) => (code: string) => { setCode(code); setPreview(null); setReviewed(false) }
   const prefixes = [...new Set(catalog.prefixes)]
   const memberParts = (memberName: string) => { const prefix = [...prefixes].sort((a, b) => b.length - a.length).find(item => memberName.startsWith(`${item}_`)); return { prefix: prefix || '', basename: prefix ? memberName.slice(prefix.length + 1) : memberName } }
   const updateMember = (index: number, key: keyof Member, value: any) => replaceDuts(duts.map(d => d.role !== activeDut?.role ? d : { ...d, members: d.members.map((m, i) => i === index ? { ...m, [key]: value } : m) }))
@@ -193,6 +230,9 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
       {equipment && step === 1 && <WorkspacePanel id="wizard:generic-signals" title={generic ? 'Adapter les signaux du modèle' : 'Signaux de terrain'}>
         <p>Ajoute des E/S physiques, des signaux Modbus RTU ou Modbus TCP. Les entrées sont disponibles dans le traitement et dans EXC.</p>
         <SignalFields signals={signals} onChange={rows => { setSignals(rows); setPreview(null); setReviewed(false) }} />
+        <h3>Aperçu des DUT</h3>
+        {previewStatus}
+        <GeneratedMembers duts={generic ? effectiveDuts : generatedDuts} />
       </WorkspacePanel>}
 
       {generic && step === 2 && <WorkspacePanel id="wizard:generic-logic" title="Adapter les variables de logique">
@@ -206,26 +246,34 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         </>}
         {manualProcessing === null ? <button className="tw-secondary" type="button"
           onClick={() => { setManualProcessing(inheritProcessing ? generic.processing : ''); setPreview(null); setReviewed(false) }}>Modifier le ST</button> :
-          <label className="generic-processing">ST du traitement
-            <textarea rows={8} spellCheck={false} value={manualProcessing} onChange={e => { setManualProcessing(e.target.value); setPreview(null); setReviewed(false) }}/>
+          <div className="tw-st-area">
+            <StEditor value={manualProcessing} label="ST du traitement" insertVariables={insertVariables} onChange={editCode(setManualProcessing)}/>
             <button className="tw-secondary" type="button" onClick={() => { setManualProcessing(null); setPreview(null); setReviewed(false) }}>Revenir au traitement hérité</button>
-          </label>}
+          </div>}
+        <h3>Aperçu des DUT</h3>
+        {previewStatus}
+        <GeneratedMembers duts={effectiveDuts} />
       </WorkspacePanel>}
 
-      {!generic && step === (equipment ? 2 : 1) && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{d.members.length}</small></button>)}</div>
-        {activeDut && <><div className="tw-section-head"><div><h3>DUT_{activeDut.role}_{name || 'Type'}</h3><p>{activeDut.members.length} members in this block</p></div><label className="tw-existing">Copy members from<select value="" onChange={e => { const [typeId, role] = e.target.value.split('|'); const t = types.find(item => String(item.id) === typeId); const source = t?.duts?.find((d: AnyRow) => d.role === role); if (source) replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: source.members.map((m: AnyRow) => ({ id: m.id, name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || 'INTERNAL', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '' })) } : d)) }}><option value="">Choose a type and block</option>{types.flatMap(t => (t.duts || []).filter((d: AnyRow) => d.role === activeDut.role).map((d: AnyRow) => <option key={`${t.id}|${d.role}`} value={`${t.id}|${d.role}`}>{t.name} · {d.role}</option>))}</select></label></div>
-          <WorkspacePanel id={`wizard-members-${activeDut.role}`} title={`Membres ${activeDut.role}`}><div className="tw-table-wrap"><table className="tw-table"><thead><tr>{['Order','Member','IEC type','Comment group','Default','Unit','Comment',''].map(h => <th key={h} title={({Order:'Member order is preserved in the generated declaration.',Member:'Canonical member name is the selected prefix joined to the basename.', 'IEC type':'IEC 61131-3 Structured Text data type.','Comment group':'Comment separator grouping inside this DUT, not an ST VAR_INPUT/VAR_OUTPUT section.',Default:'Initial value in the ST declaration.',Unit:'Engineering unit for this member.',Comment:'Documentation comment emitted with this member.'} as Record<string,string>)[h]}>{h}</th>)}</tr></thead><tbody>{activeDut.members.map((m, i) => { const parts = memberParts(m.name); return <tr key={i}>
+      {!generic && step === (equipment ? 2 : 1) && <div className="tw-editor-step"><div className="tw-role-tabs" role="tablist" aria-label="DUT role">{duts.map(d => <button type="button" role="tab" aria-selected={d.role === activeDut?.role} className={d.role === activeDut?.role ? 'selected' : ''} key={d.role} onClick={() => setSelectedRole(d.role)}>{d.role}<small>{memberCount(d.role)}</small></button>)}</div>
+        {activeDut && <><div className="tw-section-head"><div><h3>DUT_{activeDut.role}_{name || 'Type'}</h3><p>{memberCount(activeDut.role)} membres dans ce DUT</p></div><label className="tw-existing">Copy members from<select value="" onChange={e => { const [typeId, role] = e.target.value.split('|'); const t = types.find(item => String(item.id) === typeId); const source = t?.duts?.find((d: AnyRow) => d.role === role); if (source) replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: source.members.map((m: AnyRow) => ({ id: m.id, name: m.name || '', iec_type: m.iec_type || 'BOOL', section: m.section || 'INTERNAL', default_value: m.default_value ?? '', unit: m.unit || '', comment: m.comment || '' })) } : d)) }}><option value="">Choose a type and block</option>{types.flatMap(t => (t.duts || []).filter((d: AnyRow) => d.role === activeDut.role).map((d: AnyRow) => <option key={`${t.id}|${d.role}`} value={`${t.id}|${d.role}`}>{t.name} · {d.role}</option>))}</select></label></div>
+          <WorkspacePanel id={`wizard-members-${activeDut.role}`} title={`Membres ${activeDut.role}`}>{previewStatus}
+            {!!generatedMembers(activeDut.role).length && <div className="tw-generated-members">
+              <p>Variables issues des signaux. Pour les modifier, reviens à l’étape Signaux.</p>
+              <GeneratedMembers duts={[{ role: activeDut.role, members: generatedMembers(activeDut.role) }]} />
+            </div>}
+            <div className="tw-table-wrap"><table className="tw-table"><thead><tr>{['Order','Member','IEC type','Comment group','Default','Unit','Comment',''].map(h => <th key={h} title={({Order:'Member order is preserved in the generated declaration.',Member:'Canonical member name is the selected prefix joined to the basename.', 'IEC type':'IEC 61131-3 Structured Text data type.','Comment group':'Comment separator grouping inside this DUT, not an ST VAR_INPUT/VAR_OUTPUT section.',Default:'Initial value in the ST declaration.',Unit:'Engineering unit for this member.',Comment:'Documentation comment emitted with this member.'} as Record<string,string>)[h]}>{h}</th>)}</tr></thead><tbody>{activeDut.members.map((m, i) => { if (replacedSpare(activeDut)) return null; const parts = memberParts(m.name); return <tr key={i}>
             <td className="tw-order"><button type="button" aria-label={`Move ${m.name || i + 1} up`} disabled={i === 0} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i - 1, 0, item); return { ...d, members } }))}>↑</button><button type="button" aria-label={`Move ${m.name || i + 1} down`} disabled={i === activeDut.members.length - 1} onClick={() => replaceDuts(duts.map(d => { if (d.role !== activeDut.role) return d; const members = [...d.members]; const [item] = members.splice(i, 1); members.splice(i + 1, 0, item); return { ...d, members } }))}>↓</button></td>
             <td><div className="tw-name-parts"><select aria-label={`Member ${i + 1} prefix`} title="Prefix is stored as part of the canonical name, PREFIX_basename." value={parts.prefix} onChange={e => e.target.value === '__add' ? void addCatalog('prefixes') : updateMemberName(i, e.target.value, parts.basename)}><option value="">No prefix</option>{prefixes.map(prefix => <option key={prefix}>{prefix}</option>)}<option value="__add">＋ Add prefix…</option></select><span>{parts.prefix ? '_' : ''}</span><input aria-label={`Member ${i + 1} basename`} value={parts.basename} onChange={e => updateMemberName(i, parts.prefix, e.target.value)}/></div></td>
             <td><select aria-label={`Member ${i + 1} IEC type`} value={IEC_TYPES.includes(m.iec_type) ? m.iec_type : 'Custom…'} onChange={e => updateMember(i, 'iec_type', e.target.value === 'Custom…' ? '' : e.target.value)}><option value="Custom…">Custom…</option>{IEC_TYPES.map(t => <option key={t}>{t}</option>)}</select>{!IEC_TYPES.includes(m.iec_type) && <input aria-label={`Member ${i + 1} custom IEC type`} value={m.iec_type} onChange={e => updateMember(i, 'iec_type', e.target.value)} placeholder="e.g. ARRAY[0..3] OF INT"/>}</td>
             {(['section','default_value','unit','comment'] as const).map(key => <td key={key}>{key === 'section' ? <select title="Comment separator grouping inside this DUT, not an ST VAR_INPUT/VAR_OUTPUT section." aria-label={`Member ${i + 1} comment group`} value={m.section || 'INTERNAL'} onChange={e => e.target.value === '__add' ? void addCatalog('sections') : updateMember(i, key, e.target.value)}>{[...new Set([...catalog.sections, m.section || 'INTERNAL'])].map(value => <option key={value}>{value}</option>)}<option value="__add">＋ Add group…</option></select> : <input title={key === 'default_value' ? 'Initial value assigned at declaration.' : key === 'unit' ? 'Engineering unit.' : 'Documentation comment for this member.'} aria-label={`Member ${i + 1} ${label(key)}`} value={m[key] == null ? '' : String(m[key])} onChange={e => updateMember(i, key, e.target.value)}/>}</td>)}
-            <td><button type="button" aria-label={`Remove member ${m.name || i + 1}`} onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: d.members.filter((_, j) => j !== i) } : d))}>×</button></td></tr> })}</tbody></table>{!activeDut.members.length && <p>Ce DUT est vide. Seul le membre technique SPARE sera déclaré dans CODESYS.</p>}</div></WorkspacePanel>
-          <button className="tw-add" type="button" onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: [...d.members, blankMember()] } : d))}>＋ Add member</button>
+            <td><button type="button" aria-label={`Remove member ${m.name || i + 1}`} onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: d.members.filter((_, j) => j !== i) } : d))}>×</button></td></tr> })}</tbody></table>{!memberCount(activeDut.role) && <p>Ce DUT est vide. Seul le membre technique SPARE sera déclaré dans CODESYS.</p>}</div></WorkspacePanel>
+          <button className="tw-add" type="button" onClick={() => replaceDuts(duts.map(d => d.role === activeDut.role ? { ...d, members: [...(replacedSpare(d) ? [] : d.members), blankMember()] } : d))}>＋ Add member</button>
         </>}
-        <div className="tw-processing"><WorkspacePanel id="wizard-processing" title="PROCESSING"><label>PROCESSING code <small>Optional Structured Text for this function block.</small><textarea spellCheck={false} value={processingCode} onChange={e => { setProcessingCode(e.target.value); setPreview(null); setReviewed(false) }} placeholder="(* Add Structured Text processing here *)"/></label></WorkspacePanel><WorkspacePanel id="wizard-custom" title="Code personnalisé"><label>Custom code <small>Optional custom Structured Text, preserved separately.</small><textarea spellCheck={false} value={customCode} onChange={e => { setCustomCode(e.target.value); setPreview(null); setReviewed(false) }} placeholder="Optional custom Structured Text"/></label></WorkspacePanel></div>
+        <div className="tw-processing"><WorkspacePanel id="wizard-processing" title="PROCESSING"><div className="tw-st-area"><StEditor label="ST du traitement" value={processingCode} onChange={editCode(setProcessingCode)} insertVariables={insertVariables}/></div></WorkspacePanel><WorkspacePanel id="wizard-custom" title="Code personnalisé"><div className="tw-st-area"><StEditor label="ST personnalisé" value={customCode} onChange={editCode(setCustomCode)} insertVariables={insertVariables}/></div></WorkspacePanel></div>
       </div>}
 
-      {step === reviewStep && <WorkspacePanel id="wizard-review" title="Vérification du type"><div className="tw-review-step"><p className="tw-intro">Vérifie les blocs et le ST du nouveau type. Les adresses et les liaisons se configurent sur ses instances.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>DUT BLOCKS</small><b>{duts.length}</b></div><div><small>{generic ? "SIGNAUX PHYSIQUES" : "MEMBRES"}</small><b>{generic ? signals.length : duts.reduce((count, dut) => count + dut.members.length, 0)}</b></div></div>
+      {step === reviewStep && <WorkspacePanel id="wizard-review" title="Vérification du type"><div className="tw-review-step"><p className="tw-intro">Vérifie les blocs et le ST du nouveau type. Les adresses et les liaisons se configurent sur ses instances.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>DUT BLOCKS</small><b>{duts.length}</b></div><div><small>{generic ? "SIGNAUX PHYSIQUES" : "MEMBRES"}</small><b>{generic ? signals.length : effectiveDuts.reduce((count, dut) => count + dut.members.length, 0)}</b></div></div>
         {!preview && <button type="button" className="tw-primary" disabled={!validIdentity || busy} onClick={() => void prepare()}>{busy ? 'Vérification…' : 'Vérifier le type'}</button>}
         {error && <p className="tw-error" role="alert">{error}</p>}
         {preview && <><div className={preview.errors?.length ? 'tw-error-list' : 'tw-success'} role={preview.errors?.length ? 'alert' : 'status'}>{preview.errors?.length ? <><b>À corriger avant de créer le type</b>{preview.errors.map((item, i) => <p key={i}>{item}</p>)}</> : 'Le type est prêt à être créé.'}</div>{Boolean(preview.warnings?.length) && <ul>{preview.warnings?.map(warning => <li key={warning}>{warning}</li>)}</ul>}{preview.generated_st && <details className="tw-generated"><summary>Déclarations et code ST générés</summary><pre>{preview.generated_st}</pre></details>}<label className="tw-confirm"><input type="checkbox" checked={reviewed} disabled={Boolean(preview.errors?.length)} onChange={e => setReviewed(e.target.checked)}/>J’ai vérifié les blocs et le ST du type.</label></>}

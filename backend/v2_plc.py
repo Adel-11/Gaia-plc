@@ -153,12 +153,12 @@ def _folder_map(root):
     return out
 
 
-def _pou_text(obj, text):
+def _pou_text(obj, text, *, preserve_reference=False):
     body = obj["element"].find(NS + "body/" + NS + "ST/" + HNS + "xhtml")
     if body is not None:
         from backend.v2_plc_validation import _st_for_compare
         source = body.text or ""
-        if _st_for_compare(source) != _st_for_compare(text) or _tcp_labels_changed(source, text):
+        if not preserve_reference or _st_for_compare(source) != _st_for_compare(text) or _tcp_labels_changed(source, text):
             body.text = text
 
 
@@ -371,7 +371,7 @@ def _generated_objects(objs, state, sources):
             if nm not in membership["GFB_INST"]: continue
             # Equipment FB convention is FB_<instance>.
             text += f"//--- {nm}\nFB_{nm}(\n\tPA  := GVL_PA.PA_{nm},\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm},\n\tIO  := GVL_IO.IO_{nm});\n\n"
-        _pou_text(objs["GFB_INST"], text)
+        _pou_text(objs["GFB_INST"], text, preserve_reference=True)
     if "GFB_UPI" in objs:
         text = "//==============================================================================\n// GFB_UPI\n// Calls selected functional units (UPI)\n//==============================================================================\n\n"
         _sync_gfb_instances(objs["GFB_UPI"]["element"], upis, upi=True)
@@ -379,7 +379,7 @@ def _generated_objects(objs, state, sources):
             nm = str(inst.get("name") or inst.get("id")); fb_name = typ.get("fb", {}).get("name", "FB_" + nm)
             if nm not in membership["GFB_UPI"]: continue
             text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
-        _pou_text(objs["GFB_UPI"], text)
+        _pou_text(objs["GFB_UPI"], text, preserve_reference=True)
     # TCP copy statements use the exact mapped variable identifiers from Excel.
     tcp_in, tcp_out, rtu_in, rtu_out = [], [], [], []
     tcp_points=[p for p in state.get("tcp_points",[]) if str(p.get("Instance") or p.get("instance_id") or "") in valid_instances]
@@ -415,8 +415,8 @@ def _generated_objects(objs, state, sources):
         seen_rtu.add(key); stmt = f"GVL_COM.{b} := GVL_MODBUS.{a};" if p.get("Direction") == "Equipment to PLC" else f"GVL_MODBUS.{a} := GVL_COM.{b};"
         (rtu_in if p.get("Direction") == "Equipment to PLC" else rtu_out).append(stmt)
     com_in, com_out = rtu_in + tcp_in, rtu_out + tcp_out
-    if "GFC_COM_IN" in objs: _pou_text(objs["GFC_COM_IN"], "\n".join(com_in)+"\nGFC_COM_IN := TRUE;")
-    if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;")
+    if "GFC_COM_IN" in objs: _pou_text(objs["GFC_COM_IN"], "\n".join(com_in)+"\nGFC_COM_IN := TRUE;", preserve_reference=True)
+    if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;", preserve_reference=True)
     io_in, io_out = [], []
     io_rows = list(state.get("io_channels",[])) + list(state.get("virtual_io",[]))
     for p in sorted((row for row in io_rows if (not (row.get("Instance") or row.get("instance_id")) and legacy_membership) or (str(row.get("Instance") or row.get("instance_id")) in valid_instances and included("GFC_IO_IN" if str(row.get("I/O type", "")).upper() in {"AI", "DI"} else "GFC_IO_OUT",row.get("Instance") or row.get("instance_id")))), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
@@ -425,14 +425,14 @@ def _generated_objects(objs, state, sources):
         iomap=iomap.removeprefix("GVL_IOMAP."); iovar=iovar.removeprefix("GVL_IO.")
         stmt = f"GVL_IO.{iovar} := GVL_IOMAP.{iomap};" if str(p.get("I/O type", "")).upper() in {"AI", "DI"} else f"GVL_IOMAP.{iomap} := GVL_IO.{iovar};"
         (io_in if str(p.get("I/O type", "")).upper() in {"AI", "DI"} else io_out).append(stmt)
-    if "GFC_IO_IN" in objs: _pou_text(objs["GFC_IO_IN"], "\n".join(io_in)+"\nGFC_IO_IN := TRUE;")
-    if "GFC_IO_OUT" in objs: _pou_text(objs["GFC_IO_OUT"], "\n".join(io_out)+"\nGFC_IO_OUT := TRUE;")
+    if "GFC_IO_IN" in objs: _pou_text(objs["GFC_IO_IN"], "\n".join(io_in)+"\nGFC_IO_IN := TRUE;", preserve_reference=True)
+    if "GFC_IO_OUT" in objs: _pou_text(objs["GFC_IO_OUT"], "\n".join(io_out)+"\nGFC_IO_OUT := TRUE;", preserve_reference=True)
     # Graph-authored exchange detail compiles into FC bodies; calls are per instance pair.
     for fn in state.get("exchange_functions", []):
         name = str(fn.get("name") or fn.get("FC") or ""); obj=objs.get(name)
         if not obj: continue
         from backend.v2_exchanges import compile_function
-        _pou_text(obj, compile_function(state, fn))
+        _pou_text(obj, compile_function(state, fn), preserve_reference=True)
     call_chunks=[]
     for c in state.get("exchange_calls",[]):
         fn=str(c.get("function_id") or c.get("FC") or ""); a=str(c.get("parameter_a_value") or ""); b=str(c.get("parameter_b_value") or "")
@@ -443,8 +443,8 @@ def _generated_objects(objs, state, sources):
             params=function.xpath("./plc:interface/plc:inOutVars/plc:variable/@name",namespaces={"plc":PLC}) if function is not None else []
             if len(params) >= 2:
                 call_chunks.append(f"{fn}(\n\t{params[0]} := {a},\n\t{params[1]} := {b});")
-    if "GFC_EXC" in objs: _pou_text(objs["GFC_EXC"],"\n\n".join(call_chunks)+"\nGFC_EXC := TRUE;")
-    if "PLC_PRG" in objs: _pou_text(objs["PLC_PRG"],"GFC_COM_IN();\nGFC_IO_IN();\nGFB_UPI_1();\nGFC_EXC();\nGFB_INST_1();\nGFC_COM_OUT();\nGFC_IO_OUT();")
+    if "GFC_EXC" in objs: _pou_text(objs["GFC_EXC"],"\n\n".join(call_chunks)+"\nGFC_EXC := TRUE;", preserve_reference=True)
+    if "PLC_PRG" in objs: _pou_text(objs["PLC_PRG"],"GFC_COM_IN();\nGFC_IO_IN();\nGFB_UPI_1();\nGFC_EXC();\nGFB_INST_1();\nGFC_COM_OUT();\nGFC_IO_OUT();", preserve_reference=True)
 
 
 def build_program(state, include_union: bool = False) -> dict:

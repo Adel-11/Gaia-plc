@@ -599,6 +599,17 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         state.setdefault("workbooks", {})[normalized["source_file"]] = _book_for_type(engine, normalized, normalized["source_file"])
         return state, errors, warnings
 
+    @app.post("/api/v2/types/variables/preview")
+    def preview_variables(body: Variables, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        try:
+            declarations, _, _ = _declared(body, project_for(session))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return {"duts": [
+            {"role": role, "members": [member for assigned, member in declarations.values() if assigned == role]}
+            for role in ROLES["Equipment"]
+        ]}
+
     @app.post("/api/v2/types/preview")
     def preview_type(request: TypeCreate, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
         current = project_for(session)

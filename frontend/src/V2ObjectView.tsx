@@ -11,6 +11,7 @@ import './object-view.css'
 import ObjectCanvas from './ObjectCanvas'
 import FbMappingEditor, { type FbMapping, type VariableOption } from './FbMappingEditor'
 import WorkspacePanel from './WorkspacePanel'
+import StInsertMenu, { stSnippets, type InsertMode } from './StInsertMenu'
 
 type Member = { id?: string; name: string; iec_type: string; default_value?: string | number | boolean | null; section?: string; unit?: string; comment?: string; exchange?: string; position?: number }
 type Dut = { manual_declaration?: boolean; name: string; role?: string; members: Member[]; st?: string }
@@ -49,11 +50,29 @@ const stLanguage = StreamLanguage.define({
   },
 })
 
-export function StEditor({ value, onChange, readOnly = false, label }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string }) {
+export function StEditor({ value, onChange, readOnly = false, label, insertVariables }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string; insertVariables?: VariableOption[] }) {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange
   const applyingValue = useRef(false)
+  const [insertMenu, setInsertMenu] = useState<{ x: number; y: number; mode: InsertMode } | null>(null)
+  const canInsert = !readOnly && !!onChange && !!insertVariables
+  const closeInsert = (restoreFocus: boolean) => {
+    setInsertMenu(null)
+    if (restoreFocus) editor.current?.focus()
+  }
+  const insert = (text: string, placeholder?: string) => {
+    const view = editor.current
+    if (!view || !canInsert) return
+    const { from, to } = view.state.selection.main
+    const indent = view.state.doc.lineAt(from).text.match(/^\s*/)?.[0] || ''
+    const code = text.replaceAll('\n', `\n${indent}`)
+    const start = placeholder ? code.indexOf(placeholder) : -1
+    view.dispatch({ changes: { from, to, insert: code },
+      selection: start >= 0 ? { anchor: from + start, head: from + start + placeholder!.length } : { anchor: from + code.length },
+      scrollIntoView: true, userEvent: 'input' })
+    closeInsert(true)
+  }
   useEffect(() => {
     if (!host.current) return
     const state = EditorState.create({ doc: value, extensions: [lineNumbers(), highlightActiveLine(), highlightSelectionMatches(), history(), stLanguage, syntaxHighlighting(defaultHighlightStyle), keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]), EditorView.editable.of(!readOnly), EditorState.readOnly.of(readOnly), EditorView.contentAttributes.of({'aria-label': label}), EditorView.updateListener.of(update => { if (update.docChanged && !applyingValue.current) onChangeRef.current?.(update.state.doc.toString()) }), EditorView.theme({ '&': { height: '100%', fontSize: '16px' }, '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }, '.cm-gutters': { backgroundColor: '#f6f8fa', borderRight: '1px solid #e1e5eb', color: '#7a8493' } })] })
@@ -68,10 +87,32 @@ export function StEditor({ value, onChange, readOnly = false, label }: { value: 
       finally { applyingValue.current = false }
     }
   }, [value])
-  return <div className="ov-editor-wrap" aria-label={label}><div className="ov-editor-toolbar"><span>{label}</span><button type="button" onClick={() => editor.current && openSearchPanel(editor.current)} aria-label="Find in source">Find <kbd>Ctrl F</kbd></button></div><div ref={host} className={`ov-editor ${readOnly ? 'is-readonly' : ''}`} /></div>
+  return <div className="ov-editor-wrap" aria-label={label}>
+    <div className="ov-editor-toolbar"><span>{label}</span><div className="st-insert-tools">
+      {canInsert && <>
+        {(['IF', 'FOR'] as const).map(key => <button key={key} type="button" title={`Insérer ${key}`} onClick={() => insert(...stSnippets[key])}>{key}</button>)}
+        {(['variables', 'snippets'] as const).map(mode => <button key={mode} type="button" aria-haspopup="dialog" onClick={event => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          setInsertMenu({ x: rect.left, y: rect.bottom + 4, mode })
+        }}>{mode === 'variables' ? 'Variables' : 'Instructions'}</button>)}
+      </>}
+      <button type="button" onClick={() => editor.current && openSearchPanel(editor.current)} aria-label="Find in source">Find <kbd>Ctrl F</kbd></button>
+    </div></div>
+    <div ref={host} className={`ov-editor ${readOnly ? 'is-readonly' : ''}`} onContextMenu={event => {
+      const view = editor.current
+      if (!view || !canInsert) return
+      event.preventDefault()
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+      const { from, to } = view.state.selection.main
+      if (pos != null && (pos < from || pos > to)) view.dispatch({ selection: { anchor: pos } })
+      setInsertMenu({ x: event.clientX, y: event.clientY, mode: 'choices' })
+    }}/>
+    {canInsert && insertMenu && <StInsertMenu key={`${insertMenu.mode}:${insertMenu.x}:${insertMenu.y}`} {...insertMenu}
+      initialMode={insertMenu.mode} variables={insertVariables} onInsert={insert} onClose={closeInsert}/>}
+  </div>
 }
 
-function draftVariables(duts: Dut[]) {
+export function draftVariables(duts: { role?: string; members: Member[] }[]) {
   const options: {path:string;iec_type:string}[] = []
   const add = (path:string, iec_type:string, depth=0) => {
     options.push({path,iec_type})
@@ -80,7 +121,7 @@ function draftVariables(duts: Dut[]) {
     if(array && Number(array[2])-Number(array[1])<128){for(let i=Number(array[1]);i<=Number(array[2]);i++)add(`${path}[${i}]`,array[3],depth+1)}
     else if(iec_type==='DUT_Union_Real_Word'){add(`${path}.Real_value`,'REAL',depth+1);add(`${path}.Word_value`,'ARRAY[0..1] OF WORD',depth+1)}
   }
-  for(const dut of duts)for(const member of dut.members)add(`${dut.role==='INT'?'INTERN':dut.role}.${member.name}`,member.iec_type)
+  for(const dut of duts)for(const member of dut.members)if (/^[A-Za-z_]\w*$/.test(member.name)) add(`${dut.role==='INT'?'INTERN':dut.role}.${member.name}`,member.iec_type)
   return options
 }
 
@@ -198,6 +239,8 @@ END_VAR`
       knownPaths.add(variable.path)
     }
   }
+  const insertVariables = [...variables, ...localVars.filter(row => /^[A-Za-z_]\w*$/.test(row.name))
+    .map(row => ({ path: row.name, iec_type: row.iec_type }))]
   const openRaw = (name?: string) => {
     if (name && (!dirty || window.confirm('Ouvrir le ST complet ? Le brouillon de cet éditeur sera abandonné.'))) {
       discardDraft()
@@ -225,7 +268,7 @@ END_VAR`
             invalidate()
           }}>{manual == null ? 'Modifier le ST' : 'Revenir au mapping'}</button>
         </div>}
-        <StEditor value={manual ?? generated} readOnly={kind === 'instance' || manual == null}
+        <StEditor value={manual ?? generated} readOnly={kind === 'instance' || manual == null} insertVariables={insertVariables}
           onChange={value => { setManualSections(previous => ({...previous, [section]: value})); invalidate() }}
           label={`ST des ${title}`}/>
       </div>
@@ -245,14 +288,14 @@ END_VAR`
     </WorkspacePanel>
     <WorkspacePanel id={`fb:${objectId}:${surface}:processing`} title="Traitement" className="ov-fb-zone processing">
       <div className="ov-processing-editor">
-        <StEditor value={processingCode} onChange={setSource(setProcessingCode)} readOnly={kind === 'instance'} label="ST du traitement"/>
+        <StEditor value={processingCode} onChange={setSource(setProcessingCode)} readOnly={kind === 'instance'} label="ST du traitement" insertVariables={insertVariables}/>
       </div>
       <details className="ov-fb-extra"><summary>ST avant les entrées et après les sorties</summary>
         <div className="ov-processing-editor compact">
-          <StEditor value={prefixCode} onChange={setSource(setPrefixCode)} readOnly={kind === 'instance'} label="ST avant les entrées"/>
+          <StEditor value={prefixCode} onChange={setSource(setPrefixCode)} readOnly={kind === 'instance'} label="ST avant les entrées" insertVariables={insertVariables}/>
         </div>
         <div className="ov-processing-editor compact">
-          <StEditor value={customCode} onChange={setSource(setCustomCode)} readOnly={kind === 'instance'} label="ST après les sorties"/>
+          <StEditor value={customCode} onChange={setSource(setCustomCode)} readOnly={kind === 'instance'} label="ST après les sorties" insertVariables={insertVariables}/>
         </div>
       </details>
     </WorkspacePanel>
@@ -294,7 +337,7 @@ END_VAR`
         </div></header><div className={`ov-fb-modal-body ${active === '__fb' ? 'is-fb' : 'is-dut'}`}>{active === '__fb' && data.fb ? renderFbEditor('dialog') : currentDut ? <>{currentDut.manual_declaration && <p className="ov-alert">Ce DUT utilise sa déclaration ST manuelle à l’export.</p>}{copyMembersSelect}<WorkspacePanel id={`dut:${objectId}:${active}:members`} title="Membres du DUT" className="ov-dut-member-panel" initialHeight={420} minHeight={240}>
           {kind === 'type' && <button className="ov-add ov-dut-add" type="button" onClick={addMember}>＋ Ajouter un membre</button>}
           <div className="ov-table-wrap ov-modal-member-table"><table className="ov-table"><thead><tr><th className="ov-order-col" title="Member order in the DUT declaration.">↕</th><th title="Canonical IEC identifier; prefix_basename is stored as one member name.">Name</th><th title="IEC 61131-3 data type.">IEC type</th><th title="Initial value in the declaration.">Default</th><th title="Comment separator group inside this DUT; this does not choose VAR_INPUT or VAR_OUTPUT.">Comment group</th><th title="Engineering unit.">Unit</th><th title="Documentation comment.">Comment</th><th title="External exchange identifier or tag reference.">Exchange</th><th title="Remove this member."></th></tr></thead><tbody>{currentDut.members.map((m,i)=><tr key={i}><td className="ov-order-col"><button type="button" aria-label={`Move ${m.name} up`} disabled={kind==='instance'||i===0} onClick={()=>moveMember(i,i-1)}>↑</button><button type="button" aria-label={`Move ${m.name} down`} disabled={kind==='instance'||i===currentDut.members.length-1} onClick={()=>moveMember(i,i+1)}>↓</button></td><td><div className="ov-name-parts"><select title="Optional prefix; a selected prefix is joined to the basename with an underscore." aria-label={`${m.name} prefix`} disabled={kind==='instance'} value={memberParts(m.name).prefix} onChange={e=>e.target.value==='__add'?void addCatalogOption('prefixes'):setMemberParts(i,e.target.value,memberParts(m.name).basename)}><option value="">No prefix</option>{knownPrefixes.map(prefix=><option key={prefix}>{prefix}</option>)}<option value="__add">＋ Add prefix…</option></select><span>{memberParts(m.name).prefix?'_':''}</span><input title="Member basename; saved with its optional prefix." aria-label={`${m.name} basename`} disabled={kind==='instance'} value={memberParts(m.name).basename} onChange={e=>setMemberParts(i,memberParts(m.name).prefix,e.target.value)}/></div></td><td><input aria-label={`${m.name} IEC type`} title="IEC 61131-3 data type." disabled={kind==='instance'} value={m.iec_type} onChange={e=>updateMember(i,'iec_type',e.target.value)}/></td>{(['default_value','section','unit','comment','exchange'] as const).map(key=><td key={key}>{key==='section'?<select title="Comment separator group inside this DUT; it does not select an ST declaration section." aria-label={`${m.name} comment group`} disabled={kind==='instance'} value={m.section||'INTERNAL'} onChange={e=>e.target.value==='__add'?void addCatalogOption('sections'):updateMember(i,key,e.target.value)}>{[...new Set([...catalog.sections,m.section||'INTERNAL'])].map(value=><option key={value}>{value}</option>)}<option value="__add">＋ Add group…</option></select>:<input title={key==='default_value'?'Initial value in the declaration.':key==='unit'?'Engineering unit.':key==='comment'?'Documentation comment.':'External exchange identifier or tag reference.'} aria-label={`${m.name} ${key}`} disabled={kind==='instance'} value={printable(m[key])} onChange={e=>updateMember(i,key,e.target.value)}/>}</td>)}<td><button className="ov-remove" type="button" aria-label={`Remove ${m.name}`} disabled={kind==='instance'} onClick={()=>removeMember(i)}>×</button></td></tr>)}</tbody></table></div></WorkspacePanel><div className="ov-st-preview"><StEditor value={liveDeclaration} readOnly label={`${currentDut.name}.st · generated declaration`}/></div></> : <div className="ov-empty">No editor is available for this selection.</div>}</div><footer><button type="button" className="ov-secondary" onClick={() => setFbFullscreen(false)}>Fermer</button>{kind === 'type' && <button type="button" className="ov-primary" disabled={!dirty || busy} onClick={() => void makePreview()}>Enregistrer</button>}</footer></section></div>}
-      {rawName && <RawStEditor name={rawName} csrf={csrf} onClose={() => setRawName('')} onSaved={onSaved}/>}
+      {rawName && <RawStEditor name={rawName} csrf={csrf} insertVariables={rawName === data?.fb?.name ? insertVariables : undefined} onClose={() => setRawName('')} onSaved={onSaved}/>}
       {preview && <div className="ov-review-backdrop"><section className="ov-review" role="dialog" aria-modal="true" aria-labelledby="ov-review-title"><header><div><span className="ov-eyebrow">CHANGE REVIEW</span><h3 id="ov-review-title">Review draft</h3></div><button onClick={() => setPreview(null)} aria-label="Close review">×</button></header><div className="ov-review-body"><h4>Changes</h4>{preview.changes?.length ? <ul>{preview.changes.map((change,i)=><li key={i}>{change}</li>)}</ul> : <p>No change summary was returned.</p>}{arr(preview.errors).length > 0 && <div className="ov-review-errors"><b>Errors</b>{arr(preview.errors).map((item,i)=><p key={i}>{printable(item)}</p>)}</div>}{arr(preview.warnings).length > 0 && <div className="ov-review-warnings"><b>Warnings</b>{arr(preview.warnings).map((item,i)=><p key={i}>{printable(item)}</p>)}</div>}<label className="ov-review-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} disabled={arr(preview.errors).length > 0}/> I reviewed these changes and want to apply them.</label></div><footer><button className="ov-secondary" onClick={() => setPreview(null)}>Back to draft</button><button className="ov-primary" disabled={!reviewed || busy || arr(preview.errors).length > 0} onClick={() => void apply()}>{busy ? 'Applying…' : 'Confirmer l’enregistrement'}</button></footer></section></div>}
     </>}
   </section>

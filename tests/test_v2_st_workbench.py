@@ -30,6 +30,15 @@ def test_transport_signals_inheritance_and_manual_st_round_trip(tmp_path, monkey
 
         rtu = {"id": "rtu", "name": "PRESSION", "direction": "input", "kind": "analog", "iec_type": "REAL", "transport": "rtu"}
         tcp = {"id": "tcp", "name": "MARCHE", "direction": "output", "kind": "digital", "iec_type": "BOOL", "transport": "tcp"}
+        physical = {"id": "io", "name": "DEFAUT", "direction": "input", "kind": "digital", "iec_type": "BOOL"}
+        before_preview = project()["revision"]
+        preview = post("types/variables/preview", {"signals": [physical, rtu, tcp]})
+        members = {d["role"]: {m["name"]: m["iec_type"] for m in d["members"]} for d in preview["duts"]}
+        assert members["IO"] == {"INPUT_DEFAUT": "BOOL"}
+        assert members["COM"] == {"RTU_INPUT_PRESSION": "DUT_Union_Real_Word", "TCP_OUTPUT_MARCHE": "BOOL"}
+        assert members["INT"]["PRESSION"] == "REAL"
+        assert members["EXC"] == {"OUTPUT_DEFAUT": "BOOL", "OUTPUT_PRESSION": "REAL"}
+        assert project()["revision"] == before_preview
         parent = next(t for t in project()["generic_objects"] if t["id"] == "hmi-local")
         child = post("generic-objects", {
             "revision": project()["revision"], "name": "QA IHM", "parent_id": parent["id"],
