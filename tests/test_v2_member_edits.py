@@ -122,6 +122,20 @@ def test_member_edits_and_local_vars_reach_export(tmp_path, monkeypatch):
         config = client.get("/api/v2/configuration").json()
         assert not any(row["instance_id"] == "QA_SIGNAL_1" for row in config["tcp_points"])
 
+        source = client.get("/api/v2/code/source/DUT_COM_QA_SIGNAL").json()
+        manual = review("code/source/DUT_COM_QA_SIGNAL", {
+            "revision": source["revision"], "declaration": source["declaration"] + "\n// déclaration manuelle",
+        })
+        obj = client.get(obj_path).json()
+        next(d for d in obj["duts"] if d["role"] == "COM")["members"] = []
+        blocked = review("objects/type/QA_SIGNAL/preview", {"revision": obj["revision"], "duts": obj["duts"]})
+        assert not blocked["token"] and any("déclare encore HMI_OUTPUT_READY" in e for e in blocked["errors"])
+        review("code/source/DUT_COM_QA_SIGNAL", {"revision": manual["revision"], "declaration": None})
+        obj["revision"] = client.get(obj_path).json()["revision"]
+        apply("objects", review("objects/type/QA_SIGNAL/preview", {"revision": obj["revision"], "duts": obj["duts"]}))
+        saved = client.get(obj_path).json()
+        assert [m["name"] for d in saved["duts"] if d["role"] == "COM" for m in d["members"]] == ["SPARE"]
+
 def test_exchange_renames_only_the_affected_parameter_and_its_conditions():
     from backend.v2_member_sync import sync_consumers
 

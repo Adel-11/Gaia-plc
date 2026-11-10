@@ -256,6 +256,16 @@ def register_v2_routes(app, get_session, current_user, csrf):
         from backend.v2_fb_flow import update_flow
         from backend.v2_member_sync import member_deltas, sync_fb, sync_consumers
         edits = member_deltas(original, typ)
+        manual_st = current.get("st_overrides") or {}
+        from backend.v2_plc_validation import _plain_variables
+        for dut in submitted:
+            removed = {name for name, replacement in edits.get(dut["role"], {}).items() if replacement is None}
+            declaration = manual_st.get(dut["name"], {}).get("declaration")
+            if removed and declaration is not None:
+                present = sorted(name for name in _plain_variables(declaration) if name.casefold() in removed)
+                if present:
+                    errors.append(f"{dut['name']} déclare encore {', '.join(present)} en ST manuel. Retirez ces membres dans « ST complet » ou choisissez « Revenir au modèle » avant de les supprimer du tableau.")
+        if errors: return {"token": None, "errors": errors, "warnings": [], "changes": []}
         mappings, sync_errors, updates = sync_fb(
             typ, edits, body.mappings, body.processing_code, body.prefix_code, body.section_overrides,
         )
@@ -322,7 +332,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
             old_rows = {str(m.get("name")): m for m in previous.get("members", [])}
             new_rows = {str(m.get("name")): m for m in proposed.get("members", [])}
             for name in new_rows.keys() - old_rows.keys(): changes.append(f"{proposed['name']}: added {name} : {new_rows[name].get('iec_type')}")
-            for name in old_rows.keys() - new_rows.keys(): changes.append(f"{proposed['name']}: removed {name}")
+            for name in old_rows.keys() - new_rows.keys(): changes.append(f"{proposed['name']} : supprimer {name}")
             for name in new_rows.keys() & old_rows.keys():
                 fields = [field for field in ("iec_type", "default_value", "section", "unit", "comment", "exchange") if new_rows[name].get(field) != old_rows[name].get(field)]
                 if fields: changes.append(f"{proposed['name']}.{name}: changed {', '.join(fields)}")
