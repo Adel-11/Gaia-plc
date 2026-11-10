@@ -23,3 +23,21 @@
 .ex-page>.ex-alert{position:relative;z-index:10;margin:8px 15px;width:fit-content;max-width:calc(100% - 30px);max-height:100px;overflow:auto;box-shadow:0 8px 24px #30210f20}.ex-mapper-dialog .ex-alert{margin:9px 16px}
 
 .ex-workspace>.workspace-panel>[class*="workspace-panel-resize"],.ex-mapper-dialog>.workspace-panel>[class*="workspace-panel-resize"]{display:none}
+
+.ex-delete-dialog {
+  border: 0;
+  max-width: calc(100vw - 32px);
+  max-height: 86dvh;
+  color: #263341;
+}
+.ex-delete-dialog::backdrop { background: #17212c99; }
+.ex-button.ex-delete-button:not(:disabled) {
+  background: #fff5f4;
+  border-color: #e4aaa6;
+  color: #9e3029;
+}
+.ex-delete-dialog .ex-delete-button:not(:disabled) {
+  background: #a3312a;
+  border-color: #a3312a;
+  color: white;
+}

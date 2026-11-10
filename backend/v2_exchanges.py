@@ -325,9 +325,28 @@ def register_exchange_routes(app,get_session,current_user,csrf):
                 if len(state['exchange_calls'])==before: raise ValueError('Exchange call not found')
                 changes.append('Disconnect instance pair')
             elif body.action=='delete_function':
-                fn=next((f for f in state.get('exchange_functions',[]) if str(f.get('id') or _fname(f))==str(body.function_id)),None)
-                if not fn: raise ValueError('Exchange function not found')
-                name=_fname(fn); sheet=str(fn.get('sheet') or fn.get('Sheet') or ''); impacted=[c for c in state.get('exchange_calls',[]) if str(c.get('function_id') or c.get('FC'))==name]; state['exchange_functions'].remove(fn); state['exchange_calls']=[c for c in state.get('exchange_calls',[]) if str(c.get('function_id') or c.get('FC'))!=name]; state['exchange_functions_detail']=[r for r in state.get('exchange_functions_detail',[]) if str(r.get('sheet') or r.get('Sheet'))!=sheet]; changes.append(f'Delete {name} and {len(impacted)} connected calls'); warnings.append('Connected instance pairs listed in this preview will also be deleted: '+(', '.join(str(c.get('id')) for c in impacted) if impacted else 'none'))
+                fn = next((f for f in state.get('exchange_functions', [])
+                           if body.function_id and body.function_id in {str(f.get('id')), _fname(f)}), None)
+                if not fn: raise ValueError('Fonction d’échange introuvable.')
+                name = _fname(fn)
+                aliases = {str(value).casefold() for value in (name, fn.get('id'), fn.get('FC')) if value}
+                sheet = fn.get('sheet') or fn.get('Sheet')
+                state['exchange_functions'].remove(fn)
+                (state.get('object_folders') or {}).pop(name, None)
+                if sheet and not any((f.get('sheet') or f.get('Sheet')) == sheet for f in state['exchange_functions']):
+                    state['exchange_functions_detail'] = [r for r in state.get('exchange_functions_detail', [])
+                                                          if (r.get('sheet') or r.get('Sheet')) != sheet]
+                changes.append(f'Supprimer {name} et ses mappings.')
+                kept_calls = []
+                for call in state.get('exchange_calls', []):
+                    identifiers = {str(call[key]).casefold() for key in ('function_id', 'FC', 'exchange_id') if call.get(key)}
+                    if aliases.isdisjoint(identifiers):
+                        kept_calls.append(call)
+                        continue
+                    a = call.get('instance_a_id') or call.get('Instance A') or '?'
+                    b = call.get('instance_b_id') or call.get('Instance B') or '?'
+                    changes.append(f'Retirer la connexion {a} ↔ {b}.')
+                state['exchange_calls'] = kept_calls
             else: raise ValueError('Unsupported exchange action')
         except (ValueError,TypeError,KeyError) as exc: return {'token':None,'errors':[str(exc)],'warnings':warnings,'changes':changes}
         try:
@@ -344,6 +363,12 @@ def register_exchange_routes(app,get_session,current_user,csrf):
                 old_objects=build_program(current)
                 old_errors=set(validate_xml(serialize_program(old_objects,current,list(old_objects)),current,old_objects)['errors'])
                 objects=build_program(state)
+                if body.action == 'delete_function':
+                    from backend.v2_type_deletion import code_identifiers
+                    for block, obj in objects.items():
+                        st = '\n'.join(obj['element'].xpath(".//*[local-name()='ST' or local-name()='InterfaceAsPlainText']/*[local-name()='xhtml']/text()"))
+                        if name.casefold() in code_identifiers(st):
+                            errors.append(f'{block} utilise encore {name}. Retirez cette référence dans son ST avant de supprimer la fonction.')
                 checked=validate_xml(serialize_program(objects,state,list(objects)),state,objects)
                 errors.extend(e for e in checked.get('errors',[]) if e not in old_errors)
                 warnings.extend(checked.get('warnings',[]))

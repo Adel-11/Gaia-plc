@@ -124,7 +124,26 @@ def test_review_tokens_auth_stale_expiry_and_final_custom_references(tmp_path,mo
         reconnected=client.get('/api/v2/exchanges').json()
         assert len(reconnected['functions'])==len(current['functions'])
         assert any(c['id']==call['id'] for c in reconnected['calls'])
-        change('delete_function',function_id=fn['id'])
+        source_path = '/api/v2/code/source/GFC_EXC'
+        source = client.get(source_path).json()
+        manual = client.post(source_path, headers=headers, json={
+            'revision': source['revision'], 'body': source['body'] + '\n// Keep existing calls',
+        })
+        assert manual.status_code == 200, manual.text
+        delete_body = {'action': 'delete_function', 'function_id': fn['name']}
+        blocked = client.post('/api/v2/exchanges/preview', headers=headers, json={
+            **delete_body, 'revision': manual.json()['revision'],
+        }).json()
+        assert not blocked['token'] and any('GFC_EXC utilise encore' in error for error in blocked['errors']), blocked
+        restored = client.post(source_path, headers=headers, json={'revision': manual.json()['revision'], 'body': None})
+        assert restored.status_code == 200, restored.text
+        deletion = client.post('/api/v2/exchanges/preview', headers=headers, json={
+            **delete_body, 'revision': restored.json()['revision'],
+        }).json()
+        assert not deletion['errors'], deletion
+        assert f"Retirer la connexion {call['instance_a_id']} ↔ {call['instance_b_id']}." in deletion['changes']
+        assert client.post('/api/v2/exchanges/apply', headers=headers, json={'token': deletion['token']}).status_code == 200
         deleted=client.get('/api/v2/exchanges').json()
         assert not any(f['id']==fn['id'] for f in deleted['functions'])
         assert not any(c['function_id']==fn['id'] for c in deleted['calls'])
+        assert all(obj['name'] != fn['name'] for obj in client.get('/api/v2/code').json()['objects'])
