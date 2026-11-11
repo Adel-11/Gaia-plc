@@ -7,6 +7,39 @@ import uuid
 PATH = r'(?:PA|COM|EXC|IO|INTERN)\.[A-Za-z_]\w*(?:\[-?\d+\])?(?:\.[A-Za-z_]\w*(?:\[-?\d+\])?)*'
 ASSIGN = re.compile(rf'^(\s*)({PATH})\s*:=\s*({PATH})\s*;\s*(?://[^\r\n]*)?(?:\r?\n)?$')
 HEAD = lambda name: re.compile(r'^\s*//\s*(?:[123]\.\s*)?' + name + r'\s*\r?\n', re.M | re.I)
+BOOL_TOKEN = re.compile(rf'({PATH})|\b(AND|OR)\b|([()])', re.I)
+
+
+def source_paths(source):
+    """Read a variable or a Boolean expression without accepting arbitrary ST."""
+    if not isinstance(source, str) or len(source) > 4096:
+        raise ValueError('Source du mapping invalide.')
+    paths, depth, expect_operand = [], 0, True
+    position = 0
+    while position < len(source):
+        if source[position].isspace():
+            position += 1
+            continue
+        match = BOOL_TOKEN.match(source, position)
+        if match:
+            path, operator, paren = match.groups()
+            if expect_operand and path:
+                paths.append(path)
+                expect_operand = False
+            elif expect_operand and paren == '(':
+                depth += 1
+            elif not expect_operand and operator:
+                expect_operand = True
+            elif not expect_operand and paren == ')' and depth:
+                depth -= 1
+            else:
+                break
+            position = match.end()
+            continue
+        break
+    if position != len(source) or expect_operand or depth:
+        raise ValueError('Expression invalide. Utilisez des variables, AND, OR et des parenthèses équilibrées.')
+    return paths
 
 
 def _segments(code, section):
@@ -149,10 +182,21 @@ def update_flow(typ, state, mappings=None, processing_code=None):
             if not isinstance(mapping,dict): errors.append('Invalid mapping row'); continue
             section, src, dst = mapping.get('section'), mapping.get('source',''), mapping.get('destination','')
             if section not in {'inputs','outputs'}: errors.append('Mapping section must be inputs or outputs'); continue
-            if src not in allowed or dst not in allowed: errors.append(f'Unknown mapping variable: {src} → {dst}'); continue
-            if allowed[src] != allowed[dst]: errors.append(f'Incompatible mapping types: {src} ({allowed[src]}) → {dst} ({allowed[dst]})')
-            if section == 'inputs' and (src.split('.')[0] not in {'PA','COM','EXC','IO'} or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/EXC/IO to INTERN')
-            if section == 'outputs' and (not src.startswith('INTERN.') or dst.split('.')[0] not in {'COM','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/EXC/IO')
+            try:
+                paths = source_paths(src)
+            except ValueError as exc:
+                errors.append(f'{dst or section} : {exc}')
+                continue
+            if not isinstance(dst, str) or dst not in allowed or any(path not in allowed for path in paths):
+                errors.append(f'Unknown mapping variable: {src} → {dst}')
+                continue
+            expression = len(paths) > 1 or src.strip() != paths[0]
+            if expression and (allowed[dst] != 'BOOL' or any(allowed[path] != 'BOOL' for path in paths)):
+                errors.append(f'{dst} : les expressions AND / OR exigent des variables et une destination BOOL.')
+            elif not expression and allowed[paths[0]] != allowed[dst]:
+                errors.append(f'Incompatible mapping types: {src} ({allowed[paths[0]]}) → {dst} ({allowed[dst]})')
+            if section == 'inputs' and (any(path.split('.')[0] not in {'PA','COM','EXC','IO'} for path in paths) or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/EXC/IO to INTERN')
+            if section == 'outputs' and (any(not path.startswith('INTERN.') for path in paths) or dst.split('.')[0] not in {'COM','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/EXC/IO')
             key = (section,dst)
             if key in destinations: errors.append(f'Duplicate mapping destination: {dst}')
             destinations.add(key)

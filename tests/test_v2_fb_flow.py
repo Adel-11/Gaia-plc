@@ -1,7 +1,8 @@
 import copy
+import pytest
 from fastapi.testclient import TestClient
 from backend.v2_engine import load_pack
-from backend.v2_fb_flow import convert_body, render_flow, flow_view, update_flow, convert_project
+from backend.v2_fb_flow import convert_body, render_flow, flow_view, update_flow, convert_project, source_paths
 from backend.v2_plc import build_program, serialize_program
 from backend.v2_plc_validation import _st_for_compare, validate_xml
 from backend.main import create_app
@@ -41,6 +42,30 @@ def test_legacy_conditions_comments_and_calculations_move_into_processing_once()
     assert view['migrations']
 
 
+@pytest.mark.parametrize('source', ['(IO.A OR IO.B', 'IO.A OR OR IO.B', 'IO.A; IO.B := TRUE', 'IO.A OR FNC_CALL()'])
+def test_boolean_mapping_rejects_invalid_syntax_and_arbitrary_st(source):
+    with pytest.raises(ValueError):
+        source_paths(source)
+
+
+def test_boolean_mapping_checks_types_and_updates_operand_references():
+    from backend.v2_member_sync import sync_fb
+
+    typ = {'name': 'Pump', 'duts': [
+        {'role': 'IO', 'members': [{'name': 'A', 'iec_type': 'BOOL'}, {'name': 'Count', 'iec_type': 'INT'}]},
+        {'role': 'INT', 'members': [{'name': 'Run', 'iec_type': 'BOOL'}]},
+    ]}
+    state = {'types': []}
+    row = {'section': 'inputs', 'source': 'IO.A AND IO.Count', 'destination': 'INTERN.Run'}
+    assert update_flow(typ, state, mappings=[row])
+    row['source'] = '(IO.A OR IO.A) AND IO.A'
+    assert update_flow(typ, state, mappings=[row]) == []
+    maps, errors, _ = sync_fb(typ, {'IO': {'a': 'Ready'}})
+    assert not errors and maps[0]['source'] == '(IO.Ready OR IO.Ready) AND IO.Ready'
+    maps, errors, _ = sync_fb(typ, {'IO': {'a': None}})
+    assert not errors and not maps
+
+
 def test_mapping_and_processing_edits_reach_generated_xml_without_touching_custom_code(tmp_path, monkeypatch):
     monkeypatch.delenv('DATABASE_URL', raising=False)
     monkeypatch.setenv('ADMIN_USERNAME','flow-admin');monkeypatch.setenv('ADMIN_PASSWORD','flow-password')
@@ -51,14 +76,16 @@ def test_mapping_and_processing_edits_reach_generated_xml_without_touching_custo
         current=client.get('/api/v2/objects/type/UPI_LOCAL_FUXA').json()
         wires=copy.deepcopy(current['fb']['mappings'])
         output=next(w for w in wires if w['section']=='outputs' and w['destination']=='COM.SCADA_OUTPUT_LOCAL_ACTIVE')
-        output['source']='INTERN.AUTO_REQUEST'
+        expression = '(INTERN.AUTO_REQUEST OR INTERN.LOCAL_ACTIVE) AND INTERN.LOCAL_ACTIVE'
+        output['source'] = expression
         response=client.post('/api/v2/objects/type/UPI_LOCAL_FUXA/preview',headers=headers,json={
             'revision':current['revision'],'mappings':wires,'processing_code':'INTERN.LOCAL_ACTIVE := FALSE;\n','custom_code':'// custom stays exactly\r\n'})
         assert response.status_code==200,response.text
         assert not response.json()['errors'],response.json()
         assert client.post('/api/v2/objects/apply',headers=headers,json={'token':response.json()['token']}).status_code==200
         saved=client.get('/api/v2/objects/type/UPI_LOCAL_FUXA').json()
-        assert 'COM.SCADA_OUTPUT_LOCAL_ACTIVE := INTERN.AUTO_REQUEST;' in saved['fb']['body']
+        assert f'COM.SCADA_OUTPUT_LOCAL_ACTIVE := {expression};' in saved['fb']['body']
+        assert any(row['source'] == expression for row in saved['fb']['mappings'])
         assert saved['fb']['processing_code']=='INTERN.LOCAL_ACTIVE := FALSE;\n'
         assert saved['fb']['custom_code']=='// custom stays exactly\r\n'
         rejected=client.post('/api/v2/objects/type/UPI_LOCAL_FUXA/preview',headers=headers,json={
@@ -66,4 +93,4 @@ def test_mapping_and_processing_edits_reach_generated_xml_without_touching_custo
         assert rejected['errors'] and not rejected['token']
         plan=client.post('/api/v2/plc/preview',headers=headers,json={'mode':'full'}).json()
         assert plan['errors']==[]
-        assert b'COM.SCADA_OUTPUT_LOCAL_ACTIVE := INTERN.AUTO_REQUEST;' in client.get('/api/v2/plc/download/'+plan['token']).content
+        assert f'COM.SCADA_OUTPUT_LOCAL_ACTIVE := {expression};'.encode() in client.get('/api/v2/plc/download/'+plan['token']).content

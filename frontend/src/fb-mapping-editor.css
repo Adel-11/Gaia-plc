@@ -2,3 +2,19 @@
 .ov-fb-panels{display:flex;flex-direction:column;gap:12px}.ov-fb-code{height:300px;min-height:220px;display:flex;flex-direction:column;gap:6px}.ov-fb-code h4{font-size:13px;margin:0;color:#54657b}.ov-fb-code .ov-editor-wrap{flex:1;min-height:0}.ov-fb-preserve-note{margin:0;padding:8px 10px;border:1px solid #eee0bd;border-radius:7px;background:#fffbef;color:#78652c;font-size:12px}.ov-table td select{width:100%;min-width:145px;border:1px solid transparent;background:transparent;border-radius:4px;padding:5px 4px;font:14px ui-sans-serif,system-ui;color:#243142}.ov-table td select:focus{outline:2px solid #9ab7ed;border-color:#7da1e4;background:white}.ov-table td select:disabled{color:#526071}.ov-table td input[aria-label$="custom IEC type"]{min-width:190px;font-size:13px}
 
 .fb-map-search{width:min(100%,420px);padding:10px;margin:10px 0;border:1px solid #c7d4dd;border-radius:5px;font-size:16px}
+
+.fb-map-section { --map-line: var(--gaia-line, #ded5df); border-color: var(--map-line); }
+.fb-map-section > header { flex-wrap: wrap; }
+.fb-map-section > header h4 { font-size: 14px; letter-spacing: 0; }
+.fb-map-search { width: min(calc(100% - 24px), 400px); margin: 10px 12px; }
+.fb-map-table { min-width: 410px; }
+.fb-map-table select { min-width: 135px; }
+.fb-map-mode { padding: 4px 0 0; border: 0; background: transparent; color: var(--gaia-accent, #68436b); text-align: left; cursor: pointer; font-size: 13px; }
+.fb-map-mode:hover { text-decoration: underline; }
+.fb-map-source code { overflow-wrap: anywhere; }
+.fb-map-expression { display: grid; gap: 6px; min-width: 195px; }
+.fb-map-expression label { display: grid; gap: 4px; font-size: 13px; }
+.fb-map-expression textarea { width: 100%; min-height: 62px; box-sizing: border-box; resize: vertical; padding: 7px; border: 1px solid var(--map-line); border-radius: 5px; font: 13px/1.4 ui-monospace, Consolas, monospace; }
+.fb-map-expression-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.fb-map-expression-tools select { flex-basis: 100%; }
+.fb-map-expression-tools button { padding: 4px 8px; border: 1px solid var(--map-line); border-radius: 5px; background: var(--gaia-tint, #f4eef5); color: var(--gaia-ink, #28232c); cursor: pointer; font: 13px ui-monospace, Consolas, monospace; }
