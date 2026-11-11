@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-11 — Recopies et variables E/S
+
+- Choisir une instance, un membre GVL_IO et une variable GVL_IOMAP compatible, avec aperçu du ST et liaison facultative au rack.
+- Retirer une recopie seule ou supprimer la déclaration IOMAP, ses recopies et ses liaisons matérielles. Les références dans le ST manuel sont signalées avant suppression.
+
 ## 0.9.0 - 2026-10-23 - V2 stage 8
 
 - Add separate generated-code and function tables with search, CODESYS comparison and calculation timestamps.

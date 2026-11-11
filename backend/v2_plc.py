@@ -259,16 +259,21 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
 def _ensure_io_declarations(iomap, state, valid_instances):
     if iomap is None:
         return
-    for row in state.get("io_channels",[]):
-        inst=str(row.get("Instance") or row.get("instance_id") or "")
-        if inst and inst not in valid_instances: continue
-        raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
-        match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
-        if match: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("Type") or "BOOL")
-    for row in state.get("virtual_io",[]):
-        raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
-        match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
-        if match: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("iec_type") or "BOOL")
+    removed = {name.casefold() for name in state.get("removed_iomap_variables", [])}
+    for variable in iomap.findall(NS + "variable"):
+        if variable.get("name", "").casefold() in removed:
+            iomap.remove(variable)
+    declared = {variable.get("name", "").casefold() for variable in iomap.findall(NS + "variable")}
+    for collection in ("io_channels", "virtual_io"):
+        for row in state.get(collection, []):
+            inst = str(row.get("Instance") or row.get("instance_id") or "")
+            if collection == "io_channels" and inst and inst not in valid_instances:
+                continue
+            path = re.sub(r"^GVL_IOMAP\.", "", str(row.get("GVL_IOMAP variable") or "").strip(), flags=re.I)
+            match = re.match(r"([A-Za-z_]\w*)", path)
+            if match and match[1].casefold() not in declared:
+                _add_gvl_variable(iomap, match[1], row.get("IOMAP type") or row.get("iec_type") or row.get("Type") or "BOOL")
+                declared.add(match[1].casefold())
 
 
 def _mapped_name(value):

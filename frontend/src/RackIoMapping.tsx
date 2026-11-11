@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import IoCopyManager, { type CopyAction, type CopyState } from './IoCopyManager'
 import WorkspacePanel from './WorkspacePanel'
 import './rack-io-mapping.css'
 
@@ -8,7 +9,7 @@ type Channel = {
 }
 type Variable = { name: string; iec_type: string; direction?: Channel['direction'] | null }
 type Hardware = { filename: string; application: string; channels: Channel[]; variables: Variable[] }
-type RackState = { revision: number; hardware: Hardware | null }
+type RackState = Omit<CopyState, 'hardware'> & { revision: number; hardware: Hardware | null }
 type Draft = { revision: number; changes: Record<string, string | null> }
 
 async function rackRequest(path: string, options?: RequestInit): Promise<Response> {
@@ -27,6 +28,7 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
   const [draft, setDraft] = useState<Draft | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [feedbackArea, setFeedbackArea] = useState<'rack' | 'copies'>('copies')
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -34,7 +36,7 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
     const controller = new AbortController()
     void rackRequest('', { signal: controller.signal }).then(r => r.json())
       .then(result => { if (!controller.signal.aborted) setState(result) })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause.message) })
+      .catch(cause => { if (!controller.signal.aborted) { setFeedbackArea('copies'); setError(cause.message) } })
     return () => controller.abort()
   }, [revision])
 
@@ -57,8 +59,8 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
     })
   }
 
-  async function run(action: () => Promise<void>) {
-    setBusy(true); setError(''); setNotice('')
+  async function run(action: () => Promise<void>, area: 'rack' | 'copies' = 'rack') {
+    setFeedbackArea(area); setBusy(true); setError(''); setNotice('')
     try { await action() }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'La modification a échoué.') }
     finally { setBusy(false) }
@@ -102,17 +104,30 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   })
 
-  return <WorkspacePanel id="communications:io-hardware" title="Mappage matériel CODESYS" initialHeight={540} minHeight={240}>
+  const updateCopy = async (action: CopyAction) => {
+    if (!state || changed) return
+    await run(async () => {
+      const response = await rackRequest('/copies', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        body: JSON.stringify({ revision: state.revision, ...action }) })
+      setState(await response.json())
+      setNotice(action.action === 'delete' ? `${action.iomap} a été supprimée.` : action.action === 'disconnect' ? 'Recopie retirée. La variable et ses canaux restent en place.' : 'Recopie enregistrée.')
+      onSaved()
+    }, 'copies')
+  }
+
+  return <>
+    <IoCopyManager state={state} busy={busy} blocked={!!changed} error={feedbackArea === 'copies' ? error : ''} notice={feedbackArea === 'copies' ? notice : ''} update={updateCopy}/>
+    <WorkspacePanel id="communications:io-hardware" title="Mappage matériel CODESYS" minHeight={180}>
     <div className="rack-io-mapping">
       <form className="rack-io-upload" onSubmit={upload}>
         <label>XML du rack CODESYS<input ref={fileInput} type="file" accept=".xml,application/xml,text/xml" disabled={busy || !!changed} onChange={event => setFile(event.target.files?.[0] || null)} /></label>
         <button type="submit" className="comm-btn" disabled={!file || !state || busy || !!changed}>{hardware ? 'Remplacer le modèle' : 'Charger le modèle'}</button>
       </form>
-      {error && <p role="alert" className="comm-alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {feedbackArea === 'rack' && error && <p role="alert" className="comm-alert">{error}</p>}
+      {feedbackArea === 'rack' && notice && <p role="status">{notice}</p>}
       {!hardware && <p>Charge le XML CODESYS du rack et de ses modules E/S. Les canaux pourront être reliés aux variables du projet dans <code>GVL_IOMAP</code>.</p>}
       {hardware && <>
-        <p>Relie chaque canal à une variable <code>GVL_IOMAP</code> compatible. Pour créer une variable ou la relier à un membre d’instance, utilise le panneau de câblage E/S ci-dessous.</p>
+        <p>Ce tableau relie le rack à <code>GVL_IOMAP</code>. Pour définir la recopie avec l’instance, utilise le panneau ci-dessus.</p>
         <div className="rack-io-toolbar">
           <label>Module<select value={selectedModule} onChange={event => setModule(event.target.value)}>{modules.map(name => <option key={name}>{name}</option>)}</select></label>
           <span className="rack-io-filename" title={hardware.filename}>{hardware.filename} · {hardware.channels.length} canaux</span>
@@ -145,4 +160,5 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
       </>}
     </div>
   </WorkspacePanel>
+  </>
 }

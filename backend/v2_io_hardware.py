@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from fastapi import Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -10,6 +11,7 @@ from lxml import etree
 from pydantic import BaseModel, Field
 
 from backend.v2_codesys import _safe_parse
+from backend.v2_io_copies import assign_copy, authored_references, copy_options, remove_copy, variable_direction, variable_rows
 from backend.v2_plc import NS, ODATA, _ensure_io_declarations, _source, _source_objects
 
 STATE_KEY = 'codesys_io_hardware'
@@ -113,10 +115,10 @@ def _set_mapping(channel, variable):
             channel.parameter.remove(mapping)
 
 
-def _variable_options(state):
+def _variable_options(state, *, generated=False):
     variables = {}
     manual = (state.get('st_overrides') or {}).get('GVL_IOMAP', {}).get('declaration')
-    if manual is None:
+    if manual is None or generated:
         gvl = _source_objects(_source(state)).get('GVL_IOMAP')
         type_ids = {str(typ.get('id') or typ.get('name')) for typ in state.get('types', [])}
         instance_names = {str(row.get('name') or row.get('id')) for row in state.get('instances', []) if str(row.get('type_id')) in type_ids}
@@ -125,19 +127,17 @@ def _variable_options(state):
             for variable in gvl.findall(f'{NS}variable'):
                 kind = variable.find(f'{NS}type/*')
                 if kind is not None:
-                    variables[variable.get('name')] = etree.QName(kind).localname.upper()
+                    variables[variable.get('name')] = (kind.get('name') or etree.QName(kind).localname).upper()
     else:
         from backend.v2_plc_validation import _st_code
-        for names, kind in re.findall(r'(?im)^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*:\s*(\w+)', _st_code(manual)):
+        for names, kind in re.findall(r'(?im)(?:^|(?<=;))\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?:AT\s+%[\w*.]+\s*)?:\s*(\w+)', _st_code(manual)):
             variables.update({name.strip(): kind.upper() for name in names.split(',')})
     directions = {}
-    for row in [*state.get('io_channels', []), *state.get('virtual_io', [])]:
-        variable = str(row.get('GVL_IOMAP variable') or '').split('.')[-1].casefold()
-        direction = {'DI': 'input', 'AI': 'input', 'DO': 'output', 'AO': 'output'}.get(row.get('I/O type'))
-        if direction:
-            directions[variable] = direction
+    for _, row, key in variable_rows(state):
+        if direction := variable_direction(row):
+            directions[key] = direction
     return {name.casefold(): {'name': name, 'iec_type': kind, 'direction': directions.get(name.casefold())}
-            for name, kind in variables.items() if name and kind in SCALAR_TYPES}
+            for name, kind in sorted(variables.items(), key=lambda item: str(item[0]).casefold()) if name}
 
 
 def _mapping_errors(channels, variables, application):
@@ -170,6 +170,16 @@ class MappingUpdate(BaseModel):
     changes: dict[str, str | None] = Field(max_length=500)
 
 
+class CopyUpdate(BaseModel):
+    revision: int
+    action: Literal['assign', 'disconnect', 'delete']
+    iomap: str = Field(max_length=256)
+    instance: str | None = None
+    member: str | None = None
+    direction: Literal['input', 'output'] | None = None
+    channel_key: str | None = None
+
+
 def register_io_hardware_routes(app, get_session, current_user, csrf):
     from backend import v2_store
 
@@ -191,15 +201,21 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
 
     def view(state):
         hardware = state.get(STATE_KEY)
-        if not hardware:
-            return {'revision': state['revision'], 'hardware': None}
-        _, channels = parse(hardware['xml'].encode('utf-8'))
         options = _variable_options(state)
+        listed = options
+        if (state.get('st_overrides') or {}).get('GVL_IOMAP', {}).get('declaration') is not None:
+            listed = {**options, **{key: {**option, 'missing': True}
+                                   for key, option in _variable_options(state, generated=True).items() if key not in options}}
+        result = {'revision': state['revision'], 'hardware': None, **copy_options(state, listed)}
+        if not hardware:
+            return result
+        _, channels = parse(hardware['xml'].encode('utf-8'))
         errors = _mapping_errors(channels, options, hardware['application'])
-        return {'revision': state['revision'], 'hardware': {'filename': hardware['filename'], 'application': hardware['application'],
+        result['hardware'] = {'filename': hardware['filename'], 'application': hardware['application'],
                 'channels': [{key: getattr(c, key) for key in ('key', 'module', 'label', 'iec_type', 'direction', 'variable', 'locked')}
                              | {'error': errors.get(c.key)} for c in channels.values()],
-                'variables': list(options.values())}}
+                'variables': [option for option in options.values() if option['iec_type'] in SCALAR_TYPES]}
+        return result
 
     def save(session, state, user):
         try:
@@ -212,6 +228,75 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
     @app.get('/api/v2/io-hardware')
     def load(session=Depends(get_session), user=Depends(current_user)):
         return view(project(session))
+
+    @app.post('/api/v2/io-hardware/copies')
+    def update_copy(body: CopyUpdate, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        from backend.v2_configuration import synchronize_io_workbook
+
+        state = project(session)
+        check_revision(state, body.revision)
+        options = _variable_options(state)
+        key = body.iomap.casefold()
+        option = options.get(key)
+        if option is None and body.action in {'delete', 'disconnect'}:
+            option = _variable_options(state, generated=True).get(key)
+        if option is None:
+            raise HTTPException(404, 'Cette variable est absente de GVL_IOMAP.')
+        name = option['name']
+        hardware = state.get(STATE_KEY)
+        try:
+            if body.action == 'assign':
+                if not body.direction:
+                    raise ValueError('Choisissez le sens de la recopie.')
+                assign_copy(state, option, body.instance, body.member, body.direction)
+            else:
+                if body.action == 'delete' and key in options and (state.get('st_overrides') or {}).get('GVL_IOMAP', {}).get('declaration') is not None:
+                    raise ValueError(f'GVL_IOMAP utilise une déclaration ST manuelle. Retirez {name} dans l’éditeur ST ou revenez à la déclaration générée avant de supprimer la variable ici.')
+                remove_copy(state, name, delete=body.action == 'delete')
+
+            if body.channel_key and (body.action != 'assign' or not hardware):
+                raise ValueError('Chargez un XML du rack avant d’assigner un canal matériel.')
+            if hardware and body.action in {'assign', 'delete'}:
+                root, channels = parse(hardware['xml'].encode('utf-8'))
+                path = f'{hardware["application"]}.GVL_IOMAP.{name}'
+                linked = [channel for channel in channels.values() if channel.variable.casefold() == path.casefold()]
+                if body.action == 'delete':
+                    for channel in linked:
+                        if channel.locked:
+                            raise ValueError('Cette variable est utilisée par un mappage matériel de groupe. Retirez ce mappage dans CODESYS et rechargez le XML du rack.')
+                        _set_mapping(channel, '')
+                    if any((node.text or '').strip().casefold() == path.casefold() for mapping in root.iter('Mapping') for node in mapping.iter()):
+                        raise ValueError('Cette variable est encore référencée dans une partie non éditable du rack. Retirez la liaison dans CODESYS et rechargez le XML.')
+                    if linked:
+                        state[STATE_KEY] = {**hardware, 'xml': _xml_bytes(root).decode('utf-8')}
+                else:
+                    if body.channel_key:
+                        channel = channels.get(body.channel_key)
+                        if channel is None or channel.locked or channel.direction != body.direction or channel.iec_type != option['iec_type']:
+                            raise ValueError('Ce canal matériel n’est pas compatible avec la variable et le sens choisis.')
+                        if channel.variable and channel.variable.casefold() != path.casefold():
+                            raise ValueError('Ce canal est déjà relié à une autre variable. Déliez-le dans le panneau matériel avant de le réutiliser.')
+                        channel.variable = path
+                        _set_mapping(channel, path)
+                        if channel not in linked:
+                            linked.append(channel)
+                    errors = _mapping_errors(channels, {**options, name.casefold(): {**option, 'direction': body.direction}}, hardware['application'])
+                    if blocked := [errors[channel.key] for channel in linked if channel.key in errors]:
+                        raise ValueError(' '.join(dict.fromkeys(blocked)))
+                    if body.channel_key:
+                        state[STATE_KEY] = {**hardware, 'xml': _xml_bytes(root).decode('utf-8')}
+
+            if body.action in {'delete', 'disconnect'} and (references := authored_references(state, name)):
+                # A surviving reference is fine for a disconnected declaration, but a
+                # manual GFC copy would make the requested disconnection misleading.
+                if body.action == 'disconnect':
+                    references = [ref for ref in references if ref in {'GFC_IO_IN', 'GFC_IO_OUT'}]
+                if references:
+                    raise ValueError(f'{name} est encore utilisée dans le ST de {", ".join(references)}. Modifiez ce code dans l’éditeur ST puis réessayez.')
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        synchronize_io_workbook(state)
+        return save(session, state, user)
 
     @app.post('/api/v2/io-hardware/template')
     async def upload(file: UploadFile = File(...), revision: int = Form(...), session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):

@@ -353,6 +353,17 @@ def _sync_rows(state, collection, workbook, sheet_names, keyfn):
         sh["rows"]=output
 
 
+def synchronize_io_workbook(state):
+    io = state.get('workbooks', {}).get('IO_PHYSICAL.xlsx')
+    sh = _sheet_map(io).get('IO') if io else None
+    if sh:
+        headers = sh.get('headers', [])
+        old = {tuple(str(record.get(key)) for key in ('Slot', 'Channel')): record
+               for values in sh.get('rows', []) for record in [dict(zip(headers, values))]}
+        sh['rows'] = [[merged.get(header) for header in headers] for row in state.get('io_channels', [])
+                      for merged in [{**old.get((str(row.get('Slot')), str(row.get('Channel'))), {}), **row}]]
+
+
 def synchronize_workbooks(state):
     """Patch only supported sheets, preserving other workbooks and workbook metadata."""
     books=state.get("workbooks",{})
@@ -402,13 +413,7 @@ def synchronize_workbooks(state):
                 prior=next((o for o in old if str(o.get("Slot"))==str(row.get("Slot"))),{})
                 out.append([{**prior,**row}.get(h) for h in headers])
             rack["rows"]=out
-        sh=_sheet_map(io).get("IO")
-        if sh:
-            headers=sh.get("headers",[]); old=[dict(zip(headers,row)) for row in sh.get("rows",[])]; out=[]
-            for row in state.get("io_channels",[]):
-                prior=next((o for o in old if str(o.get("Slot"))==str(row.get("Slot")) and str(o.get("Channel"))==str(row.get("Channel"))),{})
-                out.append([{**prior,**row}.get(h) for h in headers])
-            sh["rows"]=out
+    synchronize_io_workbook(state)
     pa=books.get("PARAMETERS_PA.xlsx")
     if pa:
         for sh in pa.get("sheets",[]):
