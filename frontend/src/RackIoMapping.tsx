@@ -7,7 +7,7 @@ type Channel = NonNullable<CopyState['hardware']>['channels'][number] & { error?
 type Hardware = { filename: string; application: string; channels: Channel[]; variables: CopyState['variables']; cards: { name: string; slot: string | number | null; model: string | null }[] }
 type RackState = Omit<CopyState, 'hardware'> & { revision: number; hardware: Hardware | null; can_load_gaia: boolean }
 type Area = 'rack' | 'exports' | 'copies'
-const files = { gvl: 'Gaia-GVL-ES.xml', gfc: 'Gaia-GFC-ES.xml', rack: 'Gaia-mapping-ES.xml', bundle: 'Gaia-exports-ES.zip' }
+const files = { gvl: 'Gaia-GVL-ES.xml', gfc: 'Gaia-GFC-ES.xml', rack: 'Gaia-mapping-ES.xml', mapping: 'Gaia-mappage-canaux.csv', bundle: 'Gaia-exports-ES.zip' }
 
 async function rackRequest(path: string, options?: RequestInit): Promise<Response> {
   const response = await fetch(`/api/v2/io-hardware${path}`, options)
@@ -101,12 +101,12 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
   function download(kind: keyof typeof files) {
     if (!state) return
     void run('exports', async () => {
-      const response = await (kind === 'rack' ? rackRequest('/export') : rackRequest(`/exports/${kind}`, json({ revision: state.revision })))
+      const response = await (kind === 'rack' ? rackRequest('/export') : kind === 'mapping' ? rackRequest('/mapping.csv') : rackRequest(`/exports/${kind}`, json({ revision: state.revision })))
       const url = URL.createObjectURL(await response.blob())
       const link = document.createElement('a')
       link.href = url; link.download = files[kind]; link.click()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-      if (kind !== 'rack') {
+      if (kind !== 'rack' && kind !== 'mapping') {
         const savedRevision = Number(response.headers.get('X-Gaia-Revision'))
         if (savedRevision) setState(current => current ? { ...current, revision: savedRevision } : current)
         onSaved()
@@ -185,16 +185,17 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
         </details>}
       </div>
     </WorkspacePanel>
-    <WorkspacePanel id="communications:io-exports" title="Exports XML E/S" minHeight={150}>
+    <WorkspacePanel id="communications:io-exports" title="Exports E/S" minHeight={150}>
       <div className="rack-io-mapping">
-        <p>Les fichiers utilisent la configuration enregistrée. Importe les GVL, puis les fonctions, puis le XML des cartes dans une copie du projet CODESYS. Les DUT des instances doivent déjà être présents.</p>
+        <p>Importe les GVL et les fonctions sous <b>Application</b> dans CODESYS. Le CSV met à jour les liaisons des canaux gérés dans Gaia sur le rack existant.</p>
         <div className="rack-io-toolbar">
           <button type="button" className="comm-btn" disabled={!state || busy} onClick={() => download('gvl')}>XML · GVL_IO et GVL_IOMAP</button>
           <button type="button" className="comm-btn" disabled={!state || busy} onClick={() => download('gfc')}>XML · GFC_IO_IN et GFC_IO_OUT</button>
-          <button type="button" className="comm-btn" disabled={!hardware || !!invalid || busy} onClick={() => download('rack')}>XML · Mappage des cartes</button>
-          <button type="button" className="comm-btn primary" disabled={!hardware || !!invalid || busy} onClick={() => download('bundle')}>ZIP · Les 3 XML</button>
+          <button type="button" className="comm-btn" disabled={!hardware || !!invalid || busy} onClick={() => download('mapping')}>CSV · Mappage des canaux</button>
+          <button type="button" className="comm-btn primary" disabled={!hardware || !!invalid || busy} onClick={() => download('bundle')}>ZIP · GVL, GFC et mappage</button>
         </div>
-        {!hardware ? <p>Charge le rack pour activer son XML et le ZIP.</p> : !!invalid && <p>Corrige les liaisons signalées pour exporter le rack.</p>}
+        {!hardware ? <p>Charge le rack pour activer le CSV et le ZIP.</p> : !!invalid && <p>Corrige les liaisons signalées pour exporter le mappage.</p>}
+        {hardware && <details><summary>Configuration matérielle du rack</summary><p>L’import de ce XML peut remplacer le rack dans CODESYS.</p><button type="button" className="comm-btn" disabled={!!invalid || busy} onClick={() => download('rack')}>XML · Configuration du rack</button></details>}
         {message('exports')}
       </div>
     </WorkspacePanel>

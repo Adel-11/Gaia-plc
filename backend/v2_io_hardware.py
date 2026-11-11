@@ -1,10 +1,11 @@
 """Edit the hardware mappings of a native CODESYS rack export."""
 from __future__ import annotations
 
+import csv
 import re
 import zipfile
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Literal
 
 from fastapi import Depends, File, Form, HTTPException, UploadFile
@@ -25,6 +26,7 @@ GAIA_RACK = ROOT / 'reference-v2' / 'v8' / 'rack-io.xml'
 GVL_OBJECTS = ('GVL_IO', 'GVL_IOMAP')
 GFC_OBJECTS = ('GFC_IO_IN', 'GFC_IO_OUT')
 RACK_FILENAME = 'Gaia-mapping-ES.xml'
+MAPPING_CSV_FILENAME = 'Gaia-mappage-canaux.csv'
 GVL_FILENAME = 'Gaia-GVL-ES.xml'
 GFC_FILENAME = 'Gaia-GFC-ES.xml'
 
@@ -53,8 +55,7 @@ class Channel:
 
 def read_hardware(data):
     root = _safe_parse(data)
-    forbidden = {'pou', 'dataType', 'globalVars', 'resource', 'task', 'Application', 'library'}
-    if any(etree.QName(node).localname in forbidden for node in root.iter(etree.Element)):
+    if next(root.iter(f'{NS}pou', f'{NS}dataType', f'{NS}globalVars', f'{NS}resource', f'{NS}task'), None) is not None:
         raise ValueError('Chargez un export CODESYS du rack E/S seul, sans objets du programme.')
     channels = {}
     for device in root.iter('Device'):
@@ -174,20 +175,40 @@ def _mapping_errors(channels, variables, application):
     return errors
 
 
-def validated_rack(state):
-    """Return the saved rack with the same mapping checks for each export."""
+def mapping_csv(state):
+    """Export the editable channels using the CODESYS I/O mapping CSV format."""
     hardware = state.get(STATE_KEY)
     if not hardware:
         return None
     try:
-        root, channels = read_hardware(hardware['xml'].encode('utf-8'))
+        _, channels = read_hardware(hardware['xml'].encode('utf-8'))
     except etree.XMLSyntaxError as exc:
         raise ValueError('Le XML du rack enregistré est invalide. Rechargez-le dans Communications → I/O.') from exc
     errors = _mapping_errors(channels, _variable_options(state), hardware['application'])
     if errors:
         details = [f'{channels[key].module} {channels[key].label} : {message}' for key, message in errors.items()]
         raise ValueError('Corrigez le mappage dans Communications → I/O. ' + ' '.join(details))
-    return root
+    output = StringIO(newline='')
+    output.write('//CoDeSys Mapping Export V1.2\r\n'
+                 '//Mapped variable;//Parameter name @ counter in device;//Unit;//Description;//IEC address;//Device name\r\n'
+                 '//Important: change only first, third or fourth column in Excel or add variable name before first\r\n')
+    writer = csv.writer(output, delimiter=';')
+    seen = set()
+    for channel in channels.values():
+        key = (channel.module.casefold(), channel.label.casefold())
+        if key in seen:
+            raise ValueError(f'Plusieurs canaux portent le nom {channel.label} sur {channel.module}. Exportez le mappage depuis CODESYS pour les distinguer.')
+        seen.add(key)
+        if channel.locked or (channel.variable and not VARIABLE.fullmatch(channel.variable)):
+            continue
+        fields = [channel.label, '', '', '', channel.module]
+        if channel.variable:
+            writer.writerow([channel.variable, *fields])
+        else:
+            # CODESYS trims an unquoted space and keeps the old mapping.
+            output.write('" ";')
+            writer.writerow(fields)
+    return output.getvalue().encode('utf-8')
 
 
 def _cards(state, channels):
@@ -295,13 +316,19 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
         return hardware, *parse(hardware['xml'].encode('utf-8'))
 
     def rack_export(state):
+        hardware, _, channels = saved_rack(state)
+        if _mapping_errors(channels, _variable_options(state), hardware['application']):
+            raise HTTPException(409, 'Corrigez les liaisons signalées avant de télécharger le XML du rack.')
+        return hardware['xml'].encode('utf-8')
+
+    def csv_export(state):
         try:
-            rack = validated_rack(state)
-        except (ValueError, etree.XMLSyntaxError) as exc:
+            data = mapping_csv(state)
+        except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
-        if rack is None:
+        if data is None:
             raise HTTPException(409, 'Chargez d’abord le XML du rack.')
-        return state[STATE_KEY]['xml'].encode('utf-8')
+        return data
 
     @app.get('/api/v2/io-hardware')
     def load(session=Depends(get_session), user=Depends(current_user)):
@@ -455,13 +482,17 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
         state = project(session)
         return _attachment(rack_export(state), RACK_FILENAME)
 
+    @app.get('/api/v2/io-hardware/mapping.csv')
+    def download_mapping_csv(session=Depends(get_session), user=Depends(current_user)):
+        return _attachment(csv_export(project(session)), MAPPING_CSV_FILENAME, 'text/csv; charset=utf-8')
+
     @app.post('/api/v2/io-hardware/exports/{kind}')
     def export_io(kind: Literal['gvl', 'gfc', 'bundle'], body: RackRevision, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
         from backend import v2_plc, v2_plc_validation, v2_workspace
 
         state = project(session)
         check_revision(state, body.revision)
-        rack = rack_export(state) if kind == 'bundle' else None
+        mapping = csv_export(state) if kind == 'bundle' else None
         try:
             objects = v2_plc.build_program(state, include_union=True)
             names = (*GVL_OBJECTS, *GFC_OBJECTS)
@@ -487,6 +518,6 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
             return _attachment(gvl if kind == 'gvl' else gfc, filename, revision=saved['revision'])
         output = BytesIO()
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for name, data in ((GVL_FILENAME, gvl), (GFC_FILENAME, gfc), (RACK_FILENAME, rack)):
+            for name, data in ((GVL_FILENAME, gvl), (GFC_FILENAME, gfc), (MAPPING_CSV_FILENAME, mapping)):
                 archive.writestr(name, data)
         return _attachment(output.getvalue(), filename, 'application/zip', revision=saved['revision'])

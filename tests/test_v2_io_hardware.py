@@ -1,3 +1,4 @@
+import csv
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -22,7 +23,7 @@ RACK = f'''<project xmlns="{PLC}"><instances><configurations>
         <Parameter ParameterId="5000"><Value>Preserve module settings</Value></Parameter>
       </HostParameterSet></Connector>
     </DeviceType></Device></data>
-    <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard"><ObjectId>065a9181-4d3c-489e-b33e-e582951e07b2</ObjectId></data>
+    <data name="http://www.3s-software.com/plcopenxml/objectid"><ObjectId>065a9181-4d3c-489e-b33e-e582951e07b2</ObjectId></data>
   </addData></configuration>
 </configurations></instances></project>'''.encode()
 
@@ -40,7 +41,7 @@ def rack_client(tmp_path, monkeypatch):
         yield client, headers
 
 
-def test_rack_mapping_roundtrip_with_full_and_partial_program_exports(rack_client):
+def test_rack_mapping_roundtrip_is_separate_from_program_export(rack_client):
     client, headers = rack_client
     initial = client.get('/api/v2/io-hardware').json()
     assert initial['hardware'] is None
@@ -64,29 +65,20 @@ def test_rack_mapping_roundtrip_with_full_and_partial_program_exports(rack_clien
     assert channels[second['key']].variable == first['variable']
     assert root.find('.//Parameter[@ParameterId="5000"]/Value').text == 'Preserve module settings'
     preview = client.post('/api/v2/plc/preview', json={'mode': 'full'}, headers=headers).json()
-    assert not preview['errors'], preview
+    assert not preview['errors'] and preview['io_mapping_csv'], preview
     program = client.get(f'/api/v2/plc/download/{preview["token"]}')
     assert program.status_code == 200, program.text
-    assert preview['rack'] == 'rack.xml'
-    full = etree.fromstring(program.content)
-    assert full.xpath('//*[local-name()="pou"]/@name')
-    assert full.xpath('string(.//Parameter[@ParameterId="5000"]/Value)') == 'Preserve module settings'
-    assert full.xpath('.//Mapping/Element/Element/text()') == [first['variable']]
-    assert full.xpath('.//Mapping/Element/Element/@name') == ['Bit1']
-    partial = client.post('/api/v2/plc/preview', json={'mode': 'partial', 'focus': 'object:GVL_IOMAP', 'selected': ['GVL_IOMAP']}, headers=headers).json()
-    assert not partial['errors'], partial
-    downloaded = client.get(f'/api/v2/plc/download/{partial["token"]}')
-    assert downloaded.status_code == 200
-    assert not etree.fromstring(downloaded.content).xpath('//*[local-name()="Device"]')
-
-    duplicate = RACK.replace(b'</Element>\n        </Element></Mapping>',
-                             b'</Element><Element name="Bit1">Application.GVL_IOMAP.IOMAP_DI_FAULT_DOSENSOR_1</Element>\n        </Element></Mapping>')
-    revision = client.get('/api/v2/io-hardware').json()['revision']
-    uploaded = client.post('/api/v2/io-hardware/template', files={'file': ('rack.xml', duplicate)},
-                           data={'revision': revision}, headers=headers)
-    assert uploaded.status_code == 200
-    invalid = client.post('/api/v2/plc/preview', json={'mode': 'full'}, headers=headers).json()
-    assert any('Corrigez le mappage' in error for error in invalid['errors'])
+    assert not etree.fromstring(program.content).xpath('//*[local-name()="Device"]')
+    package = client.get(f'/api/v2/plc/download/{preview["token"]}?with_io=true')
+    assert package.status_code == 200, package.text
+    with ZipFile(BytesIO(package.content)) as archive:
+        xml_name, csv_name = archive.namelist()
+        assert xml_name.endswith('-full.xml') and csv_name == 'Gaia-mappage-canaux.csv'
+        assert archive.read(xml_name) == program.content
+        lines = archive.read(csv_name).decode().splitlines()[3:]
+        assert lines[0] == '" ";Ch1;;;;Module_2'
+        rows = list(csv.reader(lines, delimiter=';'))
+        assert rows == [[' ', 'Ch1', '', '', '', 'Module_2'], [first['variable'], 'Ch2', '', '', '', 'Module_2']]
 
 
 def test_delete_and_reassign_legacy_iomap_updates_program_and_rack(rack_client):
@@ -201,11 +193,18 @@ def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):
 
     response = post('/exports/bundle')
     with ZipFile(BytesIO(response.content)) as archive:
-        assert archive.namelist() == ['Gaia-GVL-ES.xml', 'Gaia-GFC-ES.xml', 'Gaia-mapping-ES.xml']
+        assert archive.namelist() == ['Gaia-GVL-ES.xml', 'Gaia-GFC-ES.xml', 'Gaia-mappage-canaux.csv']
         gvl = etree.fromstring(archive.read('Gaia-GVL-ES.xml'))
         gfc_bytes = archive.read('Gaia-GFC-ES.xml')
         gfc = etree.fromstring(gfc_bytes)
-        rack, channels = read_hardware(archive.read('Gaia-mapping-ES.xml'))
+        csv_bytes = archive.read('Gaia-mappage-canaux.csv')
+    assert client.get('/api/v2/io-hardware/mapping.csv').content == csv_bytes
+    rows = {(device, channel): path for path, channel, _, _, _, device in
+            csv.reader(csv_bytes.decode().splitlines()[3:], delimiter=';')}
+    assert len(rows) == 96
+    assert rows[('Module', 'Ch1')] == ' ' and rows[('Module', 'Ch2')].endswith(signal)
+    assert rows[('Module_3', 'Ch1')].endswith(name)
+    rack, channels = read_hardware(client.get('/api/v2/io-hardware/export').content)
     assert set(gvl.xpath('//*[local-name()="globalVars"]/@name')) == {'GVL_IO', 'GVL_IOMAP'}
     assert not gvl.xpath('//*[local-name()="Device" or local-name()="pou"]')
     assert name in gvl.xpath('//*[local-name()="variable"]/@name')
@@ -213,14 +212,6 @@ def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):
     assert not gfc.xpath('//*[local-name()="Device" or local-name()="globalVars"]')
     assert channels[analog_out['key']].variable.endswith(name) and channels[new['key']].variable.endswith(signal)
     assert not rack.xpath('//*[local-name()="pou" or local-name()="globalVars"]')
-
-    preview = client.post('/api/v2/plc/preview', json={'mode': 'full'}, headers=headers).json()
-    assert not preview['errors'] and preview['rack'], preview
-    program = client.get(f'/api/v2/plc/download/{preview["token"]}')
-    assert program.status_code == 200, program.text
-    full = etree.fromstring(program.content)
-    for expression in ('//*[local-name()="configuration"]/@name', '//*[local-name()="ProjectStructure"]/*[@Name="P2_11B"]//@ObjectId', './/Mapping//Element[not(Element)]/text()'):
-        assert full.xpath(expression) == rack.xpath(expression)
 
     unlinked = post('/mappings', changes={analog_out['key']: None}).json()
     assert name in [row['name'] for row in unlinked['variables']]

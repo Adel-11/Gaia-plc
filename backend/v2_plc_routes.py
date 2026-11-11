@@ -4,7 +4,9 @@ from __future__ import annotations
 import base64
 import json
 import secrets
+import zipfile
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from typing import Literal
 
 from fastapi import Depends, HTTPException
@@ -94,8 +96,6 @@ def format_report(plan: dict) -> str:
     lines = ['GAIA PLC GENERATOR — PLCopen export review',
              f"Project revision: {plan.get('revision', 0)}", '', 'Included objects:']
     lines.extend(f"- {row['name']} ({row['kind']}): {row['reason']}" for row in plan.get('included', []))
-    if plan.get('rack'):
-        lines.append(f"- Rack E/S : {plan['rack']} (configuration et mappage)")
     for key, title in [('manual_deletions', 'Delete manually in CODESYS'),
                        ('manual_actions', 'Manual actions'), ('warnings', 'Warnings'), ('errors', 'Blocking errors')]:
         lines.extend(['', title + ':'])
@@ -109,7 +109,7 @@ def format_report(plan: dict) -> str:
 
 def register_plc_routes(app, get_session, current_user, csrf):
     from backend import v2_engine, v2_plc, v2_plc_validation, v2_store
-    from backend.v2_io_hardware import STATE_KEY, validated_rack
+    from backend.v2_io_hardware import MAPPING_CSV_FILENAME, mapping_csv
 
     def project(session):
         state = v2_store.load_project(session)
@@ -319,32 +319,33 @@ def register_plc_routes(app, get_session, current_user, csrf):
         plan = v2_plc_validation.plan_export(state, objects, mode=body.mode, focus=body.focus, selected=body.selected)
         plan['revision'] = state.get('revision', 0)
         plan['mode'] = body.mode
-        if body.mode == 'full':
-            plan['rack'] = None
         model_validation = v2_engine.validate_project(state)
         plan['errors'] = list(dict.fromkeys([*model_validation.get('errors', []), *plan.get('errors', [])]))
         plan['warnings'] = list(dict.fromkeys([*model_validation.get('warnings', []), *plan.get('warnings', [])]))
         xml = b''
+        io_csv = None
         if not plan['errors']:
             try:
-                rack = validated_rack(state) if body.mode == 'full' and body.selected is None else None
-                if body.mode == 'full' and body.selected is None:
-                    plan['rack'] = state[STATE_KEY]['filename'] if rack is not None else None
-                    if rack is None:
-                        plan['warnings'].append('Aucun rack E/S enregistré. Chargez le XML du rack dans Communications → I/O pour inclure les cartes dans cet export.')
-                xml = v2_plc.serialize_program(objects, state, [row['name'] for row in plan['included']],
-                                               include_all_folders=body.mode == 'full', rack=rack)
-                validation = v2_plc_validation.validate_xml(xml, state, objects, rack=rack)
+                xml = v2_plc.serialize_program(objects, state, [row['name'] for row in plan['included']], include_all_folders=body.mode == 'full')
+                validation = v2_plc_validation.validate_xml(xml, state, objects)
                 plan['errors'] = list(dict.fromkeys([*plan['errors'], *validation.get('errors', [])]))
                 plan['warnings'] = list(dict.fromkeys([*plan.get('warnings', []), *validation.get('warnings', [])]))
             except ValueError as exc:
                 plan['errors'].append(str(exc))
+        if body.mode == 'full' and body.selected is None and not plan['errors']:
+            try:
+                io_csv = mapping_csv(state)
+            except ValueError as exc:
+                plan['warnings'].append(f'CSV des cartes indisponible. {exc}')
+        plan['io_mapping_csv'] = io_csv is not None
         token = secrets.token_urlsafe(32)
         metadata = {'kind': 'v2-plc-export', 'base_revision': plan['revision'], 'mode': body.mode}
         # Store exactly the reviewed bytes and the identities in the database;
         # downloading never silently regenerates a different program.
         identities = {name: str(obj['element'].xpath('string(.//*[local-name()="ObjectId"])')) for name, obj in objects.items()}
         payload = {'plan': plan, 'xml': base64.b64encode(xml).decode('ascii'), 'object_ids': identities}
+        if io_csv is not None:
+            payload['io_mapping_csv'] = base64.b64encode(io_csv).decode('ascii')
         session.add(ImportPreview(token=token, owner_id=user.id,
                                   state_payload=json.dumps(payload, ensure_ascii=False),
                                   diff_payload=json.dumps(metadata),
@@ -370,41 +371,43 @@ def register_plc_routes(app, get_session, current_user, csrf):
         return state, json.loads(row.state_payload)
 
     @app.get('/api/v2/plc/download/{token}')
-    def download_xml(token: str, session=Depends(get_session), user=Depends(current_user)):
+    def download_xml(token: str, with_io: bool = False, session=Depends(get_session), user=Depends(current_user)):
         state, payload = reviewed(token, session, user)
         if payload['plan'].get('errors'):
             raise HTTPException(409, detail={'errors': payload['plan']['errors']})
-        if payload['plan'].get('mode') == 'full' and 'rack' not in payload['plan'] and state.get(STATE_KEY):
-            raise HTTPException(409, 'Prévisualisez à nouveau le projet complet pour inclure le rack E/S.')
+        if payload['plan'].get('rack'):
+            raise HTTPException(409, 'Créez un nouvel aperçu pour télécharger le programme sans remplacer le rack CODESYS.')
+        if with_io and not payload.get('io_mapping_csv'):
+            raise HTTPException(409, 'Créez un aperçu du projet complet avec un mappage E/S valide.')
         xml = base64.b64decode(payload['xml'])
-        try:
-            rack = validated_rack(state) if payload['plan'].get('rack') else None
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
-        validation = v2_plc_validation.validate_xml(xml, state, program(state), rack=rack)
+        validation = v2_plc_validation.validate_xml(xml, state, program(state))
         if validation.get('errors'):
             raise HTTPException(409, detail=validation)
         from backend import v2_workspace as workspace
         import re
         fingerprint = workspace.program_digest(state)
         digest_key = 'program_export'
-        if rack is not None:
-            from lxml import etree
-            configurations, tree = v2_plc.rack_parts(rack)
-            fingerprint = workspace.digest({'program': fingerprint, 'rack': [
-                etree.tostring(node, method='c14n', exclusive=True).decode('utf-8') for node in (*configurations, *tree)
-            ]})
-            digest_key = 'program_export:full'
+        if with_io:
+            fingerprint = workspace.digest({'program': fingerprint, 'io_mapping_csv': payload['io_mapping_csv']})
+            digest_key = 'program_export:io_package'
         major,minor,patch=[int(x) for x in state.get('version','1.0.0').split('.')]
         version=f'{major}.{minor+1}.0' if fingerprint!=state.get('_program_digests',{}).get(digest_key) else state.get('version','1.0.0')
         filename=(re.sub(r'[^A-Za-z0-9_-]+','-',state.get('project_name','Gaia')).strip('-') or 'Gaia')+'-'+version+'-'+payload['plan'].get('mode','program')+'.xml'
+        data, media_type = xml, 'application/xml'
+        if with_io:
+            archive = BytesIO()
+            with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
+                bundle.writestr(filename, xml)
+                bundle.writestr(MAPPING_CSV_FILENAME, base64.b64decode(payload['io_mapping_csv']))
+            filename = filename.removesuffix('-full.xml') + '-programme-et-io.zip'
+            data, media_type = archive.getvalue(), 'application/zip'
         try: saved=workspace.record_event(session,state,user.username,'program_export',filename,fingerprint,digest_key=digest_key)
         except ValueError as exc: raise HTTPException(409,str(exc)) from exc
         row=session.get(ImportPreview,token); metadata=json.loads(row.diff_payload)
         metadata['base_revision']=saved['revision']; row.diff_payload=json.dumps(metadata)
         payload['plan']['revision']=saved['revision']; row.state_payload=json.dumps(payload,ensure_ascii=False)
         session.commit()
-        return Response(xml, media_type='application/xml', headers={
+        return Response(data, media_type=media_type, headers={
             'Content-Disposition': f'attachment; filename="{filename}"', 'Cache-Control':'no-store'})
 
     @app.get('/api/v2/plc/report/{token}')

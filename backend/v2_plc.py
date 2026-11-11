@@ -595,14 +595,8 @@ def _new_project(template_root, state):
     return root
 
 
-def rack_parts(root):
-    configurations = root.findall(f'{NS}instances/{NS}configurations/{NS}configuration')
-    structure = root.find(f'{NS}addData/{NS}data[@name="{STRUCT}"]/{NS}ProjectStructure')
-    return configurations, list(structure) if structure is not None else []
-
-
-def serialize_program(objects: dict, state: dict, selected_names: list[str], include_all_folders: bool = True, *, rack=None) -> bytes:
-    """Serialize the selected objects and, for a complete export, the saved rack."""
+def serialize_program(objects: dict, state: dict, selected_names: list[str], include_all_folders: bool = True) -> bytes:
+    """Serialize selected free objects only, with a pruned ProjectStructure."""
     selected_names=list(dict.fromkeys(selected_names))
     missing = [n for n in selected_names if n not in objects]
     if missing: raise KeyError("Unknown PLC objects: " + ", ".join(missing))
@@ -635,10 +629,6 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str], inc
             node=next((x for x in cur if _local(x)=="Folder" and x.get("Name")==folder),None)
             if node is None: node=etree.SubElement(cur,NS+"Folder",Name=folder)
             cur=node
-    if rack is not None:
-        configurations, rack_structure = rack_parts(rack)
-        root.find(f'{NS}instances/{NS}configurations').extend(copy.deepcopy(configurations))
-        ps.extend(copy.deepcopy(rack_structure))
     output=etree.tostring(root,xml_declaration=True,encoding="utf-8",pretty_print=True)
     if b"<html:" in output or b"<ns0:xhtml" in output:
         raise ValueError("PLCopen XHTML must use its default namespace")

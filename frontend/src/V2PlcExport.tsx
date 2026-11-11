@@ -3,7 +3,7 @@ import WorkspacePanel from './WorkspacePanel'
 
 type PlcObject = { name: string; kind: string; reason?: string; changed?: boolean }
 type Options = { focus: { value: string; label: string; kind: string }[]; objects: PlcObject[] }
-type Preview = { token: string; revision: number; rack?: string | null; included: PlcObject[]; available: PlcObject[]; manual_deletions: string[]; manual_actions: string[]; warnings: string[]; errors: string[] }
+type Preview = { token: string; revision: number; io_mapping_csv?: boolean; included: PlcObject[]; available: PlcObject[]; manual_deletions: string[]; manual_actions: string[]; warnings: string[]; errors: string[] }
 
 async function request<T>(path: string, options: RequestInit = {}, csrf = ''): Promise<T> {
   const headers = new Headers(options.headers)
@@ -68,17 +68,21 @@ export default function V2PlcExport({ csrf, projectRevision, onExported }: { csr
     invalidate()
   }
 
-  const download = async (kind: 'download' | 'report') => {
-    if (!preview?.token || (kind === 'download' && (preview.errors.length || !reviewed))) return
+  const download = async (kind: 'download' | 'bundle' | 'report') => {
+    if (!preview?.token || (kind !== 'report' && (preview.errors.length || !reviewed))) return
     setBusy(true); setError(''); setNotice('')
     try {
-      const response = await fetch(`/api/v2/plc/${kind}/${encodeURIComponent(preview.token)}`, { credentials: 'same-origin' })
+      const route = kind === 'report' ? 'report' : 'download'
+      const query = kind === 'bundle' ? '?with_io=true' : ''
+      const response = await fetch(`/api/v2/plc/${route}/${encodeURIComponent(preview.token)}${query}`, { credentials: 'same-origin' })
       if (!response.ok) { let message = `Erreur ${response.status}`; try { const body = await response.json(); message = errorText(body.detail ?? body.message ?? body.error) || message } catch { /* ignore */ }; throw new Error(message) }
       const blob = await response.blob()
       const disposition = response.headers.get('content-disposition') || ''
       const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i)
       const filename = match?.[1] ? decodeURIComponent(match[1].replaceAll('\"', '')) : kind === 'report' ? 'plcopen-export-summary.txt' : 'gaia-plcopen.xml'
-      saveBlob(blob, filename); if (kind === 'download') onExported?.(); setNotice(kind === 'report' ? 'Résumé de l’export téléchargé' : 'Fichier XML PLCopen téléchargé')
+      saveBlob(blob, filename)
+      if (kind !== 'report') onExported?.()
+      setNotice(kind === 'report' ? 'Résumé de l’export téléchargé' : kind === 'bundle' ? 'Archive du programme et du mappage téléchargée' : 'Fichier XML PLCopen téléchargé')
     } catch (e) { setError(e instanceof Error ? e.message : 'Échec du téléchargement') } finally { setBusy(false) }
   }
 
@@ -96,13 +100,13 @@ export default function V2PlcExport({ csrf, projectRevision, onExported }: { csr
       </div>
       {mode === 'partial' && options && <div className="plc-object-picker"><div><h3>Objets à inclure</h3><p>{preview ? 'Modifiez la liste proposée, puis créez un nouvel aperçu. Toute modification invalide le jeton d’export actuel.' : selected.length ? 'Les objets sélectionnés seront inclus dans le prochain aperçu.' : 'Choisissez un objet de référence et prévisualisez pour afficher les objets proposés. Vous pourrez ensuite ajuster la liste.'}</p></div><div className="plc-object-list">{choices.map(item => <label key={item.name}><input type="checkbox" checked={preview ? includedNames.has(item.name) : selected.includes(item.name)} onChange={e => toggleObject(item.name, e.target.checked)} /><span><b>{item.name}</b><small>{item.kind}{item.changed ? ' · modifié' : ''}</small></span></label>)}{!choices.length && <p className="v2-empty">Les objets proposés apparaîtront après la prévisualisation de l’export partiel.</p>}</div></div>}
       {preview && <div className="plc-export-preview"><div className="preview-heading"><div><h3>Récapitulatif de l’export</h3><p>Révision du projet {preview.revision} · {preview.included.length} objets inclus</p></div><span className={`validation-pill ${allErrors.length ? 'bad' : ''}`}>{allErrors.length ? `${allErrors.length} erreurs` : 'Aucune erreur'}</span></div>
-        {preview.rack && <p><strong>Configuration et mappage des cartes inclus</strong> · {preview.rack}</p>}
+        {preview.io_mapping_csv && <p>Importe le XML sous <b>Application</b>, puis le CSV depuis le menu de mappage du rack existant. Le CSV met à jour les liaisons des canaux gérés dans Gaia.</p>}
         <section className="plc-summary-section"><h4>Objets inclus <span>{preview.included.length}</span></h4>{preview.included.length ? <div className="v2-table-scroll"><table className="v2-table plc-summary-table"><thead><tr><th>Objet</th><th>Type</th><th>Motif d’inclusion</th></tr></thead><tbody>{preview.included.map((item, i) => <tr key={`${item.name}-${i}`}><td><b>{item.name}</b></td><td>{item.kind}</td><td>{item.reason || '—'}</td></tr>)}</tbody></table></div> : <p className="v2-empty">Aucun objet inclus.</p>}</section>
         <div className="plc-summary-lists"><section><h4>Suppressions manuelles <span>{preview.manual_deletions.length}</span></h4>{preview.manual_deletions.length ? <ul>{preview.manual_deletions.map((item, i) => <li key={i}>{text(item)}</li>)}</ul> : <p className="v2-empty">Aucune</p>}</section><section><h4>Actions manuelles <span>{preview.manual_actions.length}</span></h4>{preview.manual_actions.length ? <ul>{preview.manual_actions.map((item, i) => <li key={i}>{text(item)}</li>)}</ul> : <p className="v2-empty">Aucune</p>}</section></div>
         <div className="plc-validation"><section><h4>Avertissements <span>{preview.warnings.length}</span></h4>{preview.warnings.length ? preview.warnings.map((item, i) => <p className="issue warning-text" key={i}>{text(item)}</p>) : <p className="v2-empty">Aucun</p>}</section><section><h4>Erreurs <span>{allErrors.length}</span></h4>{allErrors.length ? allErrors.map((item, i) => <p className="issue error-text" key={i}>{text(item)}</p>) : <p className="v2-empty">Aucune</p>}</section></div>
         <div className="plc-copy-warning"><b>Importez dans une COPIE de votre projet CODESYS et compilez-le ; le générateur ne remplace pas un compilateur.</b></div>
         <label className="review-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} disabled={allErrors.length > 0} /><span>J’ai vérifié les objets inclus, les étapes manuelles, les avertissements et les erreurs.</span></label>
-        <div className="preview-actions"><button className="button secondary" onClick={() => void download('report')} disabled={busy || !preview.token}>Télécharger le récapitulatif</button><button className="button secondary" onClick={() => { setPreview(null); setReviewed(false); setNotice('') }}>Supprimer l’aperçu</button><button className="button primary" onClick={() => void download('download')} disabled={!canDownload}>{busy ? 'Préparation…' : 'Télécharger le XML PLCopen'}</button></div>
+        <div className="preview-actions"><button className="button secondary" onClick={() => void download('report')} disabled={busy || !preview.token}>Télécharger le récapitulatif</button><button className="button secondary" onClick={() => { setPreview(null); setReviewed(false); setNotice('') }}>Supprimer l’aperçu</button><button className={`button ${preview.io_mapping_csv ? 'secondary' : 'primary'}`} onClick={() => void download('download')} disabled={!canDownload}>{busy ? 'Préparation…' : 'Télécharger le XML PLCopen'}</button>{preview.io_mapping_csv && <button className="button primary" onClick={() => void download('bundle')} disabled={!canDownload}>Programme et mappage E/S (ZIP)</button>}</div>
       </div>}
     </section></WorkspacePanel>
   </>
