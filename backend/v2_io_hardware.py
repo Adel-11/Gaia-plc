@@ -53,7 +53,8 @@ class Channel:
 
 def read_hardware(data):
     root = _safe_parse(data)
-    if next(root.iter(f'{NS}pou', f'{NS}dataType', f'{NS}globalVars', f'{NS}resource', f'{NS}task'), None) is not None:
+    forbidden = {'pou', 'dataType', 'globalVars', 'resource', 'task', 'Application', 'library'}
+    if any(etree.QName(node).localname in forbidden for node in root.iter(etree.Element)):
         raise ValueError('Chargez un export CODESYS du rack E/S seul, sans objets du programme.')
     channels = {}
     for device in root.iter('Device'):
@@ -173,6 +174,22 @@ def _mapping_errors(channels, variables, application):
     return errors
 
 
+def validated_rack(state):
+    """Return the saved rack with the same mapping checks for each export."""
+    hardware = state.get(STATE_KEY)
+    if not hardware:
+        return None
+    try:
+        root, channels = read_hardware(hardware['xml'].encode('utf-8'))
+    except etree.XMLSyntaxError as exc:
+        raise ValueError('Le XML du rack enregistré est invalide. Rechargez-le dans Communications → I/O.') from exc
+    errors = _mapping_errors(channels, _variable_options(state), hardware['application'])
+    if errors:
+        details = [f'{channels[key].module} {channels[key].label} : {message}' for key, message in errors.items()]
+        raise ValueError('Corrigez le mappage dans Communications → I/O. ' + ' '.join(details))
+    return root
+
+
 def _cards(state, channels):
     inventory = {str(row.get('CODESYS device') or row.get('device')): row for row in state.get('io_modules', [])
                  if row.get('Module') or row.get('module')}
@@ -278,10 +295,13 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
         return hardware, *parse(hardware['xml'].encode('utf-8'))
 
     def rack_export(state):
-        hardware, _, channels = saved_rack(state)
-        if _mapping_errors(channels, _variable_options(state), hardware['application']):
-            raise HTTPException(409, 'Corrigez les liaisons signalées avant de télécharger le XML du rack.')
-        return hardware['xml'].encode('utf-8')
+        try:
+            rack = validated_rack(state)
+        except (ValueError, etree.XMLSyntaxError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if rack is None:
+            raise HTTPException(409, 'Chargez d’abord le XML du rack.')
+        return state[STATE_KEY]['xml'].encode('utf-8')
 
     @app.get('/api/v2/io-hardware')
     def load(session=Depends(get_session), user=Depends(current_user)):

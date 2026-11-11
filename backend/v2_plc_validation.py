@@ -346,7 +346,31 @@ def _schema() -> etree.XMLSchema:
     return etree.XMLSchema(etree.fromstring(raw, parser))
 
 
-def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict]) -> dict:
+def _rack_signature(node):
+    return (node.tag, dict(node.attrib), (node.text or '').strip(),
+            [(_rack_signature(child), (child.tail or '').strip()) for child in node])
+
+
+def _validate_and_remove_rack(root, rack):
+    """Check the hardware section against the saved rack before validating the code."""
+    from backend.v2_plc import rack_parts
+
+    expected_configs, expected_tree = rack_parts(rack)
+    configs, tree = rack_parts(root)
+    rack_tree = tree[-len(expected_tree):] if expected_tree else []
+    for actual, expected in ((configs, expected_configs), (rack_tree, expected_tree)):
+        if [_rack_signature(node) for node in actual] != [_rack_signature(node) for node in expected]:
+            return 'La configuration des cartes dans le XML ne correspond pas au rack enregistré.'
+    rack_ids = {node.get('ObjectId') for branch in rack_tree for node in branch.iter() if node.get('ObjectId')}
+    program_tree = tree[:-len(expected_tree)] if expected_tree else tree
+    if any(node.get('ObjectId') in rack_ids for branch in program_tree for node in branch.iter()):
+        return 'Un objet du programme et un objet du rack ont le même identifiant CODESYS.'
+    for node in (*configs, *rack_tree):
+        node.getparent().remove(node)
+    return None
+
+
+def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict], *, rack=None) -> dict:
     errors: list[str] = []
     warnings: list[str] = []
     try:
@@ -361,6 +385,8 @@ def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict]) -> dict
         errors.append(f"PLCopen XML schema validation failed: {exc}")
     if etree.QName(root).namespace != NS:
         errors.append(f"Root namespace must be {NS}.")
+    if rack is not None and (error := _validate_and_remove_rack(root, rack)):
+        return {"errors": [*errors, error], "warnings": []}
     if any(_local(n) in {"Application", "Device", "task", "library"} for n in root.iter()):
         errors.append("Export must contain free objects only; Application, devices, tasks, and libraries are forbidden.")
     for xhtml in root.iter():
