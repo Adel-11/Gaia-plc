@@ -253,16 +253,22 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         if row.get("manual_scalar"):
             _add_gvl_variable(modbus,base,row.get("Type") or "BOOL")
         elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
+    _ensure_io_declarations(iomap, state, valid_instances)
+
+
+def _ensure_io_declarations(iomap, state, valid_instances):
+    if iomap is None:
+        return
     for row in state.get("io_channels",[]):
         inst=str(row.get("Instance") or row.get("instance_id") or "")
         if inst and inst not in valid_instances: continue
         raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
         match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
-        if match and iomap is not None: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("Type") or "BOOL")
+        if match: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("Type") or "BOOL")
     for row in state.get("virtual_io",[]):
         raw=str(row.get("GVL_IOMAP variable") or "").removeprefix("GVL_IOMAP.")
         match=re.match(r"([A-Za-z_][A-Za-z0-9_]*)",raw)
-        if match and iomap is not None: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("iec_type") or "BOOL")
+        if match: _add_gvl_variable(iomap,match.group(1),row.get("IOMAP type") or row.get("iec_type") or "BOOL")
 
 
 def _mapped_name(value):

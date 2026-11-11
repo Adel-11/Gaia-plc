@@ -43,8 +43,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
     from backend import v2_engine as engine, v2_store as store
     from backend.v2_codesys_routes import register_codesys_routes
     from backend.v2_plc_routes import register_plc_routes
+    from backend.v2_io_hardware import STATE_KEY as IO_HARDWARE_KEY, register_io_hardware_routes
 
     register_plc_routes(app, get_session, current_user, csrf)
+    register_io_hardware_routes(app, get_session, current_user, csrf)
     register_codesys_routes(app, get_session, current_user, csrf)
     from backend.v2_type_creation import register_type_creation_routes
     from backend.v2_instance_editor import register_instance_editor_routes
@@ -406,7 +408,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                  "row_count": len(sheet.get("rows", [])), "headers": sheet.get("headers", [])}
                 for sheet in workbook.get("sheets", [])]})
         result = {key: value for key, value in state.items()
-                  if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files"}}
+                  if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files", IO_HARDWARE_KEY}}
         result["generic_objects"] = templates(state)
         result.update(phase=8, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),

@@ -1,0 +1,10 @@
+.rack-io-mapping { display: grid; gap: 12px; }
+.rack-io-mapping p { margin: 0; }
+.rack-io-upload, .rack-io-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+.rack-io-mapping label { display: grid; gap: 5px; font-weight: 600; }
+.rack-io-mapping select { max-width: 100%; padding: 7px 9px; border: 1px solid var(--gaia-outline); border-radius: 8px; background: var(--gaia-paper); color: var(--gaia-ink); }
+.rack-io-filename { overflow-wrap: anywhere; color: var(--gaia-muted); align-self: center; }
+.rack-io-table-wrap { overflow: auto; }
+.rack-io-table { min-width: 590px; }
+.rack-io-table select { width: 100%; }
+.rack-io-error { display: block; margin-top: 4px; color: #9c2927; }
