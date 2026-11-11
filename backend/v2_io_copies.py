@@ -35,6 +35,16 @@ def variable_direction(row):
     return DIRECTIONS.get(str(row.get('I/O type') or '').upper())
 
 
+def add_iomap_row(state, name, kind, direction):
+    ident = f'VIO_MAP_{name.upper()}'
+    path = f'GVL_IOMAP.{name}'
+    row = {'id': ident, 'name': name, 'iec_type': kind, 'Type': kind, 'Module': 'GVL_IO',
+           'Slot': 'VIRTUAL', 'Channel': ident, 'Status': 'VIRTUAL', 'direction': direction,
+           'I/O type': _io_type(kind, direction), 'IOMAP type': kind, 'GVL_IOMAP variable': path, 'variable': path}
+    state.setdefault('virtual_io', []).append(row)
+    return row
+
+
 def instance_options(state):
     eligible = set(eligible_instances(state)['GFC_IO_IN'])
     types = {str(key): typ for typ in state.get('types', []) for key in (typ.get('id'), typ.get('name')) if key}
@@ -113,10 +123,7 @@ def assign_copy(state, variable, instance_name, member_name, direction):
         if '[' in str(row.get('GVL_IOMAP variable') or ''):
             raise ValueError('Ce mappage indexé doit être modifié dans son éditeur d’origine.')
     else:
-        ident = f'VIO_MAP_{name.upper()}'
-        row = {'id': ident, 'name': name, 'iec_type': kind, 'Type': kind, 'Module': 'GVL_IO',
-               'Slot': 'VIRTUAL', 'Channel': ident, 'Status': 'VIRTUAL'}
-        state.setdefault('virtual_io', []).append(row)
+        row = add_iomap_row(state, name, kind, direction)
     row.update({'Instance': instance_name, 'instance_id': instance_name, 'member_name': member['name'],
                 'GVL_IO member': target, 'GVL_IOMAP variable': path, 'variable': path,
                 'I/O type': row.get('I/O type') if variable_direction(row) else _io_type(kind, direction), 'IOMAP type': kind})

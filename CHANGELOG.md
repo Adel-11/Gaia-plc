@@ -2,6 +2,8 @@
 
 ## 2026-11-11 — Recopies et variables E/S
 
+- Assigner, créer et retirer des IOMAP directement sur les cartes du rack ; charger le rack Gaia V8 de référence en un clic si le projet n’en a pas encore.
+- Télécharger séparément ou en ZIP les XML des GVL E/S, des deux GFC de recopie et du mappage des cartes.
 - Choisir une instance, un membre GVL_IO et une variable GVL_IOMAP compatible, avec aperçu du ST et liaison facultative au rack.
 - Retirer une recopie seule ou supprimer la déclaration IOMAP, ses recopies et ses liaisons matérielles. Les références dans le ST manuel sont signalées avant suppression.
 

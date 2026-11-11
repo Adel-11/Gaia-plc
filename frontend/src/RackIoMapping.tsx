@@ -1,16 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import IoCopyManager, { type CopyAction, type CopyState } from './IoCopyManager'
 import WorkspacePanel from './WorkspacePanel'
 import './rack-io-mapping.css'
 
-type Channel = {
-  key: string; module: string; label: string; iec_type: string; direction: 'input' | 'output'
-  variable: string; locked: boolean; error?: string | null
-}
-type Variable = { name: string; iec_type: string; direction?: Channel['direction'] | null }
-type Hardware = { filename: string; application: string; channels: Channel[]; variables: Variable[] }
-type RackState = Omit<CopyState, 'hardware'> & { revision: number; hardware: Hardware | null }
-type Draft = { revision: number; changes: Record<string, string | null> }
+type Channel = NonNullable<CopyState['hardware']>['channels'][number] & { error?: string | null }
+type Hardware = { filename: string; application: string; channels: Channel[]; variables: CopyState['variables']; cards: { name: string; slot: string | number | null; model: string | null }[] }
+type RackState = Omit<CopyState, 'hardware'> & { revision: number; hardware: Hardware | null; can_load_gaia: boolean }
+type Area = 'rack' | 'exports' | 'copies'
+const files = { gvl: 'Gaia-GVL-ES.xml', gfc: 'Gaia-GFC-ES.xml', rack: 'Gaia-mapping-ES.xml', bundle: 'Gaia-exports-ES.zip' }
 
 async function rackRequest(path: string, options?: RequestInit): Promise<Response> {
   const response = await fetch(`/api/v2/io-hardware${path}`, options)
@@ -23,12 +20,10 @@ async function rackRequest(path: string, options?: RequestInit): Promise<Respons
 
 export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: string; revision?: number; onSaved: () => void }) {
   const [state, setState] = useState<RackState>()
-  const [file, setFile] = useState<File | null>(null)
-  const [module, setModule] = useState('')
-  const [draft, setDraft] = useState<Draft | null>(null)
-  const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
-  const [feedbackArea, setFeedbackArea] = useState<'rack' | 'copies'>('copies')
+  const [file, setFile] = useState<File | null>(null), [module, setModule] = useState('')
+  const [choices, setChoices] = useState<Record<string, string>>({})
+  const [creating, setCreating] = useState(''), [signal, setSignal] = useState('')
+  const [feedback, setFeedback] = useState<{ area: Area; error?: string; notice?: string }>()
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -36,129 +31,173 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
     const controller = new AbortController()
     void rackRequest('', { signal: controller.signal }).then(r => r.json())
       .then(result => { if (!controller.signal.aborted) setState(result) })
-      .catch(cause => { if (!controller.signal.aborted) { setFeedbackArea('copies'); setError(cause.message) } })
+      .catch(cause => { if (!controller.signal.aborted) setFeedback({ area: 'rack', error: cause.message }) })
     return () => controller.abort()
   }, [revision])
 
   const hardware = state?.hardware
-  const modules = [...new Set(hardware?.channels.map(channel => channel.module) || [])]
-  const selectedModule = modules.includes(module) ? module : modules[0]
-  const changed = Object.keys(draft?.changes || {}).length
-  const stale = !!changed && draft?.revision !== state?.revision
+  const cards = hardware?.cards || []
+  const selectedModule = cards.find(card => card.name === module) || cards[0]
   const invalid = hardware?.channels.filter(channel => channel.error).length || 0
+  const json = (body: object): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(body) })
+  const label = (channel: Channel) => `${cards.find(card => card.name === channel.module)?.model || channel.module} · ${channel.label}`
+  const path = (name: string) => `${hardware?.application}.GVL_IOMAP.${name}`.toLowerCase()
 
-  const edit = (channel: Channel, target: string | null) => {
-    if (!state || !hardware) return
-    setNotice(''); setError('')
-    const desired = target ? `${hardware.application}.GVL_IOMAP.${target}` : ''
-    setDraft(previous => {
-      const changes = { ...previous?.changes }
-      if (desired === channel.variable) delete changes[channel.key]
-      else changes[channel.key] = target
-      return Object.keys(changes).length ? { revision: previous?.revision ?? state.revision, changes } : null
-    })
-  }
-
-  async function run(action: () => Promise<void>, area: 'rack' | 'copies' = 'rack') {
-    setFeedbackArea(area); setBusy(true); setError(''); setNotice('')
-    try { await action() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'La modification a échoué.') }
+  async function run(area: Area, action: () => Promise<string>) {
+    setBusy(true); setFeedback(undefined)
+    try { setFeedback({ area, notice: await action() }) }
+    catch (cause) { setFeedback({ area, error: cause instanceof Error ? cause.message : 'La modification a échoué.' }) }
     finally { setBusy(false) }
   }
 
-  const upload = (event: FormEvent) => {
-    event.preventDefault()
-    if (!file || !state || changed) return
-    if (hardware && !window.confirm('Remplacer le modèle du rack et ses liaisons enregistrées dans Gaia ?')) return
-    void run(async () => {
-      const form = new FormData()
-      form.set('file', file)
-      form.set('revision', String(state.revision))
-      const response = await rackRequest('/template', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form })
-      setState(await response.json())
-      setFile(null); setModule(''); setDraft(null)
+  async function saveState(response: Response) {
+    setState(await response.json())
+    onSaved()
+  }
+
+  function upload(reference: boolean) {
+    if (!state || (!reference && !file)) return
+    if (hardware && !window.confirm('Remplacer le rack et les liaisons matérielles enregistrées dans Gaia par celles du fichier ?')) return
+    void run('rack', async () => {
+      if (reference) await saveState(await rackRequest('/template/gaia', json({ revision: state.revision })))
+      else {
+        const form = new FormData()
+        form.set('file', file!)
+        form.set('revision', String(state.revision))
+        await saveState(await rackRequest('/template', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form }))
+      }
+      setFile(null); setModule(''); setChoices({}); setCreating('')
       if (fileInput.current) fileInput.current.value = ''
-      setNotice('Rack chargé. Les liaisons du fichier sont visibles dans le tableau.')
-      onSaved()
+      return 'Rack chargé. Sélectionne une carte puis un canal.'
     })
   }
 
-  const save = () => {
-    if (!draft || stale) return
-    void run(async () => {
-      const response = await rackRequest('/mappings', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(draft) })
-      setState(await response.json())
-      setDraft(null)
-      setNotice('Mappage enregistré. Le XML matériel est prêt à télécharger si toutes les liaisons sont valides.')
-      onSaved()
+  function assign(channel: Channel, target: string | null) {
+    if (!state || !hardware) return
+    const changes: Record<string, string | null> = { [channel.key]: target }
+    if (target) {
+      const linked = hardware.channels.filter(item => item.key !== channel.key && item.variable.toLowerCase() === path(target) && (channel.direction === 'input' || item.direction === 'input'))
+      if (linked.length) {
+        if (!window.confirm(`Déplacer ${target} de ${linked.map(label).join(', ')} vers ${label(channel)} ? Les anciens canaux seront déliés.`)) return
+        linked.forEach(item => { changes[item.key] = null })
+      } else if (channel.variable && !window.confirm(`Remplacer la liaison de ${label(channel)} par ${target} ?`)) return
+    }
+    void run('rack', async () => {
+      await saveState(await rackRequest('/mappings', json({ revision: state.revision, changes })))
+      setChoices(old => { const next = { ...old }; Object.keys(changes).forEach(key => delete next[key]); return next })
+      return target ? `${label(channel)} est relié à ${target}.` : `${label(channel)} est délié. La variable et sa recopie sont conservées.`
     })
   }
 
-  const download = () => void run(async () => {
-    const response = await rackRequest('/export')
-    const url = URL.createObjectURL(await response.blob())
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'Gaia-mapping-ES.xml'
-    link.click()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  })
-
-  const updateCopy = async (action: CopyAction) => {
-    if (!state || changed) return
-    await run(async () => {
-      const response = await rackRequest('/copies', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-        body: JSON.stringify({ revision: state.revision, ...action }) })
-      setState(await response.json())
-      setNotice(action.action === 'delete' ? `${action.iomap} a été supprimée.` : action.action === 'disconnect' ? 'Recopie retirée. La variable et ses canaux restent en place.' : 'Recopie enregistrée.')
-      onSaved()
-    }, 'copies')
+  function create(channel: Channel) {
+    if (!state) return
+    void run('rack', async () => {
+      await saveState(await rackRequest('/channels/create-variable', json({ revision: state.revision, channel_key: channel.key, signal: signal.trim() })))
+      setCreating(''); setSignal('')
+      return `Variable ${channel.iec_type} créée et reliée à ${label(channel)}. Tu peux maintenant configurer sa recopie avec une instance.`
+    })
   }
+
+  function download(kind: keyof typeof files) {
+    if (!state) return
+    void run('exports', async () => {
+      const response = await (kind === 'rack' ? rackRequest('/export') : rackRequest(`/exports/${kind}`, json({ revision: state.revision })))
+      const url = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = url; link.download = files[kind]; link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      if (kind !== 'rack') {
+        const savedRevision = Number(response.headers.get('X-Gaia-Revision'))
+        if (savedRevision) setState(current => current ? { ...current, revision: savedRevision } : current)
+        onSaved()
+      }
+      return `${files[kind]} téléchargé.`
+    })
+  }
+
+  function updateCopy(action: CopyAction) {
+    if (!state) return Promise.resolve()
+    return run('copies', async () => {
+      await saveState(await rackRequest('/copies', json({ revision: state.revision, ...action })))
+      return action.action === 'delete' ? `${action.iomap} a été supprimée.` : action.action === 'disconnect' ? 'Recopie retirée. La variable et ses canaux restent en place.' : 'Recopie enregistrée.'
+    })
+  }
+
+  const message = (area: Area) => feedback?.area === area && (feedback.error ? <p role="alert" className="comm-alert">{feedback.error}</p> : <p role="status">{feedback.notice}</p>)
 
   return <>
-    <IoCopyManager state={state} busy={busy} blocked={!!changed} error={feedbackArea === 'copies' ? error : ''} notice={feedbackArea === 'copies' ? notice : ''} update={updateCopy}/>
-    <WorkspacePanel id="communications:io-hardware" title="Mappage matériel CODESYS" minHeight={180}>
-    <div className="rack-io-mapping">
-      <form className="rack-io-upload" onSubmit={upload}>
-        <label>XML du rack CODESYS<input ref={fileInput} type="file" accept=".xml,application/xml,text/xml" disabled={busy || !!changed} onChange={event => setFile(event.target.files?.[0] || null)} /></label>
-        <button type="submit" className="comm-btn" disabled={!file || !state || busy || !!changed}>{hardware ? 'Remplacer le modèle' : 'Charger le modèle'}</button>
-      </form>
-      {feedbackArea === 'rack' && error && <p role="alert" className="comm-alert">{error}</p>}
-      {feedbackArea === 'rack' && notice && <p role="status">{notice}</p>}
-      {!hardware && <p>Charge le XML CODESYS du rack et de ses modules E/S. Les canaux pourront être reliés aux variables du projet dans <code>GVL_IOMAP</code>.</p>}
-      {hardware && <>
-        <p>Ce tableau relie le rack à <code>GVL_IOMAP</code>. Pour définir la recopie avec l’instance, utilise le panneau ci-dessus.</p>
+    <WorkspacePanel id="communications:io-hardware" title="Cartes automate · Mappage E/S" minHeight={200}>
+      <div className="rack-io-mapping">
+        {message('rack')}
+        <p>Choisis une carte puis une variable <code>GVL_IOMAP</code> sur le canal voulu. Retirer une liaison du canal conserve la variable et sa recopie ST.</p>
+        {!state && !feedback?.error && <p role="status">Chargement des cartes…</p>}
+        {!hardware && state && <>
+          <p>Charge le XML des cartes exporté depuis CODESYS pour afficher leurs canaux réels.</p>
+          {state.can_load_gaia && <div><button type="button" className="comm-btn primary" disabled={busy} onClick={() => upload(true)}>Charger les cartes Gaia V8</button></div>}
+        </>}
+        {hardware && <>
+          <div className="rack-io-cards" role="group" aria-label="Cartes automate">
+            {cards.map(card => {
+              const channels = hardware.channels.filter(channel => channel.module === card.name)
+              const count = channels.filter(channel => channel.variable).length
+              return <button type="button" className="comm-btn rack-io-card" key={card.name} aria-pressed={selectedModule?.name === card.name} onClick={() => { setModule(card.name); setCreating('') }}>
+                <small>{card.slot != null ? `Emplacement ${card.slot} · ${card.name}` : 'Module CODESYS'}</small>
+                <strong>{card.model || card.name}</strong><span>{count} / {channels.length} canaux reliés</span>
+              </button>
+            })}
+          </div>
+          {!!invalid && <p className="comm-warning" role="status">{invalid} liaison(s) du rack à corriger avant l’export matériel.</p>}
+          <div className="rack-io-table-wrap"><table className="v2-table rack-io-table">
+            <thead><tr><th>Canal</th><th>Sens</th><th>Type IEC</th><th>IOMAP sur la carte</th><th>Actions</th></tr></thead>
+            <tbody>{hardware.channels.filter(channel => channel.module === selectedModule?.name).map(channel => {
+              const options = hardware.variables.filter(variable => variable.iec_type === channel.iec_type && (!variable.direction || variable.direction === channel.direction))
+              const current = options.find(variable => path(variable.name) === channel.variable.toLowerCase())?.name || ''
+              const choice = choices[channel.key] ?? current
+              const isCreating = creating === channel.key
+              return <tr key={channel.key}>
+                <td>{channel.label}</td><td>{channel.direction === 'input' ? 'Entrée' : 'Sortie'}</td><td><code>{channel.iec_type}</code></td>
+                <td>{channel.locked ? <span>{channel.variable || 'Mappage au niveau du groupe'}</span> : <>
+                  <select aria-label={`IOMAP ${label(channel)}`} disabled={busy || !options.length} value={options.some(option => option.name === choice) ? choice : ''} onChange={event => setChoices({ ...choices, [channel.key]: event.target.value })}>
+                    <option value="">{options.length ? 'Choisir une variable…' : `Aucun IOMAP ${channel.iec_type} compatible`}</option>
+                    {options.map(variable => <option value={variable.name} key={variable.name}>{variable.name}</option>)}
+                  </select>
+                  {channel.variable && choice !== current && current && <small>Actuel : {current}</small>}
+                  {!current && channel.variable && <small>Actuel : {channel.variable}</small>}
+                </>}{channel.error && <small className="rack-io-error">{channel.error}</small>}</td>
+                <td>{!channel.locked && <div className="rack-io-row-actions">
+                  <button type="button" className="comm-btn" disabled={busy || !choice || choice === current || !options.some(option => option.name === choice)} onClick={() => assign(channel, choice)}>{channel.variable ? 'Remplacer' : 'Assigner'}</button>
+                  {channel.variable ? <button type="button" className="comm-btn rack-io-danger" disabled={busy} onClick={() => assign(channel, null)}>Retirer du canal</button> :
+                    <button type="button" className="comm-btn" disabled={busy} aria-expanded={isCreating} onClick={() => { setCreating(isCreating ? '' : channel.key); setSignal('') }}>Créer un IOMAP</button>}
+                </div>}
+                {isCreating && <form className="rack-io-create" onSubmit={event => { event.preventDefault(); create(channel) }}>
+                  <label>Nom du signal<input value={signal} maxLength={80} pattern="[A-Za-z_][A-Za-z0-9_]*" required onChange={event => setSignal(event.target.value)} placeholder="Ex. Consigne_Pompe" /></label>
+                  <button className="comm-btn primary" disabled={busy || !signal.trim()}>Créer et assigner</button>
+                </form>}</td>
+              </tr>
+            })}</tbody>
+          </table></div>
+        </>}
+        {state && <details open={!hardware || undefined}><summary>{hardware ? `Remplacer le XML du rack · ${hardware.filename}` : 'Importer un XML du rack'}</summary>
+          <form className="rack-io-upload" onSubmit={event => { event.preventDefault(); upload(false) }}>
+            <label>XML du rack CODESYS<input ref={fileInput} type="file" accept=".xml,application/xml,text/xml" disabled={busy} onChange={event => setFile(event.target.files?.[0] || null)} /></label>
+            <button type="submit" className="comm-btn" disabled={!file || busy}>{hardware ? 'Remplacer le rack' : 'Importer le rack'}</button>
+          </form>
+        </details>}
+      </div>
+    </WorkspacePanel>
+    <WorkspacePanel id="communications:io-exports" title="Exports XML E/S" minHeight={150}>
+      <div className="rack-io-mapping">
+        <p>Les fichiers utilisent la configuration enregistrée. Importe les GVL, puis les fonctions, puis le XML des cartes dans une copie du projet CODESYS. Les DUT des instances doivent déjà être présents.</p>
         <div className="rack-io-toolbar">
-          <label>Module<select value={selectedModule} onChange={event => setModule(event.target.value)}>{modules.map(name => <option key={name}>{name}</option>)}</select></label>
-          <span className="rack-io-filename" title={hardware.filename}>{hardware.filename} · {hardware.channels.length} canaux</span>
-          {!!changed && <button type="button" className="comm-btn" disabled={busy} onClick={() => { setDraft(null); setError('') }}>Annuler les changements</button>}
-          <button type="button" className="comm-btn primary" disabled={!changed || stale || busy} onClick={save}>Enregistrer le mappage{changed ? ` (${changed})` : ''}</button>
-          <button type="button" className="comm-btn" disabled={!!changed || !!invalid || busy} onClick={download}>Télécharger le XML matériel</button>
+          <button type="button" className="comm-btn" disabled={!state || busy} onClick={() => download('gvl')}>XML · GVL_IO et GVL_IOMAP</button>
+          <button type="button" className="comm-btn" disabled={!state || busy} onClick={() => download('gfc')}>XML · GFC_IO_IN et GFC_IO_OUT</button>
+          <button type="button" className="comm-btn" disabled={!hardware || !!invalid || busy} onClick={() => download('rack')}>XML · Mappage des cartes</button>
+          <button type="button" className="comm-btn primary" disabled={!hardware || !!invalid || busy} onClick={() => download('bundle')}>ZIP · Les 3 XML</button>
         </div>
-        {stale && <p className="comm-warning" role="status">Le projet a changé depuis l’ouverture du brouillon. Annule les changements locaux pour repartir de la version actuelle.</p>}
-        {!!invalid && <p className="comm-warning" role="status">{invalid} liaison(s) à corriger avant l’export. Les détails sont affichés sur les canaux concernés.</p>}
-        <div className="rack-io-table-wrap"><table className="v2-table rack-io-table">
-          <thead><tr><th>Canal</th><th>Sens</th><th>Type</th><th>Variable reliée</th><th>Action</th></tr></thead>
-          <tbody>{hardware.channels.filter(channel => channel.module === selectedModule).map(channel => {
-            const options = hardware.variables.filter(variable => variable.iec_type === channel.iec_type && (!variable.direction || variable.direction === channel.direction))
-            const path = options.find(variable => `${hardware.application}.GVL_IOMAP.${variable.name}`.toLowerCase() === channel.variable.toLowerCase())?.name
-            const original = path ?? (channel.variable ? '__original' : '')
-            const edited = draft && channel.key in draft.changes
-            const value = edited ? draft.changes[channel.key] ?? '' : original
-            return <tr key={channel.key}>
-              <td>{channel.label}</td><td>{channel.direction === 'input' ? 'Entrée' : 'Sortie'}</td><td><code>{channel.iec_type}</code></td>
-              <td>{channel.locked ? <span>{channel.variable || 'Mappage au niveau du groupe'}</span> : <select aria-label={`Variable ${channel.module} ${channel.label}`} disabled={busy || stale} value={value} onChange={event => edit(channel, event.target.value || null)}>
-                <option value="">Non relié</option>
-                {original === '__original' && <option value="__original" disabled>{channel.variable}</option>}
-                {options.map(variable => <option value={variable.name} key={variable.name}>{variable.name}</option>)}
-              </select>}
-              {channel.error && !edited && <small className="rack-io-error">{channel.error}</small>}</td>
-              <td>{!channel.locked && value && <button type="button" className="comm-btn" disabled={busy || stale} onClick={() => edit(channel, null)}>Délier</button>}</td>
-            </tr>
-          })}</tbody>
-        </table></div>
-      </>}
-    </div>
-  </WorkspacePanel>
+        {!hardware ? <p>Charge le rack pour activer son XML et le ZIP.</p> : !!invalid && <p>Corrige les liaisons signalées pour exporter le rack.</p>}
+        {message('exports')}
+      </div>
+    </WorkspacePanel>
+    <IoCopyManager state={state} busy={busy} blocked={false} error={feedback?.area === 'copies' ? feedback.error || '' : ''} notice={feedback?.area === 'copies' ? feedback.notice || '' : ''} update={updateCopy}/>
   </>
 }

@@ -1,0 +1,670 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="" productName="CODESYS" productVersion="CODESYS V3.5 SP22 Patch 2" creationDateTime="2026-11-11T09:58:13.2820816" />
+  <contentHeader name="Gaia V8.project" modificationDateTime="2026-11-11T01:17:12.4075064">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation />
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes />
+    <pous />
+  </types>
+  <instances>
+    <configurations>
+      <configuration name="P2_11B">
+        <addData>
+          <data name="Device" handleUnknown="discard">
+            <Device xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="">
+              <DeviceType>
+                <ModuleIdentification>
+                  <Type>4096</Type>
+                  <Id>1767 0001</Id>
+                  <Version>1.1.14.0</Version>
+                  <ModuleId>11</ModuleId>
+                </ModuleIdentification>
+                <Connector moduleType="39001" role="child" interface="Facts.CpuBackplane" connectorId="1">
+                  <HostParameterSet />
+                </Connector>
+                <Connector moduleType="39100" interface="Facts.Backplane" connectorId="2" hostpath="1">
+                  <HostParameterSet />
+                </Connector>
+                <DeviceParameterSet />
+              </DeviceType>
+            </Device>
+          </data>
+          <data name="configurations" handleUnknown="discard">
+            <configurations>
+              <configuration name="Module">
+                <addData>
+                  <data name="Device" handleUnknown="discard">
+                    <Device xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="">
+                      <DeviceType>
+                        <DeviceIdentification>
+                          <Type>43619</Type>
+                          <Id>1767 3011</Id>
+                          <Version>0.0.2</Version>
+                        </DeviceIdentification>
+                        <Connector moduleType="39101" role="child" interface="Facts.Backplane" connectorId="1">
+                          <HostParameterSet />
+                        </Connector>
+                        <Connector moduleType="43619" interface="local.myInternalModuleConnector" connectorId="2" hostpath="1">
+                          <HostParameterSet>
+                            <Parameter ParameterId="1000" type="std:DWORD" IndexInDevDesc="0">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_000" visiblename="ModuleId" offlineaccess="none" onlineaccess="none">891311430</Value>
+                              <Name>ModuleId</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1001" type="std:WORD" IndexInDevDesc="1">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_001" visiblename="NumModuleDigitalInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1002" type="std:WORD" IndexInDevDesc="2">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_002" visiblename="NumModuleDigitalOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1003" type="std:WORD" IndexInDevDesc="3">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_003" visiblename="NumModuleAnalogInputBytes" offlineaccess="none" onlineaccess="none">64</Value>
+                              <Name>NumModuleAnalogInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1004" type="std:WORD" IndexInDevDesc="4">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_004" visiblename="NumModuleAnalogOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1005" type="std:WORD" IndexInDevDesc="5">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_005" visiblename="NumModuleMstBytes" offlineaccess="none" onlineaccess="none">12</Value>
+                              <Name>NumModuleMstBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1006" type="std:WORD" IndexInDevDesc="6">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_006" visiblename="NumModuleConfigBytes" offlineaccess="none" onlineaccess="none">2</Value>
+                              <Name>NumModuleConfigBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="3000" type="localTypes:T16Ad1InputChannels" IndexInDevDesc="7">
+                              <Attributes channel="input" />
+                              <Value name="_x0033_000" visiblename="Channels">
+                                <Element name="DWord0" visiblename="Ch1">0</Element>
+                                <Element name="DWord1" visiblename="Ch2">0</Element>
+                                <Element name="DWord2" visiblename="Ch3">0</Element>
+                                <Element name="DWord3" visiblename="Ch4">0</Element>
+                                <Element name="DWord4" visiblename="Ch5">0</Element>
+                                <Element name="DWord5" visiblename="Ch6">0</Element>
+                                <Element name="DWord6" visiblename="Ch7">0</Element>
+                                <Element name="DWord7" visiblename="Ch8">0</Element>
+                                <Element name="DWord8" visiblename="Ch9">0</Element>
+                                <Element name="DWord9" visiblename="Ch10">0</Element>
+                                <Element name="DWord10" visiblename="Ch11">0</Element>
+                                <Element name="DWord11" visiblename="Ch12">0</Element>
+                                <Element name="DWord12" visiblename="Ch13">0</Element>
+                                <Element name="DWord13" visiblename="Ch14">0</Element>
+                                <Element name="DWord14" visiblename="Ch15">0</Element>
+                                <Element name="DWord15" visiblename="Ch16">0</Element>
+                              </Value>
+                              <Name>Channels</Name>
+                              <Mapping>
+                                <Element name="DWord0">Application.GVL_IOMAP.IOMAP_AI_SIGNAL_DOSENSOR_1</Element>
+                              </Mapping>
+                            </Parameter>
+                            <Parameter ParameterId="4000" type="localTypes:T16Ad1Status" IndexInDevDesc="8">
+                              <Attributes channel="input" offlineaccess="read" onlineaccess="read" />
+                              <Value name="_x0034_000" visiblename="Status" offlineaccess="read" onlineaccess="read">
+                                <Element name="Byte0" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 0" />
+                                <Element name="Byte1" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 1" />
+                                <Element name="Byte2" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 2" />
+                                <Element name="Byte3" visiblename="Module Status">
+                                  <Element name="Bit0" visiblename="Module Failed" />
+                                  <Element name="Bit1" visiblename="Missing 24V" />
+                                </Element>
+                                <Element name="Byte4" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 4" />
+                                <Element name="Byte5" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 5" />
+                                <Element name="Byte6" visiblename="Under Range Errors Ch. 9-16">
+                                  <Element name="Bit0" visiblename="Under Range Error Ch9" />
+                                  <Element name="Bit1" visiblename="Under Range Error Ch10" />
+                                  <Element name="Bit2" visiblename="Under Range Error Ch11" />
+                                  <Element name="Bit3" visiblename="Under Range Error Ch12" />
+                                  <Element name="Bit4" visiblename="Under Range Error Ch13" />
+                                  <Element name="Bit5" visiblename="Under Range Error Ch14" />
+                                  <Element name="Bit6" visiblename="Under Range Error Ch15" />
+                                  <Element name="Bit7" visiblename="Under Range Error Ch16" />
+                                </Element>
+                                <Element name="Byte7" visiblename="Under Range Errors Ch. 1-8">
+                                  <Element name="Bit0" visiblename="Under Range Error Ch1" />
+                                  <Element name="Bit1" visiblename="Under Range Error Ch2" />
+                                  <Element name="Bit2" visiblename="Under Range Error Ch3" />
+                                  <Element name="Bit3" visiblename="Under Range Error Ch4" />
+                                  <Element name="Bit4" visiblename="Under Range Error Ch5" />
+                                  <Element name="Bit5" visiblename="Under Range Error Ch6" />
+                                  <Element name="Bit6" visiblename="Under Range Error Ch7" />
+                                  <Element name="Bit7" visiblename="Under Range Error Ch8" />
+                                </Element>
+                                <Element name="Byte8" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 8" />
+                                <Element name="Byte9" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 9" />
+                                <Element name="Byte10" visiblename="Over Range Errors Ch. 9-16">
+                                  <Element name="Bit0" visiblename="Over Range Error Ch9" />
+                                  <Element name="Bit1" visiblename="Over Range Error Ch10" />
+                                  <Element name="Bit2" visiblename="Over Range Error Ch11" />
+                                  <Element name="Bit3" visiblename="Over Range Error Ch12" />
+                                  <Element name="Bit4" visiblename="Over Range Error Ch13" />
+                                  <Element name="Bit5" visiblename="Over Range Error Ch14" />
+                                  <Element name="Bit6" visiblename="Over Range Error Ch15" />
+                                  <Element name="Bit7" visiblename="Over Range Error Ch16" />
+                                </Element>
+                                <Element name="Byte11" visiblename="Over Range Errors Ch. 1-8">
+                                  <Element name="Bit0" visiblename="Over Range Error Ch1" />
+                                  <Element name="Bit1" visiblename="Over Range Error Ch2" />
+                                  <Element name="Bit2" visiblename="Over Range Error Ch3" />
+                                  <Element name="Bit3" visiblename="Over Range Error Ch4" />
+                                  <Element name="Bit4" visiblename="Over Range Error Ch5" />
+                                  <Element name="Bit5" visiblename="Over Range Error Ch6" />
+                                  <Element name="Bit6" visiblename="Over Range Error Ch7" />
+                                  <Element name="Bit7" visiblename="Over Range Error Ch8" />
+                                </Element>
+                              </Value>
+                              <Name>Status</Name>
+                            </Parameter>
+                            <Parameter ParameterId="5000" type="localTypes:T16Ad1ChannelEnable" IndexInDevDesc="9">
+                              <Attributes />
+                              <Value name="_x0035_000" visiblename="Ch. Select">16#400F</Value>
+                              <Name>Ch. Select</Name>
+                            </Parameter>
+                            <Parameter ParameterId="7000" type="std:BOOL" IndexInDevDesc="10">
+                              <Attributes />
+                              <Value name="_x0037_000" visiblename="Hot Swap Enable">FALSE</Value>
+                              <Name>Hot Swap Enable</Name>
+                            </Parameter>
+                          </HostParameterSet>
+                        </Connector>
+                        <DeviceParameterSet />
+                      </DeviceType>
+                    </Device>
+                  </data>
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>3677b6d7-6719-4af0-aeca-424dd57b10e6</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="Module_3">
+                <addData>
+                  <data name="Device" handleUnknown="discard">
+                    <Device xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="">
+                      <DeviceType>
+                        <DeviceIdentification>
+                          <Type>44604</Type>
+                          <Id>1767 4009</Id>
+                          <Version>0.0.1</Version>
+                        </DeviceIdentification>
+                        <Connector moduleType="39101" role="child" interface="Facts.Backplane" connectorId="1">
+                          <HostParameterSet />
+                        </Connector>
+                        <Connector moduleType="44604" interface="local.myInternalModuleConnector" connectorId="2" hostpath="1">
+                          <HostParameterSet>
+                            <Parameter ParameterId="1000" type="std:DWORD" IndexInDevDesc="0">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_000" visiblename="ModuleId" offlineaccess="none" onlineaccess="none">1141462341</Value>
+                              <Name>ModuleId</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1001" type="std:WORD" IndexInDevDesc="1">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_001" visiblename="NumModuleDigitalInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1002" type="std:WORD" IndexInDevDesc="2">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_002" visiblename="NumModuleDigitalOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1003" type="std:WORD" IndexInDevDesc="3">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_003" visiblename="NumModuleAnalogInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1004" type="std:WORD" IndexInDevDesc="4">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_004" visiblename="NumModuleAnalogOutputBytes" offlineaccess="none" onlineaccess="none">64</Value>
+                              <Name>NumModuleAnalogOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1005" type="std:WORD" IndexInDevDesc="5">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_005" visiblename="NumModuleMstBytes" offlineaccess="none" onlineaccess="none">4</Value>
+                              <Name>NumModuleMstBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1006" type="std:WORD" IndexInDevDesc="6">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_006" visiblename="NumModuleConfigBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleConfigBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="2000" type="localTypes:T16Da1OutputChannels" IndexInDevDesc="7">
+                              <Attributes channel="output" />
+                              <Value name="_x0032_000" visiblename="Channels">
+                                <Element name="DWord0" visiblename="Ch1">0</Element>
+                                <Element name="DWord1" visiblename="Ch2">0</Element>
+                                <Element name="DWord2" visiblename="Ch3">0</Element>
+                                <Element name="DWord3" visiblename="Ch4">0</Element>
+                                <Element name="DWord4" visiblename="Ch5">0</Element>
+                                <Element name="DWord5" visiblename="Ch6">0</Element>
+                                <Element name="DWord6" visiblename="Ch7">0</Element>
+                                <Element name="DWord7" visiblename="Ch8">0</Element>
+                                <Element name="DWord8" visiblename="Ch9">0</Element>
+                                <Element name="DWord9" visiblename="Ch10">0</Element>
+                                <Element name="DWord10" visiblename="Ch11">0</Element>
+                                <Element name="DWord11" visiblename="Ch12">0</Element>
+                                <Element name="DWord12" visiblename="Ch13">0</Element>
+                                <Element name="DWord13" visiblename="Ch14">0</Element>
+                                <Element name="DWord14" visiblename="Ch15">0</Element>
+                                <Element name="DWord15" visiblename="Ch16">0</Element>
+                              </Value>
+                              <Name>Channels</Name>
+                            </Parameter>
+                            <Parameter ParameterId="4000" type="localTypes:T16Da1Status" IndexInDevDesc="8">
+                              <Attributes channel="input" offlineaccess="read" onlineaccess="read" />
+                              <Value name="_x0034_000" visiblename="Status" offlineaccess="read" onlineaccess="read">
+                                <Element name="Byte0" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 0" />
+                                <Element name="Byte1" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 1" />
+                                <Element name="Byte2" offlineaccess="none" onlineaccess="none" desc="Undefined Byte 2" />
+                                <Element name="Byte3" visiblename="Module Status">
+                                  <Element name="Bit0" visiblename="Module Failed" />
+                                  <Element name="Bit1" visiblename="Missing 24V" />
+                                </Element>
+                              </Value>
+                              <Name>Status</Name>
+                            </Parameter>
+                            <Parameter ParameterId="7000" type="std:BOOL" IndexInDevDesc="9">
+                              <Attributes />
+                              <Value name="_x0037_000" visiblename="Hot Swap Enable">FALSE</Value>
+                              <Name>Hot Swap Enable</Name>
+                            </Parameter>
+                          </HostParameterSet>
+                        </Connector>
+                        <DeviceParameterSet />
+                      </DeviceType>
+                    </Device>
+                  </data>
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>b3f4c1a1-43b1-422d-b27f-4524d6f37d83</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="Module_1">
+                <addData>
+                  <data name="Device" handleUnknown="discard">
+                    <Device xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="">
+                      <DeviceType>
+                        <DeviceIdentification>
+                          <Type>42204</Type>
+                          <Id>1767 2014</Id>
+                          <Version>0.0.2</Version>
+                        </DeviceIdentification>
+                        <Connector moduleType="39101" role="child" interface="Facts.Backplane" connectorId="1">
+                          <HostParameterSet />
+                        </Connector>
+                        <Connector moduleType="42204" interface="local.myInternalModuleConnector" connectorId="2" hostpath="1">
+                          <HostParameterSet>
+                            <Parameter ParameterId="1000" type="std:DWORD" IndexInDevDesc="0">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_000" visiblename="ModuleId" offlineaccess="none" onlineaccess="none">336527444</Value>
+                              <Name>ModuleId</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1001" type="std:WORD" IndexInDevDesc="1">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_001" visiblename="NumModuleDigitalInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1002" type="std:WORD" IndexInDevDesc="2">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_002" visiblename="NumModuleDigitalOutputBytes" offlineaccess="none" onlineaccess="none">4</Value>
+                              <Name>NumModuleDigitalOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1003" type="std:WORD" IndexInDevDesc="3">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_003" visiblename="NumModuleAnalogInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1004" type="std:WORD" IndexInDevDesc="4">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_004" visiblename="NumModuleAnalogOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1005" type="std:WORD" IndexInDevDesc="5">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_005" visiblename="NumModuleMstBytes" offlineaccess="none" onlineaccess="none">4</Value>
+                              <Name>NumModuleMstBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1006" type="std:WORD" IndexInDevDesc="6">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_006" visiblename="NumModuleConfigBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleConfigBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="2001" type="localTypes:32Td2pDiscreteOutputChannels" IndexInDevDesc="7">
+                              <Attributes channel="output" />
+                              <Value name="_x0032_001" visiblename="Channels">
+                                <Element name="Byte0" visiblename="Ch 1-8">
+                                  <Element name="Bit0" visiblename="Ch1">0</Element>
+                                  <Element name="Bit1" visiblename="Ch2">0</Element>
+                                  <Element name="Bit2" visiblename="Ch3">0</Element>
+                                  <Element name="Bit3" visiblename="Ch4">0</Element>
+                                  <Element name="Bit4" visiblename="Ch5">0</Element>
+                                  <Element name="Bit5" visiblename="Ch6">0</Element>
+                                  <Element name="Bit6" visiblename="Ch7">0</Element>
+                                  <Element name="Bit7" visiblename="Ch8">0</Element>
+                                </Element>
+                                <Element name="Byte1" visiblename="Ch 9-16">
+                                  <Element name="Bit0" visiblename="Ch9">0</Element>
+                                  <Element name="Bit1" visiblename="Ch10">0</Element>
+                                  <Element name="Bit2" visiblename="Ch11">0</Element>
+                                  <Element name="Bit3" visiblename="Ch12">0</Element>
+                                  <Element name="Bit4" visiblename="Ch13">0</Element>
+                                  <Element name="Bit5" visiblename="Ch14">0</Element>
+                                  <Element name="Bit6" visiblename="Ch15">0</Element>
+                                  <Element name="Bit7" visiblename="Ch16">0</Element>
+                                </Element>
+                                <Element name="Byte2" visiblename="Ch 17-24">
+                                  <Element name="Bit0" visiblename="Ch17">0</Element>
+                                  <Element name="Bit1" visiblename="Ch18">0</Element>
+                                  <Element name="Bit2" visiblename="Ch19">0</Element>
+                                  <Element name="Bit3" visiblename="Ch20">0</Element>
+                                  <Element name="Bit4" visiblename="Ch21">0</Element>
+                                  <Element name="Bit5" visiblename="Ch22">0</Element>
+                                  <Element name="Bit6" visiblename="Ch23">0</Element>
+                                  <Element name="Bit7" visiblename="Ch24">0</Element>
+                                </Element>
+                                <Element name="Byte3" visiblename="Ch 25-32">
+                                  <Element name="Bit0" visiblename="Ch25">0</Element>
+                                  <Element name="Bit1" visiblename="Ch26">0</Element>
+                                  <Element name="Bit2" visiblename="Ch27">0</Element>
+                                  <Element name="Bit3" visiblename="Ch28">0</Element>
+                                  <Element name="Bit4" visiblename="Ch29">0</Element>
+                                  <Element name="Bit5" visiblename="Ch30">0</Element>
+                                  <Element name="Bit6" visiblename="Ch31">0</Element>
+                                  <Element name="Bit7" visiblename="Ch32">0</Element>
+                                </Element>
+                              </Value>
+                              <Name>Channels</Name>
+                              <Mapping>
+                                <Element name="Byte0">
+                                  <Element name="Bit0">Application.GVL_IOMAP.IOMAP_DO_HIGH_DOSENSOR_1</Element>
+                                  <Element name="Bit1">Application.GVL_IOMAP.IOMAP_DO_LOW_DOSENSOR_1</Element>
+                                </Element>
+                              </Mapping>
+                            </Parameter>
+                            <Parameter ParameterId="4000" type="localTypes:32Td2pDiscreteOutputStatus" IndexInDevDesc="8">
+                              <Attributes channel="input" offlineaccess="read" onlineaccess="read" />
+                              <Value name="_x0034_000" visiblename="Status" offlineaccess="read" onlineaccess="read">
+                                <Element name="Byte0" visiblename="Fault Output Ch. 1-8">
+                                  <Element name="Bit0" visiblename="Fault Output 1" />
+                                  <Element name="Bit1" visiblename="Fault Output 2" />
+                                  <Element name="Bit2" visiblename="Fault Output 3" />
+                                  <Element name="Bit3" visiblename="Fault Output 4" />
+                                  <Element name="Bit4" visiblename="Fault Output 5" />
+                                  <Element name="Bit5" visiblename="Fault Output 6" />
+                                  <Element name="Bit6" visiblename="Fault Output 7" />
+                                  <Element name="Bit7" visiblename="Fault Output 8" />
+                                </Element>
+                                <Element name="Byte1" visiblename="Fault Output Ch. 9-16">
+                                  <Element name="Bit0" visiblename="Fault Output 9" />
+                                  <Element name="Bit1" visiblename="Fault Output 10" />
+                                  <Element name="Bit2" visiblename="Fault Output 11" />
+                                  <Element name="Bit3" visiblename="Fault Output 12" />
+                                  <Element name="Bit4" visiblename="Fault Output 13" />
+                                  <Element name="Bit5" visiblename="Fault Output 14" />
+                                  <Element name="Bit6" visiblename="Fault Output 15" />
+                                  <Element name="Bit7" visiblename="Fault Output 16" />
+                                </Element>
+                                <Element name="Byte2" visiblename="Fault Output Ch. 17-24">
+                                  <Element name="Bit0" visiblename="Fault Output 17" />
+                                  <Element name="Bit1" visiblename="Fault Output 18" />
+                                  <Element name="Bit2" visiblename="Fault Output 19" />
+                                  <Element name="Bit3" visiblename="Fault Output 20" />
+                                  <Element name="Bit4" visiblename="Fault Output 21" />
+                                  <Element name="Bit5" visiblename="Fault Output 22" />
+                                  <Element name="Bit6" visiblename="Fault Output 23" />
+                                  <Element name="Bit7" visiblename="Fault Output 24" />
+                                </Element>
+                                <Element name="Byte3" visiblename="Fault Output Ch. 25-32">
+                                  <Element name="Bit0" visiblename="Fault Output 25" />
+                                  <Element name="Bit1" visiblename="Fault Output 26" />
+                                  <Element name="Bit2" visiblename="Fault Output 27" />
+                                  <Element name="Bit3" visiblename="Fault Output 28" />
+                                  <Element name="Bit4" visiblename="Fault Output 29" />
+                                  <Element name="Bit5" visiblename="Fault Output 30" />
+                                  <Element name="Bit6" visiblename="Fault Output 31" />
+                                  <Element name="Bit7" visiblename="Fault Output 32" />
+                                </Element>
+                              </Value>
+                              <Name>Status</Name>
+                            </Parameter>
+                            <Parameter ParameterId="7000" type="std:BOOL" IndexInDevDesc="9">
+                              <Attributes />
+                              <Value name="_x0037_000" visiblename="Hot Swap Enable">FALSE</Value>
+                              <Name>Hot Swap Enable</Name>
+                            </Parameter>
+                          </HostParameterSet>
+                        </Connector>
+                        <DeviceParameterSet />
+                      </DeviceType>
+                    </Device>
+                  </data>
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>179129fb-6fe4-4f30-a9e9-ded82aedb1ca</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="Module_2">
+                <addData>
+                  <data name="Device" handleUnknown="discard">
+                    <Device xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="">
+                      <DeviceType>
+                        <DeviceIdentification>
+                          <Type>41200</Type>
+                          <Id>1767 1011</Id>
+                          <Version>0.0.2</Version>
+                        </DeviceIdentification>
+                        <Connector moduleType="39101" role="child" interface="Facts.Backplane" connectorId="1">
+                          <HostParameterSet />
+                        </Connector>
+                        <Connector moduleType="41200" interface="local.myInternalModuleConnector" connectorId="2" hostpath="1">
+                          <HostParameterSet>
+                            <Parameter ParameterId="1000" type="std:DWORD" IndexInDevDesc="0">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_000" visiblename="ModuleId" offlineaccess="none" onlineaccess="none">98566221</Value>
+                              <Name>ModuleId</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1001" type="std:WORD" IndexInDevDesc="1">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_001" visiblename="NumModuleDigitalInputBytes" offlineaccess="none" onlineaccess="none">4</Value>
+                              <Name>NumModuleDigitalInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1002" type="std:WORD" IndexInDevDesc="2">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_002" visiblename="NumModuleDigitalOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleDigitalOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1003" type="std:WORD" IndexInDevDesc="3">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_003" visiblename="NumModuleAnalogInputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogInputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1004" type="std:WORD" IndexInDevDesc="4">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_004" visiblename="NumModuleAnalogOutputBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleAnalogOutputBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1005" type="std:WORD" IndexInDevDesc="5">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_005" visiblename="NumModuleMstBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleMstBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="1006" type="std:WORD" IndexInDevDesc="6">
+                              <Attributes offlineaccess="none" onlineaccess="none" />
+                              <Value name="_x0031_006" visiblename="NumModuleConfigBytes" offlineaccess="none" onlineaccess="none">0</Value>
+                              <Name>NumModuleConfigBytes</Name>
+                            </Parameter>
+                            <Parameter ParameterId="3001" type="localTypes:32Nd31DiscreteInputChannels" IndexInDevDesc="7">
+                              <Attributes channel="input" />
+                              <Value name="_x0033_001" visiblename="Channels">
+                                <Element name="Byte0" visiblename="Ch 1-8">
+                                  <Element name="Bit0" visiblename="Ch1">0</Element>
+                                  <Element name="Bit1" visiblename="Ch2">0</Element>
+                                  <Element name="Bit2" visiblename="Ch3">0</Element>
+                                  <Element name="Bit3" visiblename="Ch4">0</Element>
+                                  <Element name="Bit4" visiblename="Ch5">0</Element>
+                                  <Element name="Bit5" visiblename="Ch6">0</Element>
+                                  <Element name="Bit6" visiblename="Ch7">0</Element>
+                                  <Element name="Bit7" visiblename="Ch8">0</Element>
+                                </Element>
+                                <Element name="Byte1" visiblename="Ch 9-16">
+                                  <Element name="Bit0" visiblename="Ch9">0</Element>
+                                  <Element name="Bit1" visiblename="Ch10">0</Element>
+                                  <Element name="Bit2" visiblename="Ch11">0</Element>
+                                  <Element name="Bit3" visiblename="Ch12">0</Element>
+                                  <Element name="Bit4" visiblename="Ch13">0</Element>
+                                  <Element name="Bit5" visiblename="Ch14">0</Element>
+                                  <Element name="Bit6" visiblename="Ch15">0</Element>
+                                  <Element name="Bit7" visiblename="Ch16">0</Element>
+                                </Element>
+                                <Element name="Byte2" visiblename="Ch 17-24">
+                                  <Element name="Bit0" visiblename="Ch17">0</Element>
+                                  <Element name="Bit1" visiblename="Ch18">0</Element>
+                                  <Element name="Bit2" visiblename="Ch19">0</Element>
+                                  <Element name="Bit3" visiblename="Ch20">0</Element>
+                                  <Element name="Bit4" visiblename="Ch21">0</Element>
+                                  <Element name="Bit5" visiblename="Ch22">0</Element>
+                                  <Element name="Bit6" visiblename="Ch23">0</Element>
+                                  <Element name="Bit7" visiblename="Ch24">0</Element>
+                                </Element>
+                                <Element name="Byte3" visiblename="Ch 25-32">
+                                  <Element name="Bit0" visiblename="Ch25">0</Element>
+                                  <Element name="Bit1" visiblename="Ch26">0</Element>
+                                  <Element name="Bit2" visiblename="Ch27">0</Element>
+                                  <Element name="Bit3" visiblename="Ch28">0</Element>
+                                  <Element name="Bit4" visiblename="Ch29">0</Element>
+                                  <Element name="Bit5" visiblename="Ch30">0</Element>
+                                  <Element name="Bit6" visiblename="Ch31">0</Element>
+                                  <Element name="Bit7" visiblename="Ch32">0</Element>
+                                </Element>
+                              </Value>
+                              <Name>Channels</Name>
+                              <Mapping>
+                                <Element name="Byte0">
+                                  <Element name="Bit0">Application.GVL_IOMAP.IOMAP_DI_FAULT_DOSENSOR_1</Element>
+                                </Element>
+                              </Mapping>
+                            </Parameter>
+                            <Parameter ParameterId="7000" type="std:BOOL" IndexInDevDesc="8">
+                              <Attributes />
+                              <Value name="_x0037_000" visiblename="Hot Swap Enable">FALSE</Value>
+                              <Name>Hot Swap Enable</Name>
+                            </Parameter>
+                          </HostParameterSet>
+                        </Connector>
+                        <DeviceParameterSet />
+                      </DeviceType>
+                    </Device>
+                  </data>
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>065a9181-4d3c-489e-b33e-e582951e07b2</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>6453eed9-479f-4af5-ac0b-939118516229</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>5138ea8b-57e5-4573-bdfe-a6a1e1c37389</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>9a01b6ca-e480-4176-ba4c-4fe68e663b8c</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>9e2391c4-847e-4e6b-91d1-35065091d41a</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>51343f02-cd7f-48cf-bdb1-9cfb9e62e152</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>71c6b039-4a18-4613-be11-d0022d0d5beb</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+              <configuration name="&lt;Vide&gt;">
+                <addData>
+                  <data name="Device" handleUnknown="discard" />
+                  <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+                    <ObjectId>5c93b8f2-4935-4f51-9194-c40347b8b1ee</ObjectId>
+                  </data>
+                </addData>
+              </configuration>
+            </configurations>
+          </data>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>ad540a7a-7819-4e07-b193-44874f09250c</ObjectId>
+          </data>
+        </addData>
+      </configuration>
+    </configurations>
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="P2_11B" ObjectId="ad540a7a-7819-4e07-b193-44874f09250c">
+          <Object Name="Module_2" ObjectId="065a9181-4d3c-489e-b33e-e582951e07b2" />
+          <Object Name="Module_1" ObjectId="179129fb-6fe4-4f30-a9e9-ded82aedb1ca" />
+          <Object Name="Module_3" ObjectId="b3f4c1a1-43b1-422d-b27f-4524d6f37d83" />
+          <Object Name="Module" ObjectId="3677b6d7-6719-4af0-aeca-424dd57b10e6" />
+          <Object Name="&lt;Vide&gt;" ObjectId="6453eed9-479f-4af5-ac0b-939118516229" />
+          <Object Name="&lt;Vide&gt;" ObjectId="5138ea8b-57e5-4573-bdfe-a6a1e1c37389" />
+          <Object Name="&lt;Vide&gt;" ObjectId="9a01b6ca-e480-4176-ba4c-4fe68e663b8c" />
+          <Object Name="&lt;Vide&gt;" ObjectId="9e2391c4-847e-4e6b-91d1-35065091d41a" />
+          <Object Name="&lt;Vide&gt;" ObjectId="51343f02-cd7f-48cf-bdb1-9cfb9e62e152" />
+          <Object Name="&lt;Vide&gt;" ObjectId="71c6b039-4a18-4613-be11-d0022d0d5beb" />
+          <Object Name="&lt;Vide&gt;" ObjectId="5c93b8f2-4935-4f51-9194-c40347b8b1ee" />
+        </Object>
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

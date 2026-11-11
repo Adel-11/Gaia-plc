@@ -1,3 +1,6 @@
+from io import BytesIO
+from zipfile import ZipFile
+
 from fastapi.testclient import TestClient
 from lxml import etree
 import pytest
@@ -144,3 +147,56 @@ def test_delete_and_reassign_legacy_iomap_updates_program_and_rack(rack_client):
     assert not program['errors'], program
     xml = client.get(f'/api/v2/plc/download/{program["token"]}')
     assert xml.status_code == 200 and variable.encode() not in xml.content
+
+
+def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):
+    client, headers = rack_client
+
+    def post(path, expected=200, **payload):
+        view = client.get('/api/v2/io-hardware').json()
+        response = client.post('/api/v2/io-hardware' + path, headers=headers, json={'revision': view['revision'], **payload})
+        assert response.status_code == expected, response.text
+        return response
+
+    loaded = post('/template/gaia').json()
+    hardware = loaded['hardware']
+    assert [(row['slot'], row['model']) for row in hardware['cards']] == [(1, 'P2-16AD-1'), (2, 'P2-16DA-1'), (3, 'P2-32TD2P'), (4, 'P2-32ND3-1')]
+    assert len(hardware['channels']) == 96
+    post('/template/gaia', expected=409)
+    analog_in = [row for row in hardware['channels'] if row['module'] == 'Module']
+    analog_out = next(row for row in hardware['channels'] if row['module'] == 'Module_3')
+    assert analog_out['direction'] == 'output' and analog_out['iec_type'] == 'DWORD'
+    assert not any(v['iec_type'] == 'DWORD' and v['direction'] != 'input' for v in hardware['variables'])
+
+    old, new = analog_in[:2]
+    signal = old['variable'].split('.')[-1]
+    moved = post('/mappings', changes={new['key']: signal, old['key']: None}).json()
+    channels = {row['key']: row for row in moved['hardware']['channels']}
+    assert not channels[old['key']]['variable'] and channels[new['key']]['variable'] == old['variable']
+
+    created = post('/channels/create-variable', channel_key=analog_out['key'], signal='QA_Consigne').json()
+    name = 'IOMAP_AO_QA_Consigne'
+    assert next(row for row in created['variables'] if row['name'] == name)['iec_type'] == 'DWORD'
+    assert next(row for row in created['hardware']['channels'] if row['key'] == analog_out['key'])['variable'].endswith(name)
+    post('/channels/create-variable', expected=422, channel_key=analog_out['key'], signal='Another')
+
+    response = post('/exports/bundle')
+    with ZipFile(BytesIO(response.content)) as archive:
+        assert archive.namelist() == ['Gaia-GVL-ES.xml', 'Gaia-GFC-ES.xml', 'Gaia-mapping-ES.xml']
+        gvl = etree.fromstring(archive.read('Gaia-GVL-ES.xml'))
+        gfc_bytes = archive.read('Gaia-GFC-ES.xml')
+        gfc = etree.fromstring(gfc_bytes)
+        rack, channels = read_hardware(archive.read('Gaia-mapping-ES.xml'))
+    assert set(gvl.xpath('//*[local-name()="globalVars"]/@name')) == {'GVL_IO', 'GVL_IOMAP'}
+    assert not gvl.xpath('//*[local-name()="Device" or local-name()="pou"]')
+    assert name in gvl.xpath('//*[local-name()="variable"]/@name')
+    assert set(gfc.xpath('//*[local-name()="pou"]/@name')) == {'GFC_IO_IN', 'GFC_IO_OUT'}
+    assert not gfc.xpath('//*[local-name()="Device" or local-name()="globalVars"]')
+    assert channels[analog_out['key']].variable.endswith(name) and channels[new['key']].variable.endswith(signal)
+    assert not rack.xpath('//*[local-name()="pou" or local-name()="globalVars"]')
+
+    unlinked = post('/mappings', changes={analog_out['key']: None}).json()
+    assert name in [row['name'] for row in unlinked['variables']]
+    assert not next(row for row in unlinked['hardware']['channels'] if row['key'] == analog_out['key'])['variable']
+    assert name.encode() in post('/exports/gvl').content
+    assert post('/exports/gfc').content == gfc_bytes
