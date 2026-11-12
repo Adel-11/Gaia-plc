@@ -395,7 +395,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
     def download(content: bytes, filename: str, media_type: str):
         target = Path(app.state.data_dir) / "exports" / f"v2-{uuid.uuid4().hex}-{filename}"
         target.write_bytes(content)
-        return FileResponse(target, filename=filename, media_type=media_type)
+        return FileResponse(target, filename=filename, media_type=media_type, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v2/project")
     def get_project(session=Depends(get_session), user=Depends(current_user)):

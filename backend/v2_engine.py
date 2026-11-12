@@ -894,6 +894,10 @@ def export_workbook(state: dict, filename: str) -> bytes:
     book = state.get("workbooks", {}).get(filename)
     if not book:
         raise ValueError(f"Workbook is not present in project state: {filename}")
+    if filename in {"MODBUS_TCP.xlsx", "MODBUS_RTU.xlsx"}:
+        from backend.v2_configuration import synchronize_modbus_workbook
+        book = copy.deepcopy(book)
+        synchronize_modbus_workbook(state, book)
     template_name = {"TYPE_": "TEMPLATE_TYPE.xlsx", "MODBUS_TCP.xlsx": "TEMPLATE_MODBUS_TCP.xlsx",
                      "MODBUS_RTU.xlsx": "TEMPLATE_MODBUS_RTU.xlsx", "IO_PHYSICAL.xlsx": "TEMPLATE_IO_PHYSICAL.xlsx",
                      "PARAMETERS_PA.xlsx": "TEMPLATE_PARAMETERS_PA.xlsx", "EXCHANGES_EXC.xlsx": "TEMPLATE_EXCHANGES_EXC.xlsx"}

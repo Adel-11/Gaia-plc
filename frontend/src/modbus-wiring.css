@@ -9,6 +9,8 @@
 .modbus-wiring-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px}
 .modbus-wiring-controls label{display:grid;gap:4px;font-weight:600}
 .modbus-wiring-controls input,.modbus-wiring-controls select{width:100%;min-width:0}
+.modbus-view-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.modbus-view-tools [aria-pressed=true]{border-color:#8e6c46;background:#f2e9dc;color:#563b20}
 .modbus-wiring .ex-wiring-diagram{max-height:48dvh;overflow:auto}
 .modbus-links{padding:0;list-style:none}
 .modbus-links li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:7px 4px;border-bottom:1px solid #dbe7e1}

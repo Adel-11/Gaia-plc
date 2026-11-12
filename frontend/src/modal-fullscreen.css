@@ -1,0 +1,34 @@
+.modal-view-controls {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 6px 12px;
+}
+
+.modal-view-controls button {
+  padding: 5px 11px;
+  border: 1px solid var(--gaia-outline, #d9d3c8);
+  border-radius: 8px;
+  background: var(--gaia-paper, #fffaf1);
+  color: var(--gaia-ink, #3c3328);
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal-view-controls button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+[data-modal-fullscreen="true"],
+.v2-workspace [aria-modal="true"][data-modal-fullscreen="true"] {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+}

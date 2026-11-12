@@ -364,46 +364,74 @@ def synchronize_io_workbook(state):
                       for merged in [{**old.get((str(row.get('Slot')), str(row.get('Channel'))), {}), **row}]]
 
 
+def synchronize_modbus_workbook(state, book):
+    """Refresh the workbook rows from saved TCP or RTU configuration."""
+    sheets = _sheet_map(book)
+
+    def write_rows(sheet, rows, keys, aliases=None):
+        if sheet is None:
+            return
+        headers = sheet.get("headers", [])
+        aliases = aliases or {}
+
+        def identity(record):
+            return tuple(str(record.get(key, "")) for key in keys)
+
+        previous = {identity(row): row for values in sheet.get("rows", [])
+                    for row in [dict(zip(headers, values))]}
+        result = []
+        for record in rows:
+            row = dict(record)
+            for field, alias in aliases.items():
+                if field not in row and alias in row:
+                    row[field] = row[alias]
+            merged = {**previous.get(identity(row), {}), **row}
+            result.append([merged.get(header) for header in headers])
+        sheet["rows"] = result
+
+    if book["filename"] == "MODBUS_TCP.xlsx":
+        from backend.v2_engine import TABLES
+        write_rows(sheets.get("CLIENTS"), state.get("tcp_clients", []), ("Client",),
+                   {"Client": "id", "IP address": "ip_address", "Address range": "address_range"})
+        for sheet, table in TABLES.items():
+            rows = [row for row in state.get("tcp_points", [])
+                    if str(row.get("table") or row.get("sheet") or "").casefold() == table]
+            write_rows(sheets.get(sheet), rows, ("Client", "Modbus address"),
+                       {"Client": "client_id", "Instance": "instance_id", "Modbus address": "address",
+                        "Client address": "client_address", "Direction": "direction", "Type": "data_type", "Name": "name"})
+    elif book["filename"] == "MODBUS_RTU.xlsx":
+        write_rows(sheets.get("LINES"), state.get("rtu_lines", []), ("Line",), {"Line": "id"})
+        write_rows(sheets.get("SLAVES"), state.get("rtu_slaves", []), ("Instance",),
+                   {"Instance": "instance_id", "Line": "line_id", "Slave address": "address"})
+        reserved = {"README", "LINES", "SLAVES", "LISTS", "<INSTANCE>"}
+        channels = {}
+        for row in state.get("rtu_channels", []):
+            name = row.get("instance") or row.get("instance_id") or row.get("Instance")
+            if name and name not in reserved:
+                channels.setdefault(name, []).append(row)
+        prototype = next((sheet for name, sheet in sheets.items() if name not in reserved), None)
+        if channels.keys() - sheets.keys() and prototype is None:
+            from backend.v2_engine import DEFAULT_PACK, workbook_to_data
+            template = DEFAULT_PACK / "02_excel" / "templates" / "TEMPLATE_MODBUS_RTU.xlsx"
+            prototype = _sheet_map(workbook_to_data(template.read_bytes(), book["filename"]))["<INSTANCE>"]
+        for name in channels:
+            if name in sheets:
+                continue
+            sheets[name] = {**copy.deepcopy(prototype), "name": name, "rows": []}
+            book["sheets"].append(sheets[name])
+        for name, sheet in sheets.items():
+            if name not in reserved:
+                write_rows(sheet, channels.get(name, []), ("Table", "Equipment address"),
+                           {"Table": "table", "Equipment address": "address", "Channel offset": "channel_offset",
+                            "Direction": "direction", "Type": "data_type", "Name": "name"})
+
+
 def synchronize_workbooks(state):
     """Patch only supported sheets, preserving other workbooks and workbook metadata."""
     books=state.get("workbooks",{})
-    tcp=books.get("MODBUS_TCP.xlsx")
-    if tcp:
-        clients=_sheet_map(tcp).get("CLIENTS")
-        if clients:
-            headers=clients.get("headers",[]); old=[dict(zip(headers,row)) for row in clients.get("rows",[])]; out=[]
-            for row in state.get("tcp_clients",[]):
-                prior=next((o for o in old if str(o.get("Client"))==str(row.get("Client",row.get("id")))),{})
-                out.append([{**prior,**row}.get(h) for h in headers])
-            clients["rows"]=out
-        for sh in ("COILS","DISCRETE_INPUTS","INPUT_REGISTERS","HOLDING_REGISTERS"):
-            sheet=_sheet_map(tcp).get(sh)
-            if sheet:
-                headers=sheet.get("headers",[]); old=[dict(zip(headers,row)) for row in sheet.get("rows",[])]; output=[]
-                for row in state.get("tcp_points",[]):
-                    if str(row.get("sheet","")).upper()!=sh: continue
-                    original=next((o for o in old if str(o.get("id",""))==str(row.get("id","")) or (str(o.get("Client"))==str(row.get("Client")) and str(o.get("Instance"))==str(row.get("Instance")) and str(o.get("Name"))==str(row.get("Name")))),{})
-                    output.append([{**original,**row}.get(h) for h in headers])
-                sheet["rows"]=output
-    rtu=books.get("MODBUS_RTU.xlsx")
-    if rtu:
-        for sheet, coll, key in (("LINES","rtu_lines","Line"),("SLAVES","rtu_slaves","Instance")):
-            sh=_sheet_map(rtu).get(sheet)
-            if sh:
-                headers=sh.get("headers",[]); old=[dict(zip(headers,row)) for row in sh.get("rows",[])]; out=[]
-                for row in state.get(coll,[]):
-                    prior=next((o for o in old if str(o.get(key))==str(row.get(key))),{})
-                    out.append([{**prior,**row}.get(h) for h in headers])
-                sh["rows"]=out
-        for sh in rtu.get("sheets",[]):
-            name=sh.get("name")
-            if name in {"README","LINES","SLAVES","LISTS"}: continue
-            headers=sh.get("headers",[]); old=[dict(zip(headers,row)) for row in sh.get("rows",[])]; out=[]
-            for row in state.get("rtu_channels",[]):
-                if str(row.get("instance",row.get("instance_id")))!=str(name): continue
-                prior=next((o for o in old if str(o.get("Table"))==str(row.get("Table")) and str(o.get("Equipment address"))==str(row.get("Equipment address"))),{})
-                out.append([{**prior,**row}.get(h) for h in headers])
-            sh["rows"]=out
+    for name in ("MODBUS_TCP.xlsx", "MODBUS_RTU.xlsx"):
+        if name in books:
+            synchronize_modbus_workbook(state, books[name])
     io=books.get("IO_PHYSICAL.xlsx")
     if io:
         rack=_sheet_map(io).get("RACK")

@@ -1,3 +1,4 @@
+import ModalFullscreen from './ModalFullscreen'
 import { useEffect, useState } from 'react'
 import ExchangeWiring from './ExchangeWiring'
 import './modbus-wiring.css'
@@ -37,6 +38,8 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const [start, setStart] = useState('')
   const [towardPlc, setTowardPlc] = useState(false)
   const [armed, setArmed] = useState<string | null>(null)
+  const [showMapped, setShowMapped] = useState(true)
+  const [alignByAddress, setAlignByAddress] = useState(false)
   const [pending, setPending] = useState<Link[]>([])
   const [deletions, setDeletions] = useState<string[]>([])
   const [review, setReview] = useState<Review | null>(null)
@@ -71,9 +74,30 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     : []
   const choices = members(instance).filter(row => bits.has(table) ? String(row.iec_type).toUpperCase() === 'BOOL' : /^(WORD|INT|UINT|BYTE|SINT|USINT)$/i.test(row.iec_type))
   const ports = [...choices, ...effective.filter(link => !choices.some(row => row.path === link.member)).map(link => ({ path: link.member, iec_type: 'Liaison existante' }))]
-  const sources = [...new Map(ports.map(row => [String(row.path), { path: String(row.path), iec_type: String(row.iec_type) }])).values()]
-  const destinations = [...new Set([...effective.map(link => link.address), ...available])].sort((a,b) => a-b)
+  const uniqueSources = [...new Map(ports.map(row => [String(row.path), { path: String(row.path), iec_type: String(row.iec_type) }])).values()]
+  const mapped = new Set(effective.map(link => link.member))
+  const links = showMapped ? [...effective].sort((a, b) => a.address - b.address) : []
+  const destinations = [...new Set([...links.map(link => link.address), ...available])].sort((a,b) => a-b)
     .map(n => ({ path: 'Adresse.' + n, member: String(n), iec_type: occupied.has(n) ? 'Affectée' : 'Libre' }))
+  const sourceByPort = new Map<string, string>()
+  const sourceForLink = new Map<Link, string>()
+  let sources: { path: string; iec_type: string; member?: string; row?: number }[] = uniqueSources.filter(port => showMapped || !mapped.has(port.path))
+  if (alignByAddress && showMapped) {
+    const takenRows = new Set<number>()
+    let extraRow = destinations.length
+    const aligned = links.map((link, index) => {
+      const path = `${link.member}@${index}`
+      const destinationRow = destinations.findIndex(port => port.path === `Adresse.${link.address}`)
+      const row = takenRows.has(destinationRow) ? extraRow++ : destinationRow
+      takenRows.add(row)
+      sourceByPort.set(path, link.member)
+      sourceForLink.set(link, path)
+      return { path, member: link.member, row, iec_type: uniqueSources.find(port => port.path === link.member)?.iec_type ?? '' }
+    })
+    const freeRows = destinations.flatMap((_, index) => takenRows.has(index) ? [] : [index])
+    sources = [...aligned, ...uniqueSources.filter(port => !mapped.has(port.path))
+      .map((port, index) => ({ ...port, row: freeRows[index] ?? extraRow++ }))].sort((a, b) => a.row - b.row)
+  }
 
   useEffect(() => { if (!dirty && !busy) setBase(revision) }, [revision, dirty, busy])
   useEffect(() => {
@@ -82,8 +106,9 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     return () => document.removeEventListener('keydown', key)
   }, [busy, review, dirty, onClose])
   const resetScope = () => { setArmed(null); setStart(''); setError(''); setReview(null) }
-  const connect = (source: string, target: string) => {
+  const connect = (port: string, target: string) => {
     if (busy || revision !== base) return
+    const source = sourceByPort.get(port) ?? port
     const n = Number(target.split('.')[1])
     if (!choices.some(row => row.path === source)) { setError('Cette variable ne peut pas être ajoutée dans cette table.'); return }
     if (!available.includes(n)) { setError('Choisis une adresse libre.'); return }
@@ -120,7 +145,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   }
   const close = () => { if (!dirty || window.confirm('Abandonner les modifications Modbus ?')) onClose() }
 
-  return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title">
+  return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen/>
     <header><div><h3 id="modbus-wiring-title">Mapping graphique Modbus {mode.toUpperCase()}</h3><p>Choisis une variable COM puis une adresse libre, ou tire un lien entre les deux.</p></div><button type="button" className="comm-btn" disabled={busy} onClick={close}>Fermer</button></header>
     <div className="modbus-wiring-scroll">
       <div className="modbus-wiring-controls">
@@ -131,11 +156,18 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
         <label>Afficher à partir de<input type="number" min={min} max={max} step="1" value={start} placeholder={String(offset)} onChange={e => setStart(e.target.value)} disabled={!peer || busy}/></label>
       </div>
       {!peer ? <p className="comm-help">{tcp ? 'Configure un client TCP avant de mapper une adresse.' : 'Déclare cette instance comme esclave RTU dans Communications avant de mapper une adresse.'}</p> :
-        <><p className="comm-help">Plage {min}–{max} · {available.length} adresses libres affichées{!choices.length && ' · Aucun membre COM compatible avec cette table'}</p>
+        <><div className="modbus-view-tools">
+          <button type="button" className="comm-btn" aria-pressed={!showMapped} onClick={() => { setShowMapped(!showMapped); setArmed(null) }}>{showMapped ? 'Masquer les variables mappées' : 'Afficher les variables mappées'}</button>
+          <button type="button" className="comm-btn" aria-pressed={alignByAddress} onClick={() => { setAlignByAddress(!alignByAddress); setArmed(null) }}>{alignByAddress ? 'Rétablir l’ordre des variables' : 'Aligner par adresse'}</button>
+        </div><p className="comm-help">Plage {min}–{max} · {available.length} adresses libres affichées{!choices.length && ' · Aucun membre COM compatible avec cette table'}</p>
           <ExchangeWiring sources={sources} destinations={destinations} sourceParameter={`COM · ${instanceName}`} destinationParameter={tables[table]}
-            mappings={effective.map(link => ({ id: link.id, source: link.direction.endsWith(' to PLC') ? 'Adresse.' + link.address : link.member, destination: link.direction.endsWith(' to PLC') ? link.member : 'Adresse.' + link.address }))}
+            mappings={links.map(link => {
+              const source = sourceForLink.get(link) ?? link.member
+              const target = `Adresse.${link.address}`
+              return { id: link.id, source: link.direction.endsWith(' to PLC') ? target : source, destination: link.direction.endsWith(' to PLC') ? source : target }
+            })}
             armed={armed} selected={null} onArm={setArmed} onConnect={connect} onSelect={() => {}} />
-          <ul className="modbus-links">{effective.map(link => <li key={link.id}><b>{link.member} ↔ {link.address}</b><span>{link.direction}{link.plcVariable ? ' · ' + link.plcVariable : ''}</span>
+          <ul className="modbus-links">{links.map(link => <li key={link.id}><b>{link.member} ↔ {link.address}</b><span>{link.direction}{link.plcVariable ? ' · ' + link.plcVariable : ''}</span>
             {(link.id.startsWith('draft:') || tcp || link.manual) && <button type="button" className="comm-btn small" disabled={busy} onClick={() => { setReview(null); if (link.id.startsWith('draft:')) setPending(rows => rows.filter(row => row.id !== link.id)); else setDeletions(ids => [...ids, link.id]) }}>Retirer le lien</button>}</li>)}</ul>
         </>}
       {error && <p role="alert" className="comm-alert">{error}</p>}

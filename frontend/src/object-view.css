@@ -25,15 +25,17 @@
 .ov-layout.type-editor-layout.code-only-layout{display:block}.code-only-layout .ov-main{padding:20px}.code-only-layout .ov-fb-body{min-height:240px}
 .ov-review-backdrop{z-index:1200}.ov-fb-modal-section:has(.local-variables){grid-column:1/-1;min-height:0}
 .ov-fb-workbench{display:grid;min-width:0;gap:1rem}
-.ov-fb-zone{min-width:0;--zone-accent:#33678f}
-.ov-fb-zone.processing{--zone-accent:#226952}
-.ov-fb-zone.outputs{--zone-accent:#89512e}
-.ov-fb-zone>.workspace-panel-head{border-inline-start:4px solid var(--zone-accent)}
+.ov-fb-zone{min-width:0;width:100%!important;max-height:none;--zone-accent:#325e80;--zone-tint:#eaf2f8}
+.ov-fb-zone.processing{--zone-accent:#29624e;--zone-tint:#e8f3eb}
+.ov-fb-zone.outputs{--zone-accent:#865328;--zone-tint:#f7ecdf}
+.v2-workspace .ov-fb-zone>.workspace-panel-head{border-inline-start:5px solid var(--zone-accent);background:var(--zone-tint)}
+.v2-workspace .ov-fb-zone>.workspace-panel-head h2{color:var(--zone-accent)}
 .ov-fb-zone>.workspace-panel-content{display:grid;gap:.8rem;padding:.9rem}
 .ov-fb-zone>.workspace-panel-content[hidden]{display:none}
-.ov-fb-mapping-pair{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:.8rem;min-width:0}
-.ov-fb-mapping-pair>.fb-map-section,.ov-fb-mapping-code{min-width:0;min-height:220px}
-.ov-fb-mapping-code{display:flex;flex-direction:column}
+.ov-fb-mapping-pair{display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem;min-width:0}
+.ov-fb-mapping-pair>.fb-map-section,.ov-fb-mapping-code,.ov-fb-local-variables,.ov-local-preview{min-width:0;resize:vertical;overflow:auto}
+.ov-fb-mapping-pair>.fb-map-section{min-height:120px}
+.ov-fb-mapping-code{display:flex;flex-direction:column;min-height:200px;height:290px}
 .ov-fb-mapping-code .ov-editor-wrap{flex:1;min-height:160px}
 .ov-fb-mode{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.4rem;margin-bottom:.4rem;color:#466073}
 .ov-local-preview{height:155px}
@@ -44,7 +46,6 @@
 .ov-fb-extra summary{cursor:pointer}
 .ov-raw-button{margin-bottom:.7rem}
 .ov-fb-modal-body.is-fb,.ov-fb-modal-body.is-dut{grid-template-columns:minmax(0,1fr)}
-.ov-fb-modal.is-expanded{width:98vw;height:97dvh}
 .ov-dialog-tools{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:.55rem}
 .ov-fb-modal .ov-dialog-tools button.ov-secondary{font-size:14px;border:1px solid #d4e0e9;padding:.4rem .7rem;background:#f4f8fb;border-radius:6px;color:#23384a}
 .ov-dut-member-panel .ov-modal-member-table{max-height:none;min-width:0}
@@ -53,8 +54,6 @@
 .ov-structure-item small,.ov-dut-glyph{flex:none}
 .ov-table td .ov-name-parts,.tw-table td .tw-name-parts{grid-template-columns:minmax(106px,.45fr) 12px minmax(200px,1fr);align-items:center}
 .ov-name-parts input,.ov-name-parts select,.tw-name-parts input,.tw-name-parts select{line-height:1.35;min-height:34px}
-@container (max-width:840px){.ov-layout .ov-fb-mapping-pair{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:760px){.ov-fb-mapping-pair{grid-template-columns:minmax(0,1fr)}}
 
 .ov-table td .ov-name-parts, .tw-table td .tw-name-parts {
   grid-template-columns: minmax(116px, .5fr) 12px minmax(200px, 1fr);

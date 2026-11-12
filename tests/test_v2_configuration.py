@@ -4,8 +4,32 @@ import copy
 import pytest
 
 from backend.v2_configuration import apply_changes, synchronize_workbooks, validate_configuration
-from backend.v2_engine import load_pack
+from backend.v2_engine import export_workbook, load_pack, workbook_to_data, _objects
 from backend.v2_addressing import allocate_tcp_points, client_ranges, free_addresses, set_client_ranges
+
+
+def test_excel_export_uses_current_modbus_rows_even_with_stale_workbook():
+    state = copy.deepcopy(load_pack())
+    tcp_file = 'MODBUS_TCP.xlsx'
+    removed = state['tcp_points'].pop(0)
+    edited = next(row for row in state['tcp_points'] if row['sheet'] == removed['sheet'])
+    edited['Name'] = 'Updated TCP point'
+    added = {**edited, 'Modbus address': 900, 'Name': 'New TCP point'}
+    state['tcp_points'].append(added)
+    exported = workbook_to_data(export_workbook(state, tcp_file), tcp_file)
+    by_address = {(row['Client'], row['Modbus address']): row['Name'] for row in _objects(exported, edited['sheet'])}
+    assert (removed['Client'], removed['Modbus address']) not in by_address
+    assert by_address[edited['Client'], edited['Modbus address']] == 'Updated TCP point'
+    assert by_address[added['Client'], 900] == 'New TCP point'
+
+    rtu_file = 'MODBUS_RTU.xlsx'
+    stored = state['workbooks'][rtu_file]
+    stored['sheets'] = [sheet for sheet in stored['sheets'] if sheet['name'] in {'README', 'LINES', 'SLAVES', 'LISTS'}]
+    state['rtu_channels'] = [{'instance_id': 'QA_RTU', 'table': 'HR', 'address': 42, 'name': 'New RTU point'}]
+    exported = workbook_to_data(export_workbook(state, rtu_file), rtu_file)
+    point, = _objects(exported, 'QA_RTU')
+    assert (point['Table'], point['Equipment address'], point['Name']) == ('HR', 42, 'New RTU point')
+    assert all(sheet['name'] != 'QA_RTU' for sheet in stored['sheets'])
 
 
 def test_pa_zero_is_a_valid_value_and_blank_remains_inheritance():

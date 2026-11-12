@@ -18,3 +18,12 @@
 .fb-map-expression-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .fb-map-expression-tools select { flex-basis: 100%; }
 .fb-map-expression-tools button { padding: 4px 8px; border: 1px solid var(--map-line); border-radius: 5px; background: var(--gaia-tint, #f4eef5); color: var(--gaia-ink, #28232c); cursor: pointer; font: 13px ui-monospace, Consolas, monospace; }
+[data-variable-family="IO"]{--variable-ink:#1c604d;--variable-tint:#e7f4ed}
+[data-variable-family="INTERN"]{--variable-ink:#544579;--variable-tint:#eeeaf8}
+[data-variable-family="COM"]{--variable-ink:#285d80;--variable-tint:#e7f1fa}
+[data-variable-family="PA"]{--variable-ink:#774816;--variable-tint:#f8ecd6}
+[data-variable-family="EXC"]{--variable-ink:#84385c;--variable-tint:#f8e9f0}
+[data-variable-family="VAR"]{--variable-ink:#455364;--variable-tint:#edf0f4}
+.fb-map-section select[data-variable-family], option[data-variable-family], optgroup[data-variable-family]{color:var(--variable-ink);background-color:var(--variable-tint)}
+.st-insert-menu .st-insert-results button[data-variable-family]{color:var(--variable-ink);border-inline-start:4px solid var(--variable-ink);background:var(--variable-tint)}
+.st-insert-menu .st-insert-results button[data-variable-family]:hover{box-shadow:inset 0 0 0 1px var(--variable-ink)}

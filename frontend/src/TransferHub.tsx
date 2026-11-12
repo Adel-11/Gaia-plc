@@ -39,7 +39,7 @@ export default function TransferHub({ csrf, project, revision, onChanged }: { cs
     setPreview(kind==='excel'?{...(payload as Omit<ExcelPreview,'kind'>),kind:'excel'}:{...(payload as Omit<RestorePreview,'kind'>),kind:'restore'})
     setReviewed(false)
   })
-  const download=async(path:string,name:string,post=false)=>run(async()=>{const r=await fetch(`/api/v2${path}`,{method:post?'POST':'GET',credentials:'same-origin',headers:post?{'X-CSRF-Token':csrf}:undefined});if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);const d=r.headers.get('content-disposition')||'',m=d.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i);save(await r.blob(),m?.[1]?decodeURIComponent(m[1].replaceAll('"','')):name);if(post)onChanged()})
+  const download=async(path:string,name:string,post=false)=>run(async()=>{const r=await fetch(`/api/v2${path}`,{method:post?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:post?{'X-CSRF-Token':csrf}:undefined});if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);const d=r.headers.get('content-disposition')||'',m=d.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i);save(await r.blob(),m?.[1]?decodeURIComponent(m[1].replaceAll('"','')):name);if(post)onChanged()})
   const apply=()=>{const current=preview;if(!current||!current.token)return;const token=current.token;void run(async()=>{await applyRequest(current.kind==='excel'?'/imports/apply':'/workspace/restore/apply',csrf,token);setPreview(null);setReviewed(false);onChanged()})}
   const excelErrors=preview?.kind==='excel'?messages(preview.validation?.errors):[]
   const restoreErrors=preview?.kind==='restore'?messages(preview.errors):[]

@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 
-type Member = { path: string; iec_type: string; member?: string }
+type Member = { path: string; iec_type: string; member?: string; row?: number }
 type Mapping = { id?: string; source: string; destination: string; condition?: { mode: string; terms: unknown[] } | null; else_value?: { value: string } | null }
 type Props = {
   sources: Member[]; destinations: Member[]; sourceParameter: string; destinationParameter: string
@@ -12,7 +12,8 @@ type Props = {
 /** Ports and wires share the same SVG coordinates, including after scrolling. */
 export default function ExchangeWiring({ sources, destinations, sourceParameter, destinationParameter, mappings, armed, selected, onArm, onConnect, onSelect }: Props) {
   const dragSource = useRef<string | null>(null)
-  const height = Math.max(220, 80 + Math.max(sources.length, destinations.length) * 64)
+  const lastRow = Math.max(...[sources, destinations].flatMap(ports => ports.map((port, index) => port.row ?? index)), 0)
+  const height = Math.max(220, 144 + lastRow * 64)
   const centerY = (index: number) => 90 + index * 64
   const connect = (path: string) => { if (armed) { onConnect(armed, path); onArm(null) } }
   const key = (mapping: Mapping, i: number) => mapping.id || `${mapping.source}:${mapping.destination}:${i}`
@@ -36,7 +37,9 @@ export default function ExchangeWiring({ sources, destinations, sourceParameter,
         const si = (fromLeft ? sources : destinations).findIndex(m => m.path === mapping.source)
         const di = (fromLeft ? destinations : sources).findIndex(m => m.path === mapping.destination)
         if (si < 0 || di < 0) return null
-        const x1 = fromLeft ? 400 : 600, x2 = fromLeft ? 600 : 400, y1 = centerY(si), y2 = centerY(di)
+        const x1 = fromLeft ? 400 : 600, x2 = fromLeft ? 600 : 400
+        const y1 = centerY((fromLeft ? sources : destinations)[si].row ?? si)
+        const y2 = centerY((fromLeft ? destinations : sources)[di].row ?? di)
         const id = key(mapping, i), y = (y1 + y2) / 2
         return <g key={id} className={`ex-actual-wire ${selected === id ? 'selected' : ''}`}>
           <path d={`M${x1} ${y1} C500 ${y1},500 ${y2},${x2} ${y2}`} markerEnd="url(#ex-port-arrow)"/>
@@ -48,12 +51,12 @@ export default function ExchangeWiring({ sources, destinations, sourceParameter,
           </g>}
         </g>
       })}
-      {sources.map((m, i) => <g key={m.path} role="button" tabIndex={0} aria-label={`Source ${m.path}, ${m.iec_type}`} aria-pressed={armed === m.path} className={`ex-actual-port ${armed === m.path ? 'armed' : ''}`} onPointerDown={e => {e.preventDefault();dragSource.current=m.path;onArm(m.path);e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId)}} onClick={() => onArm(m.path)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onArm(m.path) } }}>
+      {sources.map((m, index) => { const i = m.row ?? index; return <g key={m.path} role="button" tabIndex={0} aria-label={`Source ${m.row == null ? m.path : m.member || m.path}, ${m.iec_type}`} aria-pressed={armed === m.path} className={`ex-actual-port ${armed === m.path ? 'armed' : ''}`} onPointerDown={e => {e.preventDefault();dragSource.current=m.path;onArm(m.path);e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId)}} onClick={() => onArm(m.path)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onArm(m.path) } }}>
         <rect x="20" y={centerY(i) - 26} width="380" height="52" rx="6"/>
         <text x="32" y={centerY(i) - 3}>{m.member || m.path.split('.').slice(1).join('.')}</text>
         <text x="32" y={centerY(i) + 17} className="ex-port-iec">{m.iec_type}</text>
         <circle cx="400" cy={centerY(i)} r="6"/><title>{m.path}</title>
-      </g>)}
+      </g> })}
       {destinations.map((m, i) => <g key={m.path} role="button" tabIndex={0} data-destination-port={m.path} aria-label={`Destination ${m.path}, ${m.iec_type}`} className="ex-actual-port destination" onPointerUp={() => connect(m.path)} onClick={() => connect(m.path)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); connect(m.path) } }}>
         <rect x="600" y={centerY(i) - 26} width="380" height="52" rx="6"/>
         <text x="612" y={centerY(i) - 3}>{m.member || m.path.split('.').slice(1).join('.')}</text>

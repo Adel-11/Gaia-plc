@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import VariableOptions, { variableFamily } from './VariableOptions'
 import './fb-mapping-editor.css'
 
 export type FbMapping = { id?: string; section: 'inputs' | 'outputs'; source: string; destination: string }
@@ -29,7 +30,7 @@ function BooleanSource({ value, variables, onChange }: { value: string; variable
     <div className="fb-map-expression-tools">
       <select aria-label="Insérer une variable BOOL" value="" onChange={event => insert(event.target.value)}>
         <option value="">Insérer une variable BOOL</option>
-        {variables.map(variable => <option key={variable.path} value={variable.path}>{variable.path}</option>)}
+        <VariableOptions variables={variables}/>
       </select>
       {['AND', 'OR', '(', ')'].map(token => <button key={token} type="button" onClick={() => insert(token)}>{token}</button>)}
     </div>
@@ -48,10 +49,8 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
   const boolSources = sourceOptions.filter(variable => norm(variable.iec_type) === 'BOOL')
   const variableType = (path: string) => norm(variables.find(variable => variable.path === path)?.iec_type || '')
   const add = () => {
-    const available = destinationOptions.filter(destination => !rows.some(mapping => mapping.destination === destination.path))
-    const source = sourceOptions.find(variable => available.some(destination => norm(destination.iec_type) === norm(variable.iec_type)))
-    const destination = available.find(variable => source && norm(variable.iec_type) === norm(source.iec_type))
-    onChange([...mappings, { id: `draft-${Date.now()}-${Math.random()}`, section, source: source?.path || '', destination: destination?.path || '' }])
+    setQuery('')
+    onChange([...mappings, { id: `draft-${Date.now()}-${Math.random()}`, section, source: '', destination: '' }])
   }
   const change = (row: FbMapping, field: 'source' | 'destination', value: string) => {
     onChange(mappings.map(mapping => mapping === row ? { ...mapping, [field]: value } : mapping))
@@ -59,7 +58,7 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
   const options = (list: VariableOption[], selected: string) => {
     const selectedMissing = selected && !list.some(variable => variable.path === selected)
     return <>{selectedMissing && <option value={selected}>{selected}</option>}
-      {list.map(variable => <option key={variable.path} value={variable.path}>{variable.path} · {variable.iec_type}</option>)}
+      <VariableOptions variables={list}/>
     </>
   }
   return <section className="fb-map-section" aria-label={`${section} mappings`}>
@@ -84,7 +83,7 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
               setEditingExpression(key)
               change(mapping, 'source', value)
             }}/> :
-            <select aria-label={`Source du mapping ${index + 1}`} disabled={readOnly} value={mapping.source} onChange={event => change(mapping, 'source', event.target.value)}>
+            <select aria-label={`Source du mapping ${index + 1}`} data-variable-family={mapping.source ? variableFamily(mapping.source) : undefined} disabled={readOnly} value={mapping.source} onChange={event => change(mapping, 'source', event.target.value)}>
               <option value="">Choisir la source</option>{options(sources, mapping.source)}
             </select>}
           {!readOnly && (expression || destinationType === 'BOOL') && <button type="button" className="fb-map-mode" onClick={() => {
@@ -94,7 +93,7 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
             } else setEditingExpression(key)
           }}>{expression ? 'Utiliser une seule variable' : 'Combiner des variables'}</button>}
         </td><td className="fb-map-arrow" aria-hidden="true">→</td><td>
-          <select aria-label={`Destination du mapping ${index + 1}`} disabled={readOnly} value={mapping.destination} onChange={event => change(mapping, 'destination', event.target.value)}>
+          <select aria-label={`Destination du mapping ${index + 1}`} data-variable-family={mapping.destination ? variableFamily(mapping.destination) : undefined} disabled={readOnly} value={mapping.destination} onChange={event => change(mapping, 'destination', event.target.value)}>
             <option value="">Choisir la destination</option>{options(destinations, mapping.destination)}
           </select>
         </td>{!readOnly && <td><button className="fb-map-remove" type="button" aria-label={`Supprimer le mapping ${index + 1}`} onClick={() => {

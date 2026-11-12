@@ -1,3 +1,4 @@
+import ModalFullscreen from './ModalFullscreen'
 import { useEffect, useState } from 'react'
 
 type Review = { token: string | null; type_name: string; errors: string[]; blockers: string[]; changes: string[] }
@@ -26,7 +27,7 @@ export default function V2TypeDelete({ typeId, typeName, revision, csrf, onClose
     catch (e: any) { setError(e.message) }
     finally { setBusy(false) }
   }
-  return <div className="instance-backdrop"><section className="instance-dialog" role="dialog" aria-modal="true" aria-labelledby="type-delete-title">
+  return <div className="instance-backdrop"><section className="instance-dialog" role="dialog" aria-modal="true" aria-labelledby="type-delete-title"><ModalFullscreen/>
     <header><h2 id="type-delete-title">Supprimer le type {typeName} ?</h2><button aria-label="Fermer la suppression du type" disabled={busy} onClick={onClose}>×</button></header>
     <div className="instance-review">
       <p>Le catalogue de types est partagé entre tous les projets. La suppression retirera ses DUT, son FB et son classeur Excel du catalogue.</p>

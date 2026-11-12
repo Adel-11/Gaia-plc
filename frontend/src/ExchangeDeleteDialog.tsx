@@ -1,3 +1,4 @@
+import ModalFullscreen from './ModalFullscreen'
 import { useEffect, useRef, useState } from 'react'
 import './exchanges.css'
 
@@ -51,7 +52,7 @@ export default function ExchangeDeleteDialog({ name, functionId = name, revision
   }
 
   return <dialog ref={dialog} className="ex-preview ex-delete-dialog" aria-labelledby="ex-delete-title"
-    onCancel={event => { event.preventDefault(); if (!saving) onClose() }}>
+    onCancel={event => { event.preventDefault(); if (!saving) onClose() }}><ModalFullscreen/>
     <header className="ex-preview-top"><h2 id="ex-delete-title">Supprimer {name} ?</h2></header>
     {!preview && !error && <p role="status">Vérification des connexions…</p>}
     {!!preview?.changes?.length && <ul className="ex-changes">{preview.changes.map((change, i) => <li key={i}>{change}</li>)}</ul>}

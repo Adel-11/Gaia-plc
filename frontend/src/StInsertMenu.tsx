@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { VariableOption } from './FbMappingEditor'
+import { variableFamily } from './VariableOptions'
 import './st-insert.css'
 
 export const stSnippets = {
@@ -20,7 +21,7 @@ export const stSnippets = {
 
 export type InsertMode = 'choices' | 'variables' | 'snippets'
 
-const groupOf = (path: string) => path.includes('.') ? path.split('.')[0] : 'VAR'
+const groupOf = variableFamily
 
 export default function StInsertMenu({ x, y, initialMode, variables, onInsert, onClose }: {
   x: number; y: number; initialMode: InsertMode; variables: VariableOption[]
@@ -60,12 +61,12 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
       <div className="st-insert-filters">
         <select aria-label="DUT" value={group} onChange={event => setGroup(event.target.value)}>
           <option value="">Tous les DUT</option>
-          {groups.map(role => <option key={role} value={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
+          {groups.map(role => <option key={role} value={role} data-variable-family={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
         </select>
         <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => setQuery(event.target.value)}/>
       </div>
       <div className="st-insert-results">
-        {matches.map(variable => <button type="button" key={variable.path} onClick={() => onInsert(variable.path)}>
+        {matches.map(variable => <button type="button" key={variable.path} data-variable-family={groupOf(variable.path)} onClick={() => onInsert(variable.path)}>
           <code>{variable.path}</code><small>{variable.iec_type}</small>
         </button>)}
         {!matches.length && <p>Aucune variable trouvée.</p>}
