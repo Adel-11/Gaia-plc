@@ -14,7 +14,7 @@ from lxml import etree
 from pydantic import BaseModel, Field
 
 from backend.v2_codesys import _safe_parse
-from backend.v2_io_copies import assign_copy, authored_references, copy_options, remove_copy, variable_direction, variable_rows
+from backend.v2_io_copies import assign_copy, authored_references, copy_options, instance_options, remove_copy, variable_direction, variable_rows
 from backend.v2_plc import NS, ODATA, ROOT, _ensure_io_declarations, _source, _source_objects
 
 STATE_KEY = 'codesys_io_hardware'
@@ -255,6 +255,7 @@ class CopyUpdate(BaseModel):
     member: str | None = None
     direction: Literal['input', 'output'] | None = None
     channel_key: str | None = None
+    create: bool = False
 
 
 def register_io_hardware_routes(app, get_session, current_user, csrf):
@@ -343,6 +344,20 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
         options = _variable_options(state)
         key = body.iomap.casefold()
         option = options.get(key)
+        if body.create:
+            from backend.v2_type_creation import _identifier
+            if body.action != 'assign' or not _identifier(body.iomap) or not body.direction:
+                raise HTTPException(422, 'Indique un nom IEC valide et le sens de la recopie.')
+            if (state.get('st_overrides') or {}).get('GVL_IOMAP', {}).get('declaration') is not None:
+                raise HTTPException(422, 'GVL_IOMAP utilise une déclaration ST manuelle. Déclare la variable dans le ST complet pour pouvoir la sélectionner.')
+            if option is not None:
+                raise HTTPException(422, 'Ce nom existe déjà dans GVL_IOMAP. Sélectionne la variable existante.')
+            instance = next((item for item in instance_options(state) if item['name'] == body.instance), {})
+            member = next((item for item in instance.get('members', []) if item['name'] == body.member), None)
+            if member is None:
+                raise HTTPException(422, 'Choisis un membre DUT_IO de cette instance.')
+            option = {'name': body.iomap, 'iec_type': member['iec_type'], 'direction': body.direction}
+            state['removed_iomap_variables'] = [name for name in state.get('removed_iomap_variables', []) if name.casefold() != key]
         if option is None and body.action in {'delete', 'disconnect'}:
             option = _variable_options(state, generated=True).get(key)
         if option is None:

@@ -162,6 +162,55 @@ def _pou_text(obj, text, *, preserve_reference=False):
             body.text = text
 
 
+def _wide_modbus_copies(rows, register, pou, inbound, authored_locals):
+    from backend.v2_local_vars import append
+    from backend.v2_manual_comm import pair_key
+
+    groups = {}
+    for row in rows:
+        if key := pair_key(row):
+            groups.setdefault(key, {})[str(row["Word"]).upper()] = row
+    groups = [words for words in groups.values() if words.keys() == {"LSW", "MSW"}]
+    if not groups or pou is None:
+        return []
+    reserved = {var.get("name", "").casefold() for var in pou.xpath("./*[local-name()='interface']/*/*[local-name()='variable']")}
+    reserved.update(row["name"].casefold() for row in authored_locals)
+    def temp(base, iec_type):
+        name = base
+        suffix = 1
+        while name.casefold() in reserved:
+            name = f"{base}_{suffix}"
+            suffix += 1
+        reserved.add(name.casefold())
+        locals_.append({"name": name, "iec_type": iec_type})
+        return name
+    locals_ = []
+    raw = temp("GaiaModbusBits", "DWORD")
+    typed = {}
+    statements = []
+    for words in groups:
+        low, high = words["LSW"], words["MSW"]
+        lsw, msw = register(low), register(high)
+        if not lsw or not msw:
+            continue
+        member = low["GVL_COM variable"]
+        dtype = str(low.get("Type") or low["data_type"]).upper()
+        bits = raw
+        if dtype != "DWORD":
+            if dtype not in typed:
+                typed[dtype] = temp(f"GaiaModbusAs{dtype}", f"POINTER TO {dtype}")
+            bits = f"{typed[dtype]}^"
+            statements.append(f"{typed[dtype]} := ADR({raw});")
+        if inbound:
+            statements.extend([f"{raw} := SHL(WORD_TO_DWORD({msw}), 16) OR WORD_TO_DWORD({lsw});",
+                               f"{member} := {bits};"])
+        else:
+            statements.extend([f"{bits} := {member};", f"{lsw} := DWORD_TO_WORD({raw} AND 16#FFFF);",
+                               f"{msw} := DWORD_TO_WORD(SHR({raw}, 16));"])
+    append(pou, locals_)
+    return statements
+
+
 def _tcp_labels_changed(source, generated):
     from backend.v2_hmi import TCP_COPY
 
@@ -251,7 +300,8 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         member_name=re.sub(r"\[.*$","",parts[1]) if len(parts)>1 else ""
         member=next((m for d in (typ or {}).get("duts",[]) if d.get("role")=="COM" for m in d.get("members",[]) if m.get("name")==member_name),None)
         if row.get("manual_scalar"):
-            _add_gvl_variable(modbus,base,row.get("Type") or "BOOL")
+            from backend.v2_manual_comm import pair_key
+            _add_gvl_variable(modbus,base,"WORD" if pair_key(row) else row.get("Type") or "BOOL")
         elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
     _ensure_io_declarations(iomap, state, valid_instances)
 
@@ -399,7 +449,9 @@ def _generated_objects(objs, state, sources):
     def com_rank(p, ranks): return ranks.get(_com_key(p.get("GVL_COM variable")),10**9)
     tcp_in_rows=sorted((p for p in tcp_points if p.get("Direction")=="Client to PLC" and included("GFC_COM_IN",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,in_rank))
     tcp_out_rows=sorted((p for p in tcp_points if p.get("Direction")!="Client to PLC" and included("GFC_COM_OUT",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,out_rank))
+    from backend.v2_manual_comm import pair_key
     for p in tcp_in_rows+tcp_out_rows:
+        if pair_key(p): continue
         mapped = _tcp_address_expression(p, state); com = str(p.get("GVL_COM variable") or "").removeprefix("GVL_COM.")
         if str(p.get("Word", "")).upper() in {"LSW", "MSW"} and ".Word_value[" in com:
             com = re.sub(r"\.Word_value\[\d+\]", f".Word_value[{0 if str(p.get('Word')).upper() == 'LSW' else 1}]", com)
@@ -415,6 +467,7 @@ def _generated_objects(objs, state, sources):
     rtu_rows=sorted(rtu_rows,key=lambda p:com_rank(p,in_rank if p.get("Direction")=="Equipment to PLC" else out_rank))
     seen_rtu = set()
     for p in rtu_rows:
+        if pair_key(p): continue
         a, b = str(p.get("GVL_MODBUS variable") or ""), str(p.get("GVL_COM variable") or "")
         if not a or not b: continue
         a = a.removeprefix("GVL_MODBUS."); b = b.removeprefix("GVL_COM.")
@@ -426,6 +479,17 @@ def _generated_objects(objs, state, sources):
         seen_rtu.add(key); stmt = f"GVL_COM.{b} := GVL_MODBUS.{a};" if p.get("Direction") == "Equipment to PLC" else f"GVL_MODBUS.{a} := GVL_COM.{b};"
         (rtu_in if p.get("Direction") == "Equipment to PLC" else rtu_out).append(stmt)
     com_in, com_out = rtu_in + tcp_in, rtu_out + tcp_out
+    def register(row):
+        if row.get("Client") or row.get("client_id"):
+            mapped = _tcp_address_expression(row, state)
+            return f"GVL_MODBUS.{mapped}" if mapped else ""
+        return row.get("GVL_MODBUS variable")
+    for name, inbound, tcp_rows, statements in (
+        ("GFC_COM_IN", True, tcp_in_rows, com_in), ("GFC_COM_OUT", False, tcp_out_rows, com_out),
+    ):
+        rtu_wide = [row for row in rtu_rows if (row.get("Direction") == "Equipment to PLC") == inbound]
+        authored_locals = (state.get("generated_local_variables") or {}).get(name, [])
+        statements.extend(_wide_modbus_copies(tcp_rows + rtu_wide, register, objs.get(name, {}).get("element"), inbound, authored_locals))
     if "GFC_COM_IN" in objs: _pou_text(objs["GFC_COM_IN"], "\n".join(com_in)+"\nGFC_COM_IN := TRUE;", preserve_reference=True)
     if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;", preserve_reference=True)
     io_in, io_out = [], []

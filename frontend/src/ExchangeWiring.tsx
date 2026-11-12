@@ -7,22 +7,36 @@ type Props = {
   mappings: Mapping[]; armed: string | null; selected: string | null
   onArm: (path: string | null) => void; onConnect: (source: string, destination: string) => void
   onSelect: (id: string) => void
+  bidirectional?: boolean
 }
 
 /** Ports and wires share the same SVG coordinates, including after scrolling. */
-export default function ExchangeWiring({ sources, destinations, sourceParameter, destinationParameter, mappings, armed, selected, onArm, onConnect, onSelect }: Props) {
+export default function ExchangeWiring({ sources, destinations, sourceParameter, destinationParameter, mappings, armed, selected, onArm, onConnect, onSelect, bidirectional = false }: Props) {
   const dragSource = useRef<string | null>(null)
   const lastRow = Math.max(...[sources, destinations].flatMap(ports => ports.map((port, index) => port.row ?? index)), 0)
   const height = Math.max(220, 144 + lastRow * 64)
   const centerY = (index: number) => 90 + index * 64
   const connect = (path: string) => { if (armed) { onConnect(armed, path); onArm(null) } }
+  const left = (path: string) => sources.some(port => port.path === path)
+  const pick = (path: string) => {
+    if (armed && left(armed) !== left(path)) connect(path)
+    else onArm(armed === path ? null : path)
+  }
+  const startDrag = (event: React.PointerEvent<SVGGElement>, path: string) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    dragSource.current = path
+    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
+  }
   const key = (mapping: Mapping, i: number) => mapping.id || `${mapping.source}:${mapping.destination}:${i}`
   return <div className="ex-wiring-diagram">
     <svg viewBox={`0 0 1000 ${height}`} width="1000" height={height} className="ex-port-diagram" aria-label="Exchange member wiring" onPointerUp={e => {
       const source=dragSource.current; dragSource.current=null
       if (!source) return
-      const destination=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-destination-port]')?.getAttribute('data-destination-port')
-      if(destination){onConnect(source,destination);onArm(null)}
+      const attribute = bidirectional ? 'data-wiring-port' : 'data-destination-port'
+      const destination=document.elementFromPoint(e.clientX,e.clientY)?.closest(`[${attribute}]`)?.getAttribute(attribute)
+      if (destination && (!bidirectional || left(source) !== left(destination))) { onConnect(source,destination); onArm(null) }
+      else if (bidirectional && destination === source) pick(source)
       if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId)
     }} onPointerCancel={()=>{dragSource.current=null}}>
       <defs>
@@ -51,18 +65,18 @@ export default function ExchangeWiring({ sources, destinations, sourceParameter,
           </g>}
         </g>
       })}
-      {sources.map((m, index) => { const i = m.row ?? index; return <g key={m.path} role="button" tabIndex={0} aria-label={`Source ${m.row == null ? m.path : m.member || m.path}, ${m.iec_type}`} aria-pressed={armed === m.path} className={`ex-actual-port ${armed === m.path ? 'armed' : ''}`} onPointerDown={e => {e.preventDefault();dragSource.current=m.path;onArm(m.path);e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId)}} onClick={() => onArm(m.path)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onArm(m.path) } }}>
+      {sources.map((m, index) => { const i = m.row ?? index; return <g key={m.path} role="button" tabIndex={0} data-wiring-port={m.path} aria-label={`${bidirectional ? '' : 'Source '}${m.row == null ? m.path : m.member || m.path}, ${m.iec_type}`} aria-pressed={armed === m.path} className={`ex-actual-port ${armed === m.path ? 'armed' : ''}`} onPointerDown={e => { startDrag(e, m.path); if (!bidirectional && e.button === 0) onArm(m.path) }} onClick={() => { if (!bidirectional) onArm(m.path) }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (bidirectional) pick(m.path); else onArm(m.path) } }}>
         <rect x="20" y={centerY(i) - 26} width="380" height="52" rx="6"/>
         <text x="32" y={centerY(i) - 3}>{m.member || m.path.split('.').slice(1).join('.')}</text>
         <text x="32" y={centerY(i) + 17} className="ex-port-iec">{m.iec_type}</text>
         <circle cx="400" cy={centerY(i)} r="6"/><title>{m.path}</title>
       </g> })}
-      {destinations.map((m, i) => <g key={m.path} role="button" tabIndex={0} data-destination-port={m.path} aria-label={`Destination ${m.path}, ${m.iec_type}`} className="ex-actual-port destination" onPointerUp={() => connect(m.path)} onClick={() => connect(m.path)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); connect(m.path) } }}>
+      {destinations.map((m, index) => { const i = m.row ?? index; return <g key={m.path} role="button" tabIndex={0} data-wiring-port={m.path} data-destination-port={m.path} aria-label={`${bidirectional ? '' : 'Destination '}${m.path}, ${m.iec_type}`} aria-pressed={bidirectional ? armed === m.path : undefined} className={`ex-actual-port destination ${armed === m.path ? 'armed' : ''}`} onPointerDown={e => { if (bidirectional) startDrag(e, m.path) }} onPointerUp={() => { if (!bidirectional) connect(m.path) }} onClick={() => { if (!bidirectional) connect(m.path) }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (bidirectional) pick(m.path); else connect(m.path) } }}>
         <rect x="600" y={centerY(i) - 26} width="380" height="52" rx="6"/>
         <text x="612" y={centerY(i) - 3}>{m.member || m.path.split('.').slice(1).join('.')}</text>
         <text x="612" y={centerY(i) + 17} className="ex-port-iec">{m.iec_type}</text>
         <circle cx="600" cy={centerY(i)} r="6"/><title>{m.path}</title>
-      </g>)}
+      </g> })}
     </svg>
   </div>
 }

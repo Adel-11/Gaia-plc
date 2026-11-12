@@ -45,8 +45,8 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
 
   async function run(area: Area, action: () => Promise<string>) {
     setBusy(true); setFeedback(undefined)
-    try { setFeedback({ area, notice: await action() }) }
-    catch (cause) { setFeedback({ area, error: cause instanceof Error ? cause.message : 'La modification a échoué.' }) }
+    try { setFeedback({ area, notice: await action() }); return true }
+    catch (cause) { setFeedback({ area, error: cause instanceof Error ? cause.message : 'La modification a échoué.' }); return false }
     finally { setBusy(false) }
   }
 
@@ -116,7 +116,7 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
   }
 
   function updateCopy(action: CopyAction) {
-    if (!state) return Promise.resolve()
+    if (!state) return Promise.resolve(false)
     return run('copies', async () => {
       await saveState(await rackRequest('/copies', json({ revision: state.revision, ...action })))
       return action.action === 'delete' ? `${action.iomap} a été supprimée.` : action.action === 'disconnect' ? 'Recopie retirée. La variable et ses canaux restent en place.' : 'Recopie enregistrée.'

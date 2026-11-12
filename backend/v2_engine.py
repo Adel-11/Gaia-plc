@@ -1022,7 +1022,21 @@ def export_fuxa(state: dict) -> bytes:
     tags = []
     existing = {str(p.get("id")): p for p in fuxa.get("points", [])}
     rows = [p for p in state.get("tcp_points", []) if str(p.get("Client", p.get("client", ""))) == "FUXA" and p.get("Name")]
-    rows = [p for p in rows if not p.get("Word") or str(p.get("Word")).upper() == "LSW"]
+    from backend.v2_manual_comm import editable_pair_key
+    legacy, pairs = [], {}
+    for row in rows:
+        if key := editable_pair_key(row):
+            pairs.setdefault(key, []).append(row)
+        elif not row.get("Word") or str(row["Word"]).upper() == "LSW":
+            legacy.append(row)
+    rows = legacy
+    for group in pairs.values():
+        first = min(group, key=lambda row: int(row["Modbus address"]))
+        kind = str(first.get("Type") or "").upper()
+        fuxa_type = {"REAL": "Float32", "DINT": "Int32"}.get(kind, "UInt32")
+        if str(first["Word"]).upper() == "LSW":
+            fuxa_type += "MLE"
+        rows.append({**first, "FUXA type": first.get("FUXA type") or fuxa_type})
     unique = {}
     for row in rows:
         key = (row.get("table"), row.get("Client address") or row.get("Modbus address"), row.get("Name"))

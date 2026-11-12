@@ -32,6 +32,89 @@ def test_excel_export_uses_current_modbus_rows_even_with_stale_workbook():
     assert all(sheet['name'] != 'QA_RTU' for sheet in stored['sheets'])
 
 
+@pytest.mark.parametrize("collection,table,direction,member_type", [
+    ("tcp_points", "holding_registers", "Client to PLC", "REAL"),
+    ("tcp_points", "input_registers", "PLC to client", "REAL"),
+    ("rtu_channels", "IR", "Equipment to PLC", "DINT"),
+])
+def test_modbus_32_bit_pair_generation_workbook_and_atomic_edit(collection, table, direction, member_type):
+    from backend.v2_codesys import _st
+    from backend.v2_hmi import load_hmi_pack
+    from backend.v2_manual_comm import pair_key
+    from backend.v2_plc import build_program, serialize_program
+    from backend.v2_plc_validation import validate_xml
+
+    state = copy.deepcopy(load_hmi_pack())
+    typ = next(row for row in state["types"] if row["name"] == "DIP1500")
+    com = next(dut for dut in typ["duts"] if dut["role"] == "COM")
+    com["members"].append({"name": "HMI_INPUT_QA32", "iec_type": member_type})
+    tcp = collection == "tcp_points"
+    inbound = direction.endswith("to PLC")
+    field = "Modbus address" if tcp else "Equipment address"
+    filename = "MODBUS_TCP.xlsx" if tcp else "MODBUS_RTU.xlsx"
+    values = {"Instance": "DIP1500_1", "Member": "HMI_INPUT_QA32", "Table": table,
+              "Direction": direction, field: 700, "Register word order": "MSW_FIRST"}
+    values.update({"Client": "HMI"} if tcp else {"GVL_MODBUS variable": "GVL_MODBUS.QA_RTU_32"})
+    add = {"collection": collection, "op": "create", "values": values}
+    apply_changes(state, [add])
+    low_address, high_address = [row for row in state[collection] if pair_key(row)]
+    assert [(row[field], row["Word"]) for row in (low_address, high_address)] == [(700, "MSW"), (701, "LSW")]
+
+    def generated():
+        objects = build_program(state)
+        xml = serialize_program(objects, state, list(objects))
+        assert not validate_xml(xml, state, objects)["errors"]
+        return _st(objects["GFC_COM_IN" if inbound else "GFC_COM_OUT"]["element"]), xml
+
+    body, xml = generated()
+    assert f"GaiaModbusAs{member_type} := ADR(GaiaModbusBits);" in body
+    member = "GVL_COM.COM_DIP1500_1.HMI_INPUT_QA32"
+    pointer = f"GaiaModbusAs{member_type}^"
+    assert (f"{member} := {pointer};" if inbound else f"{pointer} := {member};") in body
+    if not tcp:
+        assert b'<variable name="QA_RTU_32_1">' in xml and b'<variable name="QA_RTU_32_2">' in xml
+    if inbound:
+        assert ("Holding_register_TCP_HMI[699]" if tcp else "QA_RTU_32_1") in body.split("SHL(", 1)[1].split(", 16)", 1)[0]
+    else:
+        assert "Input_register_TCP_HMI[699] := DWORD_TO_WORD(SHR(GaiaModbusBits, 16));" in body
+    with pytest.raises(ValueError, match="libres"):
+        apply_changes(state, [{**add, "values": {**values, field: 701, **({} if tcp else {"GVL_MODBUS variable": "GVL_MODBUS.QA_RTU_OVERLAP"})}}])
+    update = {"collection": collection, "op": "update", "id": low_address["id"]}
+    apply_changes(state, [{**update, "values": {"Register word order": "LSW_FIRST"}}])
+    assert (low_address["Word"], high_address["Word"]) == ("LSW", "MSW")
+    body, _ = generated()
+    if inbound:
+        assert ("Holding_register_TCP_HMI[700]" if tcp else "QA_RTU_32_2") in body.split("SHL(", 1)[1].split(", 16)", 1)[0]
+    else:
+        assert "Input_register_TCP_HMI[700] := DWORD_TO_WORD(SHR(GaiaModbusBits, 16));" in body
+    workbook = workbook_to_data(export_workbook(state, filename), filename)
+    rows = _objects(workbook, table.upper() if tcp else "DIP1500_1")
+    assert [(row[field], row["Word"]) for row in rows if row["Name"] == "DIP1500_1.HMI_INPUT_QA32"] == [(700, "LSW"), (701, "MSW")]
+    from backend.v2_engine import _excel_state
+    rebuilt = {}
+    _excel_state(rebuilt, workbook)
+    assert [row["Word"] for row in rebuilt[collection] if pair_key(row)] == ["LSW", "MSW"]
+    apply_changes(state, [{"collection": collection, "op": "delete", "id": high_address["id"]}])
+    assert not any(pair_key(row) for row in state[collection])
+
+
+def test_legacy_tcp_union_can_swap_words_without_changing_either_address():
+    from backend.v2_hmi import load_hmi_pack
+    from backend.v2_manual_comm import editable_pair_key, pair_rows
+
+    state = copy.deepcopy(load_hmi_pack())
+    seed = next(row for row in state["tcp_points"] if editable_pair_key(row))
+    first, second = sorted(pair_rows(state["tcp_points"], seed), key=lambda row: row["address"])
+    addresses = [row["address"] for row in (first, second)]
+    order = "LSW_FIRST" if first["Word"] == "MSW" else "MSW_FIRST"
+    apply_changes(state, [{"collection": "tcp_points", "op": "update", "id": first["id"],
+                           "values": {"Register word order": order}}])
+    assert [row["address"] for row in (first, second)] == addresses
+    for row in (first, second):
+        assert row["GVL_COM variable"].endswith(".Word_value[0]" if row["Word"] == "LSW" else ".Word_value[1]")
+    assert first["Word"] == order.split("_")[0]
+
+
 def test_pa_zero_is_a_valid_value_and_blank_remains_inheritance():
     state = copy.deepcopy(load_pack())
     row = next(r for r in state["pa_values"] if str(r.get("Type", "")).upper() in {"WORD", "INT", "REAL", "BOOL"})

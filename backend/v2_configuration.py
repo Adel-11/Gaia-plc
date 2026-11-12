@@ -94,6 +94,16 @@ def apply_changes(state, changes):
             manual.append(f"Configure the new {coll[:-1]} in CODESYS and the physical device, then verify communication.")
             continue
         if not row: raise ValueError(f"{coll} row {ident} was not found")
+        if coll in {"tcp_points", "rtu_channels"}:
+            from backend.v2_manual_comm import pair_rows, update_pair
+            pair = pair_rows(rows, row)
+            if pair and op == "update":
+                update_pair(state, coll, row, pair, values)
+                continue
+            if pair and op == "delete":
+                rows[:] = [item for item in rows if not any(item is word for word in pair)]
+                manual.append("Remove both registers from the corresponding CODESYS device or Modbus client configuration.")
+                continue
         had_io_mapping = bool(row.get("Instance") or row.get("GVL_IOMAP variable")) if coll == "io_channels" else False
         if op == "delete":
             if coll not in {"tcp_clients","tcp_points","rtu_slaves","rtu_channels"}: raise ValueError(f"Deleting {coll} rows is not supported")
@@ -233,6 +243,7 @@ def _refresh_aliases(row, coll):
 
 
 def validate_configuration(state):
+    from backend.v2_manual_comm import members_for, pair_key
     errors, warnings = [], []
     seen=set()
     for p in state.get("tcp_points",[]):
@@ -245,7 +256,9 @@ def validate_configuration(state):
     pairs={}
     for p in state.get("tcp_points",[]):
         if str(p.get("Word", "")).upper() in {"LSW","MSW"}:
-            key=(str(p.get("Client",p.get("client_id",""))),str(p.get("Instance",p.get("instance_id",""))),str(p.get("Name",p.get("name",""))))
+            key=(str(p.get("Client",p.get("client_id",""))),str(p.get("Instance",p.get("instance_id",""))),
+                 str(p.get("Name",p.get("name",""))),str(p.get("table") or p.get("sheet")),
+                 str(p.get("Direction") or p.get("direction")))
             pairs.setdefault(key,[]).append(p)
     for key, group in pairs.items():
         try: addresses=[int(r.get("Modbus address",r.get("address"))) for r in group]
@@ -302,6 +315,8 @@ def validate_configuration(state):
             elif dtype=="LREAL": _num(val,label)
         except (ValueError,TypeError): errors.append(f"{label} has an invalid {dtype} value")
     channels={}
+    rtu_pairs = {}
+    rtu_addresses = {}
     for row in state.get("rtu_channels",[]):
         raw=row.get("Equipment address",row.get("address"))
         if raw in (None,""): continue
@@ -315,6 +330,33 @@ def validate_configuration(state):
         key=(str(row.get("Instance",row.get("instance_id",""))),path or number,offset if offset not in ("",None) else number)
         if key in channels and str(row.get("Type", "")).upper()!="BOOL": errors.append(f"RTU mapped address {raw} overlaps another non-bit channel")
         channels[key]=row
+        address_key = (key[0], str(row.get("table") or row.get("Table")).casefold(), number)
+        rtu_addresses.setdefault(address_key, []).append(row)
+        if pair := pair_key(row):
+            rtu_pairs.setdefault(pair, []).append((number, row, address_key))
+    for pair, group in rtu_pairs.items():
+        addresses = {number for number, _, _ in group}
+        words = {str(row.get("Word")).upper() for _, row, _ in group}
+        if len(group) != 2 or words != {"LSW", "MSW"} or max(addresses) - min(addresses) != 1:
+            errors.append(f"RTU 32-bit pair {pair[-1]} requires two consecutive LSW/MSW registers")
+        elif any(len(rtu_addresses[address_key]) != 1 for _, _, address_key in group):
+            errors.append(f"RTU 32-bit pair {pair[-1]} overlaps another register")
+        elif not all(0 <= address <= 65535 for address in addresses):
+            errors.append(f"RTU 32-bit pair {pair[-1]} is outside the Modbus address range")
+    wide_rows = [row for collection in ("tcp_points", "rtu_channels") for row in state.get(collection, []) if pair_key(row)]
+    if wide_rows:
+        instances = {str(row.get("name") or row.get("id")).casefold(): row for row in state.get("instances", [])}
+        types_by_instance = {}
+        for row in wide_rows:
+            name = str(row.get("Instance") or row.get("instance_id")).casefold()
+            if name not in types_by_instance:
+                types_by_instance[name] = {item["path"].casefold(): item["iec_type"].upper()
+                                           for item in members_for(state, instances[name])} if name in instances else {}
+            target = row["GVL_COM variable"]
+            leaf = "com." + target.split(".", 2)[-1].casefold()
+            dtype = str(row.get("Type") or row.get("data_type")).upper()
+            if types_by_instance[name].get(leaf) != dtype:
+                errors.append(f"La paire Modbus {target} exige un membre COM de type {dtype}.")
     return {"errors":list(dict.fromkeys(errors)),"warnings":warnings}
 
 
@@ -421,7 +463,10 @@ def synchronize_modbus_workbook(state, book):
             book["sheets"].append(sheets[name])
         for name, sheet in sheets.items():
             if name not in reserved:
-                write_rows(sheet, channels.get(name, []), ("Table", "Equipment address"),
+                points = channels.get(name, [])
+                if any(row.get("Word") for row in points) and "Word" not in sheet["headers"]:
+                    sheet["headers"].append("Word")
+                write_rows(sheet, points, ("Table", "Equipment address"),
                            {"Table": "table", "Equipment address": "address", "Channel offset": "channel_offset",
                             "Direction": "direction", "Type": "data_type", "Name": "name"})
 

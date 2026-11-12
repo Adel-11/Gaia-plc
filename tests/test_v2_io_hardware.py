@@ -158,6 +158,10 @@ def test_delete_and_reassign_legacy_iomap_updates_program_and_rack(rack_client):
     assert not program['errors'], program
     xml = client.get(f'/api/v2/plc/download/{program["token"]}')
     assert xml.status_code == 200 and variable.encode() not in xml.content
+    created = change('assign', 'QA_IOMAP_NEW_FAULT', create=True, channel_key=first['key'], **payload)
+    assert created['hardware']['channels'][0]['variable'].endswith('.QA_IOMAP_NEW_FAULT')
+    assert 'QA_IOMAP_NEW_FAULT : BOOL' in code('GVL_IOMAP')['declaration']
+    assert 'GVL_IO.IO_DOSENSOR_1.INPUT_SENSOR_FAULT := GVL_IOMAP.QA_IOMAP_NEW_FAULT;' in code('GFC_IO_IN')['body']
 
 
 def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):
