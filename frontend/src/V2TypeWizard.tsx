@@ -68,6 +68,20 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   const panelView = project?.program_profile === 'hmi-v8'
   const [step, setStep] = useState(0), [name, setName] = useState(''), [kind, setKind] = useState('Equipment')
   const [description, setDescription] = useState(initialTemplate?.description ?? ''), [copyFrom, setCopyFrom] = useState('')
+  const [folders, setFolders] = useState<string[]>([])
+  const [folder, setFolder] = useState('')
+  const [newFolder, setNewFolder] = useState('')
+  const [createFolder, setCreateFolder] = useState(false)
+  const [folderError, setFolderError] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetch('/api/v2/plc/tree', { signal: controller.signal }).then(async response => {
+      if (!response.ok) throw new Error('Impossible de charger les dossiers du projet.')
+      const tree = await response.json()
+      setFolders(tree.folders)
+    }).catch(cause => { if (!controller.signal.aborted) setFolderError(cause.message) })
+    return () => controller.abort()
+  }, [project?.revision])
   const [generic, setGeneric] = useState(initialTemplate)
   const [signals, setSignals] = useState<GenericSignal[]>(initialTemplate?.signals ?? [])
   const [logicMembers, setLogicMembers] = useState<GenericMember[]>(initialTemplate?.members ?? [])
@@ -174,6 +188,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   }
   const payload = () => ({
     revision: projectRevision, name: name.trim(), kind, description,
+    folder: [folder, createFolder ? newFolder.trim() : ''].filter(Boolean).join('/'),
     ...(generic ? { generic: { template_id: generic.id, signals, members: logicMembers, inherit_processing: inheritProcessing, processing: manualProcessing } } : {
       copy_from: copyFrom || null, signals: equipment ? signals : [],
       duts: duts.map(d => ({ role: d.role, members: d.members.map(m => ({ ...m })) })),
@@ -212,6 +227,15 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         <label>Nom du type<input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null); setReviewed(false) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
         <label>Kind<select value={kind} onChange={e => changeKind(e.target.value)}><option>Equipment</option><option>Functional unit (UPI)</option></select></label>
         <label>Description<textarea rows={2} value={description} onChange={e => { setDescription(e.target.value); setPreview(null) }}/></label>
+        <div className="tw-folder">
+          <label>Dossier du FB et de ses DUT<select size={Math.min(6, Math.max(2, folders.length + 1))} value={folder} onChange={e => { setFolder(e.target.value); setPreview(null) }}>
+            <option value="">Racine du projet</option>
+            {folders.map(path => <option key={path} value={path}>{'  '.repeat(path.split('/').length - 1)}{path.slice(path.lastIndexOf('/') + 1)}</option>)}
+          </select></label>
+          <button type="button" className="tw-secondary" onClick={() => { setCreateFolder(value => !value); setPreview(null) }}>{createFolder ? 'Choisir un dossier existant' : 'Nouveau dossier ici'}</button>
+          {createFolder && <label>Nom du nouveau dossier<input value={newFolder} placeholder={name || 'Nom du dossier'} onChange={e => { setNewFolder(e.target.value); setPreview(null) }}/></label>}
+          {folderError && <p role="alert" className="tw-error">{folderError}</p>}
+        </div>
         <label>Point de départ
           <select value={source} onChange={e => selectSource(e.target.value)}>
             <option value="">{panelView && kind === 'Equipment' ? 'Blocs de base PanelView' : 'Blocs vides'}</option>
@@ -280,6 +304,6 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
       </div></WorkspacePanel>}
       {error && step !== reviewStep && <p className="tw-error" role="alert">{error}</p>}
     </div>
-    <footer className="tw-footer"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>{step === 0 ? 'Annuler' : 'Retour'}</button><span>Étape {step + 1} sur {steps.length}</span>{step < reviewStep ? <button type="button" className="tw-primary" disabled={step === 0 && !validIdentity} onClick={next}>{generic && step === reviewStep - 1 ? 'Prévisualiser le type' : 'Continuer'}</button> : <button type="button" className="tw-primary" disabled={!preview?.token || !reviewed || busy || Boolean(preview.errors?.length)} onClick={() => void apply()}>{busy ? 'Création…' : 'Créer le type'}</button>}</footer>
+    <footer className="tw-footer"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>{step === 0 ? 'Annuler' : 'Retour'}</button><span>Étape {step + 1} sur {steps.length}</span>{step < reviewStep ? <button type="button" className="tw-primary" disabled={step === 0 && (!validIdentity || (createFolder && (!newFolder.trim() || /[/\\]/.test(newFolder))))} onClick={next}>{generic && step === reviewStep - 1 ? 'Prévisualiser le type' : 'Continuer'}</button> : <button type="button" className="tw-primary" disabled={!preview?.token || !reviewed || busy || Boolean(preview.errors?.length)} onClick={() => void apply()}>{busy ? 'Création…' : 'Créer le type'}</button>}</footer>
   </section>
 }

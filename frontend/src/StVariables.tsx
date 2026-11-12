@@ -3,9 +3,11 @@ import type { VariableOption } from './FbMappingEditor'
 import type { LocalVariable } from './LocalVariables'
 
 export type StVariable = VariableOption & { internal?: boolean }
+type Pin = { name: string; output: boolean }
 export type LocalTypeCatalog = {
   groups: Record<string, string[]>
-  blocks: Record<string, { name: string; output: boolean }[]>
+  blocks: Record<string, Pin[]>
+  functions?: Record<string, { pins: Pin[]; result: string }>
 }
 
 export const StTypeCatalog = createContext<LocalTypeCatalog>({ groups: {}, blocks: {} })
@@ -15,11 +17,15 @@ export function blockCall(path: string, type: string, blocks: LocalTypeCatalog['
   const name = Object.keys(blocks).find(name => name.toUpperCase() === key ||
     (key.startsWith('STANDARD.') && name.toUpperCase() === key.slice(9)))
   if (!name) return undefined
-  const pins = blocks[name].map(pin => {
+  return callable(path, blocks[name])
+}
+
+export function callable(path: string, parameters: Pin[], statement = true): [string, string?] {
+  const pins = parameters.map(pin => {
     const placeholder = `__${pin.name}__`
     return { argument: `${pin.name} ${pin.output ? '=>' : ':='} ${placeholder}`, placeholder }
   })
-  return [`${path}(${pins.map(pin => pin.argument).join(', ')});`, pins[0]?.placeholder]
+  return [`${path}(${pins.map(pin => pin.argument).join(', ')})${statement ? ';' : ''}`, pins[0]?.placeholder]
 }
 
 export function visibleVariables(base: StVariable[], edits: StVariable[]): StVariable[] {

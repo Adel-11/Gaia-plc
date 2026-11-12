@@ -27,8 +27,8 @@ async function api(path: string, csrf: string, body?: object) {
   return result
 }
 
-export default function DutMapping({ role, type, instance, csrf, onClose, onSaved }: {
-  role: 'IO' | 'COM'; type: string[]; instance?: string; csrf: string; onClose: () => void; onSaved: () => void
+export default function InstanceMapping({ role, instance, csrf, onClose, onSaved }: {
+  role: 'IO' | 'COM'; instance: string; csrf: string; onClose: () => void; onSaved: () => void
 }) {
   const [config, setConfig] = useState<Configuration>()
   const [io, setIo] = useState<CopyState>()
@@ -45,9 +45,7 @@ export default function DutMapping({ role, type, instance, csrf, onClose, onSave
     return () => { active = false }
   }, [role, csrf])
 
-  const instances = (config?.instances || []).filter(row => instance
-    ? instance === row.name || instance === row.id
-    : type.includes(String(row.type_id)))
+  const instances = (config?.instances || []).filter(row => instance === row.name || instance === row.id)
     .map(row => ({ key: String(row.id ?? row.name), name: String(row.name ?? row.id) }))
   const updateCopy = async (action: CopyAction) => {
     if (!io) return false
@@ -75,13 +73,13 @@ export default function DutMapping({ role, type, instance, csrf, onClose, onSave
       request={(path, body) => api('/configuration' + path, csrf, body)}
       onSaved={fresh => { setConfig(fresh as Configuration); onSaved() }} onClose={onClose}/>
   }
-  return <div className="modbus-backdrop dut-mapping-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="dut-mapping-title">
+  return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="instance-mapping-title">
     <ModalFullscreen/>
-    <header><h3 id="dut-mapping-title">{role === 'IO' ? 'Mapping IOMAP' : 'Mapping Modbus'}</h3><button type="button" className="comm-btn" onClick={onClose} disabled={busy}>Fermer</button></header>
+    <header><h3 id="instance-mapping-title">{role === 'IO' ? 'Mapping IOMAP' : 'Mapping Modbus'}</h3><button type="button" className="comm-btn" onClick={onClose} disabled={busy}>Fermer</button></header>
     <div className="modbus-wiring-scroll">
       {io && config ? (instances.length ? <IoCopyManager state={io} busy={busy} blocked={false} error={error}
         notice={notice} update={updateCopy} scope={{ instances: instances.map(row => row.name) }}/>
-        : <p>Crée une instance de ce type pour mapper ses E/S.</p>) : error ? <p role="alert" className="comm-alert">{error}</p> : <p role="status">Chargement du mapping…</p>}
+        : <p>Instance introuvable.</p>) : error ? <p role="alert" className="comm-alert">{error}</p> : <p role="status">Chargement du mapping…</p>}
     </div>
   </section></div>
 }

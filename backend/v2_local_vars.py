@@ -186,7 +186,8 @@ def catalog(state):
     from backend.v2_plc_validation import _st_code
     groups = ("inputVars", "inOutVars", "outputVars")
     labels = ("VAR_INPUT", "VAR_IN_OUT", "VAR_OUTPUT")
-    types, blocks = set(), {}
+    types, blocks, functions = set(), {}, {}
+    exchanges = {row.get("name") or row.get("FC") for row in state.get("exchange_functions", [])}
     raw = (state.get("snapshot") or {}).get("xml")
     parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, huge_tree=False)
     roots = [_source(state)]
@@ -194,8 +195,11 @@ def catalog(state):
         roots.append(etree.fromstring(raw.encode("utf-8") if isinstance(raw, str) else raw, parser))
     for root in roots:
         types.update(node.get("name") for node in root.xpath("//*[local-name()='dataType' and @name]"))
-        for pou in root.xpath("//*[local-name()='pou' and @pouType='functionBlock' and @name]"):
+        for pou in root.xpath("//*[local-name()='pou' and (@pouType='functionBlock' or @pouType='function') and @name]"):
             name = pou.get("name")
+            function = pou.get("pouType") == "function"
+            if function and (name in exchanges or name.startswith(("FC_EXC_", "GFC_"))):
+                continue
             declaration = (state.get("st_overrides") or {}).get(name, {}).get("declaration")
             declaration = declaration if declaration is not None else plain_declaration(pou)
             pins = []
@@ -208,7 +212,13 @@ def catalog(state):
                         rf"(?im)(?:^|;)\s*({IDENTIFIER}(?:\s*,\s*{IDENTIFIER})*)\s*:(?!=)", section)
                         for name in row.split(",")]
                 pins.extend({"name": pin, "output": group == "outputVars"} for pin in names)
-            blocks[name] = pins
+            if function:
+                from backend.v2_codesys import _type_text
+                from backend.v2_plc import NS
+                result = pou.find(f"{NS}interface/{NS}returnType/*")
+                functions[name] = {"pins": pins, "result": _type_text(result) if result is not None else ""}
+            else:
+                blocks[name] = pins
     for typ in state.get("types", []):
         types.update(d["name"] for d in typ.get("duts", []) if d.get("name"))
         fb = typ.get("fb") or {}
@@ -223,6 +233,7 @@ def catalog(state):
                    "Types du projet": sorted(types), "Blocs du projet": sorted(blocks)},
         "blocks": {**{name: [{"name": pin, "output": output} for output, group in zip((False, True), pins)
                             for pin in group.split()] for name, pins in STANDARD_FB.items()}, **blocks},
+        "functions": functions,
     }
 
 

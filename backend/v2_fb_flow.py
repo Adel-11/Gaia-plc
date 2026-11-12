@@ -177,6 +177,7 @@ def update_flow(typ, state, mappings=None, processing_code=None):
     if processing_code is not None: proposed['processing_code'] = processing_code
     if mappings is not None:
         allowed = {o['path']: re.sub(r'\s+','',str(o['iec_type'])).upper() for o in variable_options(typ,state)}
+        saved = {(row["id"], row["source"], row["destination"]) for row in flow_view(fb)["mappings"]}
         ids = set(); destinations = set()
         for mapping in mappings:
             if not isinstance(mapping,dict): errors.append('Invalid mapping row'); continue
@@ -189,6 +190,10 @@ def update_flow(typ, state, mappings=None, processing_code=None):
                 continue
             if not isinstance(dst, str) or dst not in allowed or any(path not in allowed for path in paths):
                 errors.append(f'Unknown mapping variable: {src} → {dst}')
+                continue
+            aggregate = any(allowed[path].startswith(("ARRAY[", "DUT_")) for path in [dst, *paths])
+            if aggregate and (mapping.get("id"), src, dst) not in saved:
+                errors.append(f"{dst} : choisis une variable unitaire ou un élément du tableau.")
                 continue
             expression = len(paths) > 1 or src.strip() != paths[0]
             if expression and (allowed[dst] != 'BOOL' or any(allowed[path] != 'BOOL' for path in paths)):

@@ -6,3 +6,7 @@
 
 .type-delete-button,.instance-dialog footer .danger{color:#a13e36!important;border:1px solid #e5c6c0!important;background:#fff8f6!important;border-radius:8px;padding:8px 13px;font:inherit;cursor:pointer}.type-delete-button:disabled{opacity:.5;cursor:not-allowed}.instance-review li{margin:8px 0;overflow-wrap:anywhere}
 @media(max-width:900px){.workspace-panel{max-width:100%}}
+.instance-form .instance-iomap-row{display:grid;grid-template-columns:minmax(140px,1fr) minmax(150px,1.5fr) auto;gap:.5rem;align-items:center}
+.instance-form .instance-iomap-row label{display:flex;align-items:center;gap:.5rem}
+.instance-form .instance-iomap-row input[type=checkbox]{width:auto}
+@media(max-width:640px){.instance-form .instance-iomap-row{grid-template-columns:1fr}}

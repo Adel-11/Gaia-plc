@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { variableFamily } from './VariableOptions'
-import { blockCall, StTypeCatalog, type StVariable } from './StVariables'
+import { blockCall, callable, StTypeCatalog, type StVariable } from './StVariables'
 import './st-insert.css'
 
 export const stSnippets = {
@@ -18,7 +18,7 @@ export const stSnippets = {
   'INT_TO_REAL': ['INT_TO_REAL(valeur)', 'valeur'],
 } satisfies Record<string, [string, string]>
 
-export type InsertMode = 'choices' | 'variables' | 'locals' | 'snippets'
+export type InsertMode = 'choices' | 'variables' | 'locals' | 'snippets' | 'functions'
 
 const groupOf = variableFamily
 
@@ -29,13 +29,13 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
   const [mode, setMode] = useState(initialMode)
   const [group, setGroup] = useState('')
   const [query, setQuery] = useState('')
-  const { blocks } = useContext(StTypeCatalog)
+  const { blocks, functions } = useContext(StTypeCatalog)
   const isLocal = mode === 'locals'
   const isVariableMode = mode === 'variables' || isLocal
   const panel = useRef<HTMLDivElement>(null)
   const search = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    if (isVariableMode) search.current?.focus()
+    if (isVariableMode || mode === 'functions') search.current?.focus()
     else panel.current?.querySelector('button')?.focus()
   }, [isVariableMode, mode])
   useEffect(() => {
@@ -60,6 +60,7 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
       <button type="button" aria-pressed={mode === 'variables'} onClick={() => setMode('variables')}>Variables des DUT</button>
       <button type="button" aria-pressed={isLocal} onClick={() => setMode('locals')}>Variables internes</button>
       <button type="button" aria-pressed={mode === 'snippets'} onClick={() => setMode('snippets')}>Instructions ST</button>
+      <button type="button" aria-pressed={mode === 'functions'} onClick={() => { setQuery(''); setMode('functions') }}>Fonctions du projet</button>
     </div>
     {isVariableMode && <>
       <div className="st-insert-filters">
@@ -85,5 +86,17 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
     {mode === 'snippets' && <div className="st-insert-results">
       {Object.entries(stSnippets).map(([name, [text, placeholder]]) => <button key={name} type="button" onClick={() => onInsert(text, placeholder)}><code>{name}</code></button>)}
     </div>}
+    {mode === 'functions' && <>
+      <div className="st-insert-filters"><input ref={search} value={query} onChange={event => setQuery(event.target.value)}
+        placeholder="Nom de la fonction" aria-label="Chercher une fonction du projet"/></div>
+      <div className="st-insert-results">
+        {Object.entries(functions || {}).filter(([name]) => name.toLowerCase().includes(query.trim().toLowerCase())).map(([name, fn]) =>
+          <div key={name} className="st-insert-result">
+            <button type="button" onClick={() => onInsert(...callable(name, fn.pins))}><code>{name}</code><small>{fn.result}</small></button>
+            {fn.result && <button type="button" className="st-insert-name" onClick={() => onInsert(...callable(name, fn.pins, false))}>Expression</button>}
+          </div>)}
+        {!Object.keys(functions || {}).length && <p>Aucune fonction disponible.</p>}
+      </div>
+    </>}
   </div>, document.body)
 }

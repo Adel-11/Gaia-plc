@@ -41,3 +41,10 @@
   border-color: #a3312a;
   color: white;
 }
+.ex-wiring-frame{min-width:0}
+.ex-wiring-zoom{display:flex;align-items:center;gap:.4rem;padding:.4rem 0}
+.ex-wiring-zoom button{min-width:2rem;min-height:2rem;padding:.2rem .4rem;border:1px solid #d9d1c2;border-radius:.45rem;background:#fff;color:#423c32;cursor:pointer}
+.ex-wiring-zoom output{min-width:3.2rem;text-align:center;font-variant-numeric:tabular-nums}
+.ex-wiring-viewport{max-height:min(48dvh,600px);overflow:auto}
+.ex-wiring-grid{cursor:grab}
+.ex-wiring-grid:active{cursor:grabbing}

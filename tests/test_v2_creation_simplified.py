@@ -73,6 +73,7 @@ def test_type_creation_ignores_unrelated_project_errors_and_drops_communication_
         project = client.get("/api/v2/project").json()
         payload = {
             "revision": project["revision"], "name": "SIMPLE_COPY", "kind": "Equipment",
+            "folder": "Essais/Pompes",
             "copy_from": "DIP1500", "communication": "TCP + RTU",
             "supervision": [{"member_name": "COM.SCADA_INPUT_LOCAL_REQUEST"}],
             "upi_bindings": [{"upi_type_id": "UPI_LOCAL_HMI", "mappings": [
@@ -99,6 +100,9 @@ def test_type_creation_ignores_unrelated_project_errors_and_drops_communication_
         assert staged.get("exchange_calls", []) == project.get("exchange_calls", [])
         assert staged.get("exchange_functions", []) == project.get("exchange_functions", [])
         assert "TYPE_SIMPLE_COPY.xlsx" in staged["workbooks"]
+        assert "Essais/Pompes" in staged["plc_folders"]
+        assert all(staged["object_folders"][name] == "Essais/Pompes" for name in
+                   [created["fb"]["name"], *(dut["name"] for dut in created["duts"])])
         assert client.post("/api/v2/types/apply", headers=headers, json={"token": result["token"]}).status_code == 200
 
 
@@ -161,3 +165,13 @@ def test_instance_creation_review_has_no_collection_side_effects_and_pa_is_lazy(
         final = client.get("/api/v2/project").json()
         assert len(final["pa_values"]) == prior_counts["pa_values"] + 1
         assert any(row.get("instance_id", row.get("instance")) == "SIMPLE_INSTANCE_1" for row in final["pa_values"])
+        proposal = client.post("/api/v2/instances/preview", headers=headers, json={
+            "revision": final["revision"], "action": "create", "name": "SENSOR_WITH_IOMAP", "type_id": "DOSENSOR",
+            "iomap": [{"member": "INPUT_SENSOR_FAULT", "name": "IOMAP_SENSOR_TEST", "direction": "input"}],
+        }).json()
+        assert proposal.get("token") and not proposal["errors"], proposal
+        assert client.post("/api/v2/instances/apply", headers=headers, json={"token": proposal["token"]}).status_code == 200
+        saved = client.get("/api/v2/project").json()
+        assert any(row["GVL_IO member"] == "GVL_IO.IO_SENSOR_WITH_IOMAP.INPUT_SENSOR_FAULT"
+                   for row in saved["virtual_io"])
+        assert "SENSOR_WITH_IOMAP" not in saved["program_membership"]["GFC_IO_IN"]

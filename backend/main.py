@@ -391,6 +391,16 @@ def create_app(*, data_dir: str | Path | None = None, database_url: str | None =
                 v2_existing = v2_store.load_project(session)
                 if v2_existing is not None and convert_project(v2_existing):
                     v2_store.save_project(session, v2_existing, username="system:fb-section-conversion", expected_revision=v2_existing.get("revision", 0))
+                if hmi_project.casefold() == "gaia":
+                    from backend.v2_dip1500 import migrate_named_project
+                    import logging
+                    try:
+                        with session.begin_nested():
+                            migrated = migrate_named_project(session, hmi_project)
+                        if migrated:
+                            logging.getLogger(__name__).warning("Gaia DIP1500 mappings normalized")
+                    except ValueError as exc:
+                        logging.getLogger(__name__).warning("Gaia DIP1500 migration skipped: %s", exc)
                 session.commit()
             yield
         finally:

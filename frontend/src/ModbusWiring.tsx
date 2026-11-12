@@ -185,7 +185,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     finally { setBusy(false) }
   }
   const close = () => { if (!dirty || window.confirm('Abandonner les modifications Modbus ?')) onClose() }
-  const objectOnLeft = actualDirection.endsWith(' to PLC')
+  const objectOnLeft = !actualDirection.endsWith(' to PLC')
   const objectLabel = `COM · ${instanceName}`
   const modbusLabel = `Modbus · ${tables[table]}`
   const updateOrder = (link: Link, order: WordOrder) => {
@@ -202,7 +202,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
         <label>Instance<select value={instance} disabled={dirty || busy || !instances.length} onChange={e => { setInstance(e.target.value); resetScope() }}>{instances.map(row => <option key={row.key} value={row.key}>{row.name}</option>)}</select></label>
         {tcp && <label>Client<select value={client} disabled={dirty || busy} onChange={e => { setClient(e.target.value); resetScope() }}>{peers.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>}
         <label>Table<select value={table} disabled={dirty || busy} onChange={e => { setTable(e.target.value); resetScope() }}>{Object.entries(tables).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-        <label>Sens<select value={objectOnLeft ? 'plc' : 'device'} disabled={readOnly.has(table) || busy} onChange={e => { setTowardPlc(e.target.value === 'plc'); setArmed(null) }}><option value="plc">{tcp ? 'Client' : 'Équipement'} → PLC</option><option value="device">PLC → {tcp ? 'client' : 'équipement'}</option></select></label>
+        <label>Sens<select value={objectOnLeft ? 'device' : 'plc'} disabled={readOnly.has(table) || busy} onChange={e => { setTowardPlc(e.target.value === 'plc'); setArmed(null) }}><option value="plc">{tcp ? 'Client' : 'Équipement'} → PLC</option><option value="device">PLC → {tcp ? 'client' : 'équipement'}</option></select></label>
         <label>Afficher à partir de<input type="number" min={min} max={max} step="1" value={start} placeholder={String(offset)} onChange={e => setStart(e.target.value)} disabled={!peer || busy}/></label>
         {choices.some(choice => wideTypes.has(String(choice.iec_type).toUpperCase())) &&
           <label>Ordre des mots à l’ajout<select value={wordOrder} disabled={busy} onChange={event => setWordOrder(event.target.value as WordOrder)}>{orderOptions}</select></label>}

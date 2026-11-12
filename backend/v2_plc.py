@@ -162,7 +162,7 @@ def _pou_text(obj, text, *, preserve_reference=False):
             body.text = text
 
 
-def _wide_modbus_copies(rows, register, pou, inbound, authored_locals):
+def _wide_modbus_copies(rows, register, pou, inbound, authored_locals, targets):
     from backend.v2_local_vars import append
     from backend.v2_manual_comm import pair_key
 
@@ -172,7 +172,8 @@ def _wide_modbus_copies(rows, register, pou, inbound, authored_locals):
             groups.setdefault(key, {})[str(row["Word"]).upper()] = row
     groups = [words for words in groups.values() if words.keys() == {"LSW", "MSW"}]
     if not groups or pou is None:
-        return []
+        return {}
+    from backend.v2_gfc_mappings import connection_key, instance_name
     reserved = {var.get("name", "").casefold() for var in pou.xpath("./*[local-name()='interface']/*/*[local-name()='variable']")}
     reserved.update(row["name"].casefold() for row in authored_locals)
     def temp(base, iec_type):
@@ -187,13 +188,15 @@ def _wide_modbus_copies(rows, register, pou, inbound, authored_locals):
     locals_ = []
     raw = temp("GaiaModbusBits", "DWORD")
     typed = {}
-    statements = []
+    copies = {}
     for words in groups:
         low, high = words["LSW"], words["MSW"]
         lsw, msw = register(low), register(high)
         if not lsw or not msw:
             continue
-        member = low["GVL_COM variable"]
+        collection = "tcp_points" if low.get("Client") or low.get("client_id") else "rtu_channels"
+        member = targets.get(connection_key(collection, low), low["GVL_COM variable"])
+        statements = copies.setdefault(instance_name(low), [])
         dtype = str(low.get("Type") or low["data_type"]).upper()
         bits = raw
         if dtype != "DWORD":
@@ -208,7 +211,17 @@ def _wide_modbus_copies(rows, register, pou, inbound, authored_locals):
             statements.extend([f"{bits} := {member};", f"{lsw} := DWORD_TO_WORD({raw} AND 16#FFFF);",
                                f"{msw} := DWORD_TO_WORD(SHR({raw}, 16));"])
     append(pou, locals_)
-    return statements
+    return copies
+
+
+def _grouped_copies(groups, block):
+    combined = {}
+    for group in groups:
+        for instance, statements in group.items():
+            combined.setdefault(instance, []).extend(statements)
+    chunks = ["\n".join([f"// {name}", *statements]) if name else "\n".join(statements)
+              for name, statements in combined.items() if statements]
+    return "\n\n".join([*chunks, f"{block} := TRUE;"])
 
 
 def _tcp_labels_changed(source, generated):
@@ -441,84 +454,109 @@ def _generated_objects(objs, state, sources):
             if nm not in membership["GFB_UPI"]: continue
             text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
         _pou_text(objs["GFB_UPI"], text, preserve_reference=True)
-    # TCP copy statements use the exact mapped variable identifiers from Excel.
-    tcp_in, tcp_out, rtu_in, rtu_out = [], [], [], []
-    tcp_points=[p for p in state.get("tcp_points",[]) if str(p.get("Instance") or p.get("instance_id") or "") in valid_instances]
-    in_rank = _reference_com_rank("GFC_COM_IN", sources)
-    out_rank = _reference_com_rank("GFC_COM_OUT", sources)
-    def com_rank(p, ranks): return ranks.get(_com_key(p.get("GVL_COM variable")),10**9)
-    tcp_in_rows=sorted((p for p in tcp_points if p.get("Direction")=="Client to PLC" and included("GFC_COM_IN",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,in_rank))
-    tcp_out_rows=sorted((p for p in tcp_points if p.get("Direction")!="Client to PLC" and included("GFC_COM_OUT",p.get("Instance") or p.get("instance_id"))),key=lambda p:com_rank(p,out_rank))
+    from backend.v2_gfc_mappings import connection_key, editable_rtu_banks, instance_name, is_dip1500, resolved_targets
     from backend.v2_manual_comm import pair_key
-    for p in tcp_in_rows+tcp_out_rows:
-        if pair_key(p): continue
-        mapped = _tcp_address_expression(p, state); com = str(p.get("GVL_COM variable") or "").removeprefix("GVL_COM.")
-        if str(p.get("Word", "")).upper() in {"LSW", "MSW"} and ".Word_value[" in com:
-            com = re.sub(r"\.Word_value\[\d+\]", f".Word_value[{0 if str(p.get('Word')).upper() == 'LSW' else 1}]", com)
-        if not mapped or not com: continue
-        stmt = f"GVL_COM.{com} := GVL_MODBUS.{mapped};" if p.get("Direction") == "Client to PLC" else f"GVL_MODBUS.{mapped} := GVL_COM.{com};"
-        if state.get("program_profile") == "hmi-v8":
-            label = str(p.get("Name") or "").splitlines()
-            address = p.get("Modbus address", p.get("address"))
-            stmt += f" // {address} | {' '.join(label)}"
-        (tcp_in if p.get("Direction") == "Client to PLC" else tcp_out).append(stmt)
-    # RTU channels are whole arrays, grouped to avoid emitting one copy per register.
-    rtu_rows=[p for p in state.get("rtu_channels",[]) if str(p.get("instance") or p.get("instance_id") or "") in valid_instances and included("GFC_COM_IN" if p.get("Direction")=="Equipment to PLC" else "GFC_COM_OUT",p.get("instance") or p.get("instance_id"))]
-    rtu_rows=sorted(rtu_rows,key=lambda p:com_rank(p,in_rank if p.get("Direction")=="Equipment to PLC" else out_rank))
-    seen_rtu = set()
-    for p in rtu_rows:
-        if pair_key(p): continue
-        a, b = str(p.get("GVL_MODBUS variable") or ""), str(p.get("GVL_COM variable") or "")
-        if not a or not b: continue
-        a = a.removeprefix("GVL_MODBUS."); b = b.removeprefix("GVL_COM.")
-        a = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", a)
-        if not p.get("manual_scalar"):
-            b = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", b)
-        key=(a,b,p.get("Direction"))
-        if key in seen_rtu: continue
-        seen_rtu.add(key); stmt = f"GVL_COM.{b} := GVL_MODBUS.{a};" if p.get("Direction") == "Equipment to PLC" else f"GVL_MODBUS.{a} := GVL_COM.{b};"
-        (rtu_in if p.get("Direction") == "Equipment to PLC" else rtu_out).append(stmt)
-    com_in, com_out = rtu_in + tcp_in, rtu_out + tcp_out
+    targets = {block: resolved_targets(state, block, membership[block]) for block in
+               ("GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC")}
+    tcp_points = [row for row in state.get("tcp_points", []) if instance_name(row) in valid_instances]
+    rtu_points = [row for row in state.get("rtu_channels", []) if instance_name(row) in valid_instances]
+    ranks = {block: _reference_com_rank(block, sources) for block in ("GFC_COM_IN", "GFC_COM_OUT")}
+
     def register(row):
         if row.get("Client") or row.get("client_id"):
             mapped = _tcp_address_expression(row, state)
             return f"GVL_MODBUS.{mapped}" if mapped else ""
         return row.get("GVL_MODBUS variable")
-    for name, inbound, tcp_rows, statements in (
-        ("GFC_COM_IN", True, tcp_in_rows, com_in), ("GFC_COM_OUT", False, tcp_out_rows, com_out),
-    ):
-        rtu_wide = [row for row in rtu_rows if (row.get("Direction") == "Equipment to PLC") == inbound]
+
+    for name, inbound in (("GFC_COM_IN", True), ("GFC_COM_OUT", False)):
+        if name not in objs:
+            continue
+        def rank(row):
+            return ranks[name].get(_com_key(row.get("GVL_COM variable")), 10**9)
+        tcp = sorted((p for p in tcp_points if (p.get("Direction") == "Client to PLC") == inbound
+                      and included(name, instance_name(p))), key=rank)
+        rtu = sorted((p for p in rtu_points if (p.get("Direction") == "Equipment to PLC") == inbound
+                      and included(name, instance_name(p))), key=rank)
+        tcp_copies, rtu_copies = {}, {}
+        for row in tcp:
+            if pair_key(row):
+                continue
+            mapped = register(row)
+            default = str(row.get("GVL_COM variable") or "")
+            if str(row.get("Word", "")).upper() in {"LSW", "MSW"} and ".Word_value[" in default:
+                index = 0 if str(row["Word"]).upper() == "LSW" else 1
+                default = re.sub(r"\.Word_value\[\d+\]", f".Word_value[{index}]", default)
+            member = targets[name].get(connection_key("tcp_points", row), default)
+            if not mapped or not member:
+                continue
+            statement = f"{member} := {mapped};" if inbound else f"{mapped} := {member};"
+            if state.get("program_profile") == "hmi-v8":
+                label = " ".join(str(row.get("Name") or "").splitlines())
+                statement += f" // {row.get('Modbus address', row.get('address'))} | {label}"
+            tcp_copies.setdefault(instance_name(row), []).append(statement)
+        seen_rtu = set()
+        split_banks = set().union(*(bank for bank in editable_rtu_banks(state, rtu) if bank.intersection(targets[name])))
+        for row in rtu:
+            if pair_key(row):
+                continue
+            mapped = register(row)
+            slot = connection_key("rtu_channels", row)
+            member = targets[name].get(slot, row.get("GVL_COM variable"))
+            if not mapped or not member:
+                continue
+            if not row.get("manual_scalar") and not is_dip1500(state, row) and slot not in split_banks:
+                mapped = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", mapped)
+                member = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", member)
+            key = (mapped, member)
+            if key in seen_rtu:
+                continue
+            seen_rtu.add(key)
+            statement = f"{member} := {mapped};" if inbound else f"{mapped} := {member};"
+            rtu_copies.setdefault(instance_name(row), []).append(statement)
         authored_locals = (state.get("generated_local_variables") or {}).get(name, [])
-        statements.extend(_wide_modbus_copies(tcp_rows + rtu_wide, register, objs.get(name, {}).get("element"), inbound, authored_locals))
-    if "GFC_COM_IN" in objs: _pou_text(objs["GFC_COM_IN"], "\n".join(com_in)+"\nGFC_COM_IN := TRUE;", preserve_reference=True)
-    if "GFC_COM_OUT" in objs: _pou_text(objs["GFC_COM_OUT"], "\n".join(com_out)+"\nGFC_COM_OUT := TRUE;", preserve_reference=True)
-    io_in, io_out = [], []
-    io_rows = list(state.get("io_channels",[])) + list(state.get("virtual_io",[]))
-    for p in sorted((row for row in io_rows if (not (row.get("Instance") or row.get("instance_id")) and legacy_membership) or (str(row.get("Instance") or row.get("instance_id")) in valid_instances and included("GFC_IO_IN" if str(row.get("I/O type", "")).upper() in {"AI", "DI"} else "GFC_IO_OUT",row.get("Instance") or row.get("instance_id")))), key=lambda row: (0 if str(row.get("I/O type", "")).upper() == "DI" else 1, str(row.get("id", "")))):
-        iomap, iovar = str(p.get("GVL_IOMAP variable") or ""), str(p.get("GVL_IO member") or "")
-        if not iomap or not iovar: continue
-        iomap=iomap.removeprefix("GVL_IOMAP."); iovar=iovar.removeprefix("GVL_IO.")
-        stmt = f"GVL_IO.{iovar} := GVL_IOMAP.{iomap};" if str(p.get("I/O type", "")).upper() in {"AI", "DI"} else f"GVL_IOMAP.{iomap} := GVL_IO.{iovar};"
-        (io_in if str(p.get("I/O type", "")).upper() in {"AI", "DI"} else io_out).append(stmt)
-    if "GFC_IO_IN" in objs: _pou_text(objs["GFC_IO_IN"], "\n".join(io_in)+"\nGFC_IO_IN := TRUE;", preserve_reference=True)
-    if "GFC_IO_OUT" in objs: _pou_text(objs["GFC_IO_OUT"], "\n".join(io_out)+"\nGFC_IO_OUT := TRUE;", preserve_reference=True)
+        wide = _wide_modbus_copies(tcp + rtu, register, objs[name]["element"], inbound, authored_locals, targets[name])
+        _pou_text(objs[name], _grouped_copies((rtu_copies, tcp_copies, wide), name))
+
+    io_rows = [(collection, row) for collection in ("io_channels", "virtual_io") for row in state.get(collection, [])]
+    io_copies = {"GFC_IO_IN": {}, "GFC_IO_OUT": {}}
+    for collection, row in sorted(io_rows, key=lambda item: (0 if item[1].get("I/O type") == "DI" else 1, str(item[1].get("id", "")))):
+        inbound = str(row.get("I/O type", "")).upper() in {"AI", "DI"}
+        block = "GFC_IO_IN" if inbound else "GFC_IO_OUT"
+        instance = instance_name(row)
+        if not ((not instance and legacy_membership) or (instance in valid_instances and included(block, instance))):
+            continue
+        iomap = row.get("GVL_IOMAP variable")
+        member = targets[block].get(connection_key(collection, row), row.get("GVL_IO member"))
+        if not iomap or not member:
+            continue
+        statement = f"{member} := {iomap};" if inbound else f"{iomap} := {member};"
+        io_copies[block].setdefault(instance, []).append(statement)
+    for block, copies in io_copies.items():
+        if block in objs:
+            _pou_text(objs[block], _grouped_copies((copies,), block))
     # Graph-authored exchange detail compiles into FC bodies; calls are per instance pair.
     for fn in state.get("exchange_functions", []):
         name = str(fn.get("name") or fn.get("FC") or ""); obj=objs.get(name)
         if not obj: continue
         from backend.v2_exchanges import compile_function
         _pou_text(obj, compile_function(state, fn), preserve_reference=True)
-    call_chunks=[]
+    call_chunks = []
     for c in state.get("exchange_calls",[]):
-        fn=str(c.get("function_id") or c.get("FC") or ""); a=str(c.get("parameter_a_value") or ""); b=str(c.get("parameter_b_value") or "")
+        fn=str(c.get("function_id") or c.get("FC") or ""); a=str(c.get("parameter_a_value") or ""); b=str(targets["GFC_EXC"].get(connection_key("exchange_calls", c), c.get("parameter_b_value")) or "")
         if str(c.get("instance_a_id") or c.get("Instance A") or "") not in valid_instances or str(c.get("instance_b_id") or c.get("Instance B") or "") not in valid_instances: continue
         if not included("GFC_EXC",c.get("instance_a_id") or c.get("Instance A")) or not included("GFC_EXC",c.get("instance_b_id") or c.get("Instance B")): continue
         if fn and a and b:
             function=objs.get(fn,{}).get("element")
             params=function.xpath("./plc:interface/plc:inOutVars/plc:variable/@name",namespaces={"plc":PLC}) if function is not None else []
             if len(params) >= 2:
-                call_chunks.append(f"{fn}(\n\t{params[0]} := {a},\n\t{params[1]} := {b});")
-    if "GFC_EXC" in objs: _pou_text(objs["GFC_EXC"],"\n\n".join(call_chunks)+"\nGFC_EXC := TRUE;", preserve_reference=True)
+                instance = str(c.get("instance_a_id") or c.get("Instance A") or "")
+                if not call_chunks or call_chunks[-1][0] != instance:
+                    call_chunks.append((instance, [f"// {instance}"]))
+                call_chunks[-1][1].append(f"{fn}(\n\t{params[0]} := {a},\n\t{params[1]} := {b});")
+    if "GFC_EXC" in objs:
+        # Exchange calls can read values written by earlier calls. Keep their order.
+        sections = ["\n".join(lines) for _, lines in call_chunks]
+        _pou_text(objs["GFC_EXC"], "\n\n".join([*sections, "GFC_EXC := TRUE;"]))
     if "PLC_PRG" in objs: _pou_text(objs["PLC_PRG"],"GFC_COM_IN();\nGFC_IO_IN();\nGFB_UPI_1();\nGFC_EXC();\nGFB_INST_1();\nGFC_COM_OUT();\nGFC_IO_OUT();", preserve_reference=True)
 
 

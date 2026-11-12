@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,34 @@ from backend.v2_program_membership import BLOCKS, freeze_membership
 
 def _body(objects, name):
     return objects[name]["element"].find(NS + "body/" + NS + "ST/" + HNS + "xhtml").text or ""
+
+
+def test_dip1500_scalar_rtu_and_review_choices_are_scoped():
+    from backend.v2_dip1500 import regularize
+    from backend.v2_gfc_mappings import review, save_choices
+    from backend.v2_hmi import load_hmi_pack
+
+    state = copy.deepcopy(load_hmi_pack())
+    original = copy.deepcopy(state)
+    regularize(state)
+    assert not regularize(state)
+    assert all(state[key] == value for key, value in original.items() if key != "types")
+    assert all(new == old for new, old in zip(state["types"], original["types"]) if new["name"] != "DIP1500")
+    block = "GFC_COM_OUT"
+    instance = "DIP1500_1"
+    initial = _body(build_program(state), block)
+    assert f"// {instance}" in initial
+    assert "DIP1500_Holding_Cmd[0] := GVL_COM.COM_DIP1500_1.COM_OUTPUT_HR_CMD[0];" in initial
+    assert "DIP1500_Holding_Cmd :=" not in initial
+    group, = review(state, block, [instance])
+    row = next(row for row in group["rows"] if row["endpoints"] == ["GVL_MODBUS.DIP1500_Holding_Cmd[0]"])
+    assert all(path.startswith(f"GVL_COM.COM_{instance}.") for path in row["choices"])
+    with pytest.raises(ValueError, match="compatible"):
+        save_choices(state, block, [instance], {row["key"]: "GVL_COM.COM_ADM100W_1.COM_INPUT_IR[0]"})
+    choice = next(path for path in row["choices"] if path != row["member"])
+    save_choices(state, block, [instance], {row["key"]: choice})
+    assert f"GVL_MODBUS.DIP1500_Holding_Cmd[0] := {choice};" in _body(build_program(state), block)
+    assert state["rtu_channels"] == original["rtu_channels"]
 
 
 def test_freeze_initializes_all_programs_by_equipment_and_upi_eligibility():

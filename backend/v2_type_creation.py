@@ -22,7 +22,7 @@ class TypeCreate(BaseModel):
     kind: str
     description: str = ""
     communication: str = ""
-    folder: str = ""
+    folder: str | None = None
     copy_from: str | None = None
     generic: Inheritance | None = None
     signals: list[Signal] = Field(default_factory=list, max_length=100)
@@ -439,7 +439,12 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
         typ = copy.deepcopy(src) if src else {"duts": [], "rtu": {}, "rtu_default": {}, "templates": {}}
         old = str(src.get("name")) if src else ""
         fb_old = str((src or {}).get("fb", {}).get("name") or "")
-        typ.update(id=request.name, name=request.name, kind=request.kind, description=request.description, communication=request.communication, folder=request.folder or (src or {}).get("folder", ""))
+        from backend.v2_plc_routes import _clean_path
+        try:
+            folder = _clean_path(request.folder, allow_root=True) if request.folder is not None else (src or {}).get("folder", "")
+        except HTTPException as exc:
+            return None, [str(exc.detail)], warnings
+        typ.update(id=request.name, name=request.name, kind=request.kind, description=request.description, communication=request.communication, folder=folder)
         # New types define an isolated PLC object. Communication recipes are
         # configured later through the dedicated project editors.
         for key in ("upi_bindings", "supervision"):
@@ -582,6 +587,12 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
             normalized["fb"]["flow"] = copy.deepcopy(typ["fb"]["flow"])
         ensure_flow(normalized["fb"])
         state["types"][-1] = normalized
+        if request.folder is not None:
+            if folder and folder not in state.setdefault("plc_folders", []):
+                state["plc_folders"].append(folder)
+            placements = state.setdefault("object_folders", {})
+            for name in [normalized["fb"]["name"], *(dut["name"] for dut in normalized["duts"])]:
+                placements[name] = folder
         if request.processing_code is not None:
             from backend.v2_fb_flow import update_flow
             code = request.processing_code

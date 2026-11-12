@@ -17,6 +17,7 @@ class PreviewCode(BaseModel):
     custom_code: str | None = None
     included_instances: list[str] | None = None
     local_variables: list[dict] | None = None
+    copy_targets: dict[str, str] | None = None
 
 class ApplyCode(BaseModel): token: str
 
@@ -130,6 +131,21 @@ def register_code_routes(app,get_session,current_user,csrf):
             from backend.v2_program_membership import freeze_membership
             membership=freeze_membership(state)
             membership[req.name]=requested
+        from backend.v2_gfc_mappings import COPY_BLOCKS, review as review_copies, save_choices
+        from backend.v2_program_membership import freeze_membership
+        copy_review = None
+        if req.name in COPY_BLOCKS:
+            included = freeze_membership(state)[req.name]
+            try:
+                if req.copy_targets:
+                    if (state.get("st_overrides") or {}).get(req.name, {}).get("body") is not None:
+                        raise ValueError(f"{req.name} utilise un corps ST manuel. Reviens au modèle pour modifier les recopies générées.")
+                    save_choices(state, req.name, included, req.copy_targets)
+                copy_review = review_copies(state, req.name, included)
+            except ValueError as exc:
+                return {"token":None,"errors":[str(exc)],"warnings":[],"changes":[]}
+        elif req.copy_targets:
+            raise HTTPException(400, "Ce bloc n’a pas de recopies GFC.")
         if isgen:
             if req.custom_code is not None: state.setdefault("generated_custom_code",{})[req.name]=req.custom_code
         else:
@@ -164,7 +180,10 @@ def register_code_routes(app,get_session,current_user,csrf):
         if req.local_variables is not None: changes.append(f"{req.name} : déclaration VAR mise à jour")
         if req.included_instances is not None:
             changes.append(f"Update instances added to {req.name}: {', '.join(requested) if requested else 'none'}")
-        return {"token":token,"errors":checked["errors"],"warnings":checked["warnings"],"changes":changes,"object":item}
+        if req.copy_targets:
+            changes.append(f"Recopies de {req.name} mises à jour")
+        return {"token":token,"errors":checked["errors"],"warnings":checked["warnings"],"changes":changes,"object":item,
+                "copy_review":copy_review}
 
     @app.post("/api/v2/code/apply")
     def apply(req:ApplyCode,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):

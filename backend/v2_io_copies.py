@@ -88,7 +88,7 @@ def copy_options(state, variables):
     return {'variables': list(variables.values()), 'instances': instance_options(state), 'copies': copies, 'manual_blocks': manual}
 
 
-def assign_copy(state, variable, instance_name, member_name, direction):
+def assign_copy(state, variable, instance_name, member_name, direction, *, include=True):
     instance = next((item for item in instance_options(state) if item['name'] == instance_name), None)
     member = next((item for item in (instance or {}).get('members', []) if item['name'] == member_name), None)
     if member is None:
@@ -129,9 +129,10 @@ def assign_copy(state, variable, instance_name, member_name, direction):
                 'I/O type': row.get('I/O type') if variable_direction(row) else _io_type(kind, direction), 'IOMAP type': kind})
     if row.get('Slot') == 'VIRTUAL':
         row['direction'] = direction
-    membership = freeze_membership(state)[block]
-    if instance_name not in membership:
-        membership.append(instance_name)
+    if include:
+        membership = freeze_membership(state)[block]
+        if instance_name not in membership:
+            membership.append(instance_name)
 
 
 def remove_copy(state, name, *, delete=False):

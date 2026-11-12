@@ -36,6 +36,7 @@ class VersionEvent(Base):
 
 SHARED=('types','catalog_options')
 COLLECTIONS={'types':'Types','instances':'Instances','functions':'Fonctions','generated_custom_code':'Code personnalisé','generated_local_variables':'Variables internes des blocs','generic_objects':'Modèles génériques','tcp_clients':'Clients TCP','tcp_points':'Adresses TCP','rtu_lines':'Lignes RTU','rtu_slaves':'Esclaves RTU','rtu_channels':'Registres RTU','io_modules':'Modules E/S','io_channels':'Affectations E/S','virtual_io':'Signaux E/S','pa_values':'Paramètres PA','exchange_functions':'Fonctions d’échange','exchange_functions_detail':'Liaisons d’échange','exchange_calls':'Appels d’échange','catalog_options':'Options du catalogue','exchange_layout':'Disposition des échanges','program_membership':'Instances ajoutées aux blocs du programme','object_folders':'Emplacements des objets PLC','plc_folders':'Dossiers PLC'}
+COLLECTIONS["gfc_copy_overrides"] = "Recopies GFC corrigées"
 
 def _catalog(state):
     result={k:copy.deepcopy(state.get(k,[] if k=='types' else {})) for k in SHARED}

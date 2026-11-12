@@ -25,6 +25,7 @@ class Preview(BaseModel):
     tcp_points: list[dict] = []
     rtu_slaves: list[dict] = []
     rtu_channels: list[dict] = []
+    iomap: list[dict] = []
 
 
 class Apply(BaseModel):
@@ -327,8 +328,32 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
             inst = next((i for i in state.get("instances", []) if str(i.get("id", i.get("name"))) == str(body.instance_id) or str(i.get("name")) == str(body.instance_id)), None)
             if body.action == "create":
                 typ = _type(state, body.type_id)
-                _add_instance(state, (body.name or "").strip(), typ, {})
-                changes.append(f"Create instance {(body.name or '').strip()} ({typ.get('name') if typ else body.type_id})")
+                name = (body.name or "").strip()
+                _add_instance(state, name, typ, {})
+                changes.append(f"Create instance {name} ({typ.get('name') if typ else body.type_id})")
+                if body.iomap:
+                    from backend.v2_io_copies import assign_copy, instance_options
+                    from backend.v2_io_hardware import _variable_options
+                    from backend.v2_type_creation import _identifier
+                    if (state.get("st_overrides") or {}).get("GVL_IOMAP", {}).get("declaration") is not None:
+                        raise ValueError("GVL_IOMAP utilise une déclaration manuelle. Ajoute les variables dans son ST complet.")
+                    options = next((entry["members"] for entry in instance_options(state) if entry["name"] == name), [])
+                    members = {entry["name"]: entry for entry in options}
+                    used = set(_variable_options(state))
+                    for row in body.iomap:
+                        member = members.get(str(row.get("member")))
+                        iomap = str(row.get("name") or "").strip()
+                        direction = row.get("direction")
+                        if member is None or direction not in {"input", "output"} or not _identifier(iomap):
+                            raise ValueError("Choisis un membre IO, un sens et un nom IEC valide pour chaque IOMAP.")
+                        if iomap.casefold() in used:
+                            raise ValueError(f"{iomap} existe déjà dans GVL_IOMAP.")
+                        used.add(iomap.casefold())
+                        variable = {"name": iomap, "iec_type": member["iec_type"], "direction": direction}
+                        assign_copy(state, variable, name, member["name"], direction, include=False)
+                        changes.append(f"Créer GVL_IOMAP.{iomap} et le relier à {member['path']}")
+                    from backend.v2_configuration import synchronize_io_workbook
+                    synchronize_io_workbook(state)
             elif not inst: raise ValueError("Instance not found")
             elif body.action == "delete":
                 name = _name(inst)
