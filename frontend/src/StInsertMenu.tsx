@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { VariableOption } from './FbMappingEditor'
 import { variableFamily } from './VariableOptions'
+import { blockCall, StTypeCatalog, type StVariable } from './StVariables'
 import './st-insert.css'
 
 export const stSnippets = {
@@ -16,26 +16,28 @@ export const stSnippets = {
   LIMIT: ['LIMIT(minimum, valeur, maximum)', 'minimum'],
   SEL: ['SEL(condition, siFaux, siVrai)', 'condition'],
   'INT_TO_REAL': ['INT_TO_REAL(valeur)', 'valeur'],
-  'Appel TON': ['temporisateur(IN := condition, PT := T#1s);', 'temporisateur'],
 } satisfies Record<string, [string, string]>
 
-export type InsertMode = 'choices' | 'variables' | 'snippets'
+export type InsertMode = 'choices' | 'variables' | 'locals' | 'snippets'
 
 const groupOf = variableFamily
 
 export default function StInsertMenu({ x, y, initialMode, variables, onInsert, onClose }: {
-  x: number; y: number; initialMode: InsertMode; variables: VariableOption[]
+  x: number; y: number; initialMode: InsertMode; variables: StVariable[]
   onInsert: (text: string, placeholder?: string) => void; onClose: (restoreFocus: boolean) => void
 }) {
   const [mode, setMode] = useState(initialMode)
   const [group, setGroup] = useState('')
   const [query, setQuery] = useState('')
+  const { blocks } = useContext(StTypeCatalog)
+  const isLocal = mode === 'locals'
+  const isVariableMode = mode === 'variables' || isLocal
   const panel = useRef<HTMLDivElement>(null)
   const search = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    if (mode === 'variables') search.current?.focus()
+    if (isVariableMode) search.current?.focus()
     else panel.current?.querySelector('button')?.focus()
-  }, [mode])
+  }, [isVariableMode, mode])
   useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       if (!panel.current?.contains(event.target as Node)) onClose(false)
@@ -44,8 +46,9 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [onClose])
 
-  const groups = [...new Set(variables.map(variable => groupOf(variable.path)))]
-  const matches = variables.filter(variable => (!group || groupOf(variable.path) === group) &&
+  const available = variables.filter(variable => isLocal === !!variable.internal)
+  const groups = [...new Set(available.map(variable => groupOf(variable.path)))]
+  const matches = available.filter(variable => (isLocal || !group || groupOf(variable.path) === group) &&
     `${variable.path} ${variable.iec_type}`.toLowerCase().includes(query.trim().toLowerCase()))
   const top = Math.max(8, Math.min(y, window.innerHeight - 290))
   return createPortal(<div ref={panel} className="st-insert-menu" role="dialog" aria-label="Insérer dans le ST"
@@ -55,26 +58,32 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
     }}>
     <div className="st-insert-tabs">
       <button type="button" aria-pressed={mode === 'variables'} onClick={() => setMode('variables')}>Variables des DUT</button>
+      <button type="button" aria-pressed={isLocal} onClick={() => setMode('locals')}>Variables internes</button>
       <button type="button" aria-pressed={mode === 'snippets'} onClick={() => setMode('snippets')}>Instructions ST</button>
     </div>
-    {mode === 'variables' && <>
+    {isVariableMode && <>
       <div className="st-insert-filters">
-        <select aria-label="DUT" value={group} onChange={event => setGroup(event.target.value)}>
+        {!isLocal && <select aria-label="DUT" value={group} onChange={event => setGroup(event.target.value)}>
           <option value="">Tous les DUT</option>
           {groups.map(role => <option key={role} value={role} data-variable-family={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
-        </select>
+        </select>}
         <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => setQuery(event.target.value)}/>
       </div>
       <div className="st-insert-results">
-        {matches.map(variable => <button type="button" key={variable.path} data-variable-family={groupOf(variable.path)} onClick={() => onInsert(variable.path)}>
-          <code>{variable.path}</code><small>{variable.iec_type}</small>
-        </button>)}
+        {matches.map(variable => {
+          const call = isLocal ? blockCall(variable.path, variable.iec_type, blocks) : undefined
+          return <div className="st-insert-result" key={variable.path} data-variable-family={groupOf(variable.path)}>
+            <button type="button" title={call?.[0]} onClick={() => call ? onInsert(...call) : onInsert(variable.path)}>
+              <code>{variable.path}</code><small>{variable.iec_type}{call && ' · Appeler'}</small>
+            </button>
+            {call && <button type="button" className="st-insert-name" aria-label={`Insérer uniquement le nom ${variable.path}`} onClick={() => onInsert(variable.path)}>Nom seul</button>}
+          </div>
+        })}
         {!matches.length && <p>Aucune variable trouvée.</p>}
       </div>
     </>}
     {mode === 'snippets' && <div className="st-insert-results">
       {Object.entries(stSnippets).map(([name, [text, placeholder]]) => <button key={name} type="button" onClick={() => onInsert(text, placeholder)}><code>{name}</code></button>)}
-      <p>Pour TON, déclare une instance de type TON dans les variables du bloc.</p>
     </div>}
   </div>, document.body)
 }

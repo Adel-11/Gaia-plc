@@ -16,6 +16,7 @@
   box-shadow: 0 10px 28px #13243a36;
 }
 .st-insert-tabs, .st-insert-filters { display: flex; gap: 6px; margin-bottom: 7px; }
+.st-insert-tabs { flex-wrap: wrap; }
 .st-insert-filters input { width: 100%; min-width: 0; }
 .st-insert-menu button { cursor: pointer; }
 .st-insert-tabs button, .st-insert-filters input, .st-insert-filters select { padding: 6px; border: 1px solid #d4dce7; border-radius: 5px; background: #fff; }
@@ -26,3 +27,6 @@
 .st-insert-results code { overflow-wrap: anywhere; }
 .st-insert-results small { flex-shrink: 0; max-width: 38%; overflow-wrap: anywhere; color: #486177; }
 .st-insert-results p { margin: 6px; font-size: 13px; }
+.st-insert-result { display: flex; align-items: center; }
+.st-insert-result > button:first-child { min-width: 0; }
+.st-insert-results .st-insert-name { width: auto; flex: none; white-space: nowrap; color: #445b77; font-size: 12px; }

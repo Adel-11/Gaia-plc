@@ -12,6 +12,7 @@ import V2Code from './V2Code'
 import ProjectHome from './ProjectHome'
 import V2PlcTree, { type PlcTreeObject } from './V2PlcTree'
 import WorkspacePanel, { PanelPreferencesProvider } from './WorkspacePanel'
+import { StTypeCatalog } from './StVariables'
 
 type Member = { position?: number | string; section?: string; name?: string; iec_type?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string; exchange?: string }
 type TypeRow = { id: string; name: string; kind?: string; description?: string; communication?: string; duts?: { name: string; role?: string; members?: Member[] }[]; fb?: { name?: string; body?: string; custom_code?: string } }
@@ -150,7 +151,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
 
   const phase = Math.max(1, project?.phase || 1)
   const active = pages.find(page => page.id === activePage) || pages[0]
-  return <PanelPreferencesProvider scope={String(project?.project_id || project?.project_name || 'active')}><div className="page-content v2-content v2-workspace" data-page={activePage}>
+  return <StTypeCatalog.Provider value={project?.local_type_catalog || { groups: {}, blocks: {} }}><PanelPreferencesProvider scope={String(project?.project_id || project?.project_name || 'active')}><div className="page-content v2-content v2-workspace" data-page={activePage}>
     <div className="v2-workspace-layout">
       <nav className="v2-page-nav" aria-label="Pages du projet">
         <p className="v2-nav-heading">Espace projet</p>
@@ -222,5 +223,5 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
     </footer>
       </div>
     </div>
-  </div></PanelPreferencesProvider>
+  </div></PanelPreferencesProvider></StTypeCatalog.Provider>
 }

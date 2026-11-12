@@ -144,19 +144,28 @@ def _headers(root):
     return attrs("fileHeader"), attrs("contentHeader")
 
 
+def _type_text(node):
+    if node is None:
+        return '?'
+    kind = _local(node)
+    if kind == 'derived':
+        return node.get('name', '?')
+    if kind == 'array':
+        dims = ', '.join(f"{d.get('lower')}..{d.get('upper')}" for d in node.findall('p:dimension', NS))
+        return f"ARRAY[{dims}] OF {_type_text(node.find('p:baseType/*', NS))}"
+    if kind == 'pointer':
+        return f"POINTER TO {_type_text(node.find('p:baseType/*', NS))}"
+    if kind in ('subrangeSigned', 'subrangeUnsigned'):
+        bounds = node.find('p:range', NS)
+        base = _type_text(node.find('p:baseType/*', NS))
+        return f"{base}({bounds.get('lower')}..{bounds.get('upper')})" if bounds is not None else base
+    if kind.lower() in {"string", "wstring"} and node.get("length"):
+        return f"{kind.upper()}({node.get('length')})"
+    return kind.upper()
+
+
 def _st(e):
     if _local(e) in {'dataType', 'globalVars'}:
-        def type_text(node):
-            if node is None:
-                return '?'
-            if _local(node) == 'derived':
-                return node.get('name', '?')
-            if _local(node) == 'array':
-                dims = ', '.join(f"{d.get('lower')}..{d.get('upper')}" for d in node.findall('p:dimension', NS))
-                return f"ARRAY[{dims}] OF {type_text(node.find('p:baseType/*', NS))}"
-            if _local(node).lower() in {"string", "wstring"} and node.get("length"):
-                return f"{_local(node).upper()}({node.get('length')})"
-            return _local(node).upper()
         def initial(node):
             if node is None:
                 return ''
@@ -184,7 +193,7 @@ def _st(e):
         for var in variables:
             value = initial(var.find('p:initialValue', NS))
             lines.extend(documentation(var))
-            lines.append(f"\t{var.get('name')} : {type_text(var.find('p:type/*', NS))}" + (f' := {value}' if value else '') + ';')
+            lines.append(f"\t{var.get('name')} : {_type_text(var.find('p:type/*', NS))}" + (f' := {value}' if value else '') + ';')
         if _local(e) == 'dataType':
             return f"TYPE {_name(e)} :\nSTRUCT\n" + '\n'.join(lines) + '\nEND_STRUCT\nEND_TYPE'
         qualifiers = (' PERSISTENT' if e.get('persistent') == 'true' else '') + (' RETAIN' if e.get('retain') == 'true' else '')

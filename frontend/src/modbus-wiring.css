@@ -5,7 +5,7 @@
 .modbus-wiring>header p{margin-top:4px}
 .modbus-wiring>footer{justify-content:flex-end}
 .modbus-wiring>footer span{margin-right:auto}
-.modbus-wiring-scroll{min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px}
+.modbus-wiring-scroll{min-height:0;overflow:auto;overscroll-behavior:auto;padding:14px 18px}
 .modbus-wiring-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px}
 .modbus-wiring-controls label{display:grid;gap:4px;font-weight:600}
 .modbus-wiring-controls input,.modbus-wiring-controls select{width:100%;min-width:0}

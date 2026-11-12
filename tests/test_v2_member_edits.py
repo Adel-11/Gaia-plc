@@ -5,6 +5,37 @@ from lxml import etree
 from backend.main import create_app
 
 
+def test_local_types_retain_codesys_declarations_through_xml_round_trip():
+    from backend.v2_local_vars import append, catalog, imported_ownership, normalize
+    from backend.v2_plc import NS, _new_fb
+    from backend.v2_st_overrides import plain_declaration
+
+    name = "FB_Example"
+    typ = {"fb": {"name": name}, "duts": []}
+    state = {"types": [typ]}
+    entries = [
+        ("Delay", "Standard.TON", ""),
+        ("Grid", "ARRAY[1..2, -1..1] OF WSTRING(20)", ""),
+        ("WordPointer", "POINTER TO UINT", ""),
+        ("RealRef", "REFERENCE TO REAL", ""),
+        ("Text", "STRING(20)", "'a;b'"),
+    ]
+    rows = normalize([dict(name=n, iec_type=t, default_value=v) for n, t, v in entries], state)
+    typ["fb"]["local_variables"] = rows
+    node = _new_fb(name, typ)
+    append(node, rows)
+    assert [pin["name"] for pin in catalog(state)["blocks"]["TON"]] == ["IN", "PT", "Q", "ET"]
+    assert node.find(f"{NS}interface/{NS}localVars/{NS}variable[@name='WordPointer']/{NS}type/{NS}pointer") is not None
+    assert "RealRef : REFERENCE TO REAL;" in plain_declaration(node)
+    assert "Text : STRING(20) := 'a;b';" in plain_declaration(node)
+    imported = etree.fromstring(etree.tostring(node))
+    owned = imported_ownership(state, {name: imported})
+    assert set(owned[name]) == {n.lower() for n, _, _ in entries}
+    append(imported, rows[:-1], owned[name])
+    declaration = plain_declaration(imported)
+    assert declaration.count("RealRef :") == 1 and "Text :" not in declaration
+
+
 def test_member_edits_and_local_vars_reach_export(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("GAIA_UPGRADE_HMI_PROJECT", "Gaia")

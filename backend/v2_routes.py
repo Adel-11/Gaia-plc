@@ -161,8 +161,10 @@ def register_v2_routes(app, get_session, current_user, csrf):
         fb["declaration"] = "\n\n".join(declaration)
         fb["local_declaration_base"] = "\n\n".join(local_declaration)
         from backend.v2_fb_flow import flow_view, variable_options
+        from backend.v2_local_vars import variables_in
         fb.update(flow_view(fb))
         fb["variable_options"] = variable_options(typ, state)
+        fb["declared_variables"] = variables_in(pou, ("localVars", "tempVars", "inputVars", "inOutVars", "outputVars", "externalVars"))
         return {"id": obj.get("id", obj.get("name")), "name": obj.get("name"), "type_id": typ.get("id" if kind == "type" else "name"), "kind": kind,
                 "revision": state.get("revision", 0), "duts": duts, "fb": fb, "links": links}
 
@@ -253,6 +255,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if body.custom_code is not None: typ.setdefault("fb", {})["custom_code"] = body.custom_code
         if body.local_variables is not None:
             from backend.v2_local_vars import normalize
+            name = typ.get("fb", {}).get("name")
+            if (state.get("st_overrides") or {}).get(name, {}).get("declaration") is not None:
+                return {"token": None, "errors": ["La déclaration est en ST manuel. Modifie-la dans « ST complet »."], "changes": []}
             try: typ.setdefault("fb", {})["local_variables"] = normalize(body.local_variables, state)
             except ValueError as exc: return {"token": None, "errors": [str(exc)], "changes": []}
         from backend.v2_fb_flow import update_flow
@@ -410,6 +415,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
         result = {key: value for key, value in state.items()
                   if key not in {"workbooks", "fuxa_csv", "fuxa_template", "source_files", IO_HARDWARE_KEY}}
         result["generic_objects"] = templates(state)
+        from backend.v2_local_vars import catalog
+        result["local_type_catalog"] = catalog(state)
         result.update(phase=8, workbooks=workbooks, validation=engine.validate_project(state), counts={
             "types": len(types), "instances": len(state.get("instances", [])),
             "duts": sum(len(t.get("duts", [])) for t in types),

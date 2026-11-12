@@ -13,11 +13,13 @@ import ObjectCanvas from './ObjectCanvas'
 import FbMappingEditor, { type FbMapping, type VariableOption } from './FbMappingEditor'
 import WorkspacePanel from './WorkspacePanel'
 import StInsertMenu, { stSnippets, type InsertMode } from './StInsertMenu'
+import { localVariableOptions, visibleVariables, type StVariable } from './StVariables'
+import PanelIcon from './PanelIcon'
 
 type Member = { id?: string; name: string; iec_type: string; default_value?: string | number | boolean | null; section?: string; unit?: string; comment?: string; exchange?: string; position?: number }
 type Dut = { manual_declaration?: boolean; name: string; role?: string; members: Member[]; st?: string }
 type LinkMap = { tcp_points?: unknown[]; rtu_slaves?: unknown[]; rtu_channels?: unknown[]; io_channels?: unknown[]; pa_values?: unknown[]; exchange_calls?: unknown[] }
-type ObjectData = { id: string; name: string; kind: string; type_id?: string; revision: number; duts: Dut[]; fb?: { local_declaration_base?: string; manual_body?: boolean; manual_declaration?: boolean; local_variables?: LocalVariable[]; name?: string; declaration?: string; body?: string; generated_body?: string; custom_code?: string; processing_code?: string; mappings?: FbMapping[]; preserved_sections?: Record<string, string>; variable_options?: VariableOption[]; flow?: any }; links?: LinkMap }
+type ObjectData = { id: string; name: string; kind: string; type_id?: string; revision: number; duts: Dut[]; fb?: { local_declaration_base?: string; manual_body?: boolean; manual_declaration?: boolean; local_variables?: LocalVariable[]; declared_variables?: StVariable[]; name?: string; declaration?: string; body?: string; generated_body?: string; custom_code?: string; processing_code?: string; mappings?: FbMapping[]; preserved_sections?: Record<string, string>; variable_options?: VariableOption[]; flow?: any }; links?: LinkMap }
 type FlowSection = 'inputs' | 'outputs'
 type ManualSections = Partial<Record<FlowSection, string | null>>
 type Preview = { token: string; errors?: unknown[]; warnings?: unknown[]; changes?: string[] }
@@ -51,13 +53,13 @@ const stLanguage = StreamLanguage.define({
   },
 })
 
-export function StEditor({ value, onChange, readOnly = false, label, insertVariables }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string; insertVariables?: VariableOption[] }) {
+export function StEditor({ value, onChange, readOnly = false, label, insertVariables }: { value: string; onChange?: (value: string) => void; readOnly?: boolean; label: string; insertVariables?: StVariable[] }) {
   const host = useRef<HTMLDivElement>(null)
   const editor = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange
   const applyingValue = useRef(false)
   const [insertMenu, setInsertMenu] = useState<{ x: number; y: number; mode: InsertMode } | null>(null)
-  const canInsert = !readOnly && !!onChange && !!insertVariables
+  const canInsert = !readOnly && !!onChange
   const closeInsert = (restoreFocus: boolean) => {
     setInsertMenu(null)
     if (restoreFocus) editor.current?.focus()
@@ -109,7 +111,7 @@ export function StEditor({ value, onChange, readOnly = false, label, insertVaria
       setInsertMenu({ x: event.clientX, y: event.clientY, mode: 'choices' })
     }}/>
     {canInsert && insertMenu && <StInsertMenu key={`${insertMenu.mode}:${insertMenu.x}:${insertMenu.y}`} {...insertMenu}
-      initialMode={insertMenu.mode} variables={insertVariables} onInsert={insert} onClose={closeInsert}/>}
+      initialMode={insertMenu.mode} variables={insertVariables ?? []} onInsert={insert} onClose={closeInsert}/>}
   </div>
 }
 
@@ -239,23 +241,27 @@ END_VAR`
       knownPaths.add(variable.path)
     }
   }
-  const insertVariables = [...variables, ...localVars.filter(row => /^[A-Za-z_]\w*$/.test(row.name))
-    .map(row => ({ path: row.name, iec_type: row.iec_type }))]
+  const managedNames = new Set(data?.fb?.local_variables?.map(row => row.name.toUpperCase()))
+  const declaredVariables = (data?.fb?.declared_variables ?? []).filter(row => !managedNames.has(row.path.toUpperCase()))
+  const insertVariables = [...variables, ...visibleVariables([], [...declaredVariables, ...localVariableOptions(localVars)])]
   const openRaw = (name?: string) => {
     if (name && (!dirty || window.confirm('Ouvrir le ST complet ? Le brouillon de cet éditeur sera abandonné.'))) {
       discardDraft()
       setRawName(name)
     }
   }
-  const renderMapping = (section: FlowSection) => {
+  const fbPanel = (surface: string, id: string, title: string, children: React.ReactNode, height?: number, className = '') =>
+    <WorkspacePanel id={`fb:${objectId}:${surface}:${id}`} title={title} initialHeight={height}
+      minHeight={height ? 150 : 52} className={`ov-fb-part ${className}`} verticalOnly>{children}</WorkspacePanel>
+  const renderMapping = (surface: string, section: FlowSection) => {
     const title = section === 'inputs' ? 'entrées' : 'sorties'
     const generated = renderMappingSection(data?.fb?.flow, mappings, section)
     const manual = section in manualSections ? manualSections[section] : originalManual?.[section]
     return <div className="ov-fb-mapping-pair">
-      <FbMappingEditor section={section} mappings={mappings} variables={variables} preserved=""
+      {fbPanel(surface, `${section}:mapping`, `Mapping des ${title}`, <FbMappingEditor section={section} mappings={mappings} variables={variables} preserved=""
         readOnly={kind === 'instance' || manual != null}
-        onChange={next => { setMappings(next); setError(''); invalidate() }}/>
-      <div className="ov-fb-mapping-code">
+        onChange={next => { setMappings(next); setError(''); invalidate() }}/>)}
+      {fbPanel(surface, `${section}:st`, `ST des ${title}`, <>
         {kind === 'type' && <div className="ov-fb-mode">
           <span>{manual == null ? 'ST issu du mapping' : 'ST manuel utilisé à l’export'}</span>
           <button type="button" className="ov-secondary" onClick={() => {
@@ -271,36 +277,39 @@ END_VAR`
         <StEditor value={manual ?? generated} readOnly={kind === 'instance' || manual == null} insertVariables={insertVariables}
           onChange={value => { setManualSections(previous => ({...previous, [section]: value})); invalidate() }}
           label={`ST des ${title}`}/>
-      </div>
+      </>, 290, 'ov-fb-part-code')}
     </div>
   }
   const renderFbEditor = (surface: string) => <div className="ov-fb-workbench">
     {(data?.fb?.manual_body || data?.fb?.manual_declaration) && <p className="ov-alert" role="status">
       Ce bloc utilise du ST manuel à l’export. Ouvre le ST complet pour le modifier ou revenir au modèle.
     </p>}
-    <WorkspacePanel id={`fb:${objectId}:${surface}:inputs`} title="Entrées" className="ov-fb-zone inputs">
-      <div className="ov-local-preview">
+    <WorkspacePanel id={`fb:${objectId}:${surface}:inputs`} title="Entrées" className="ov-fb-zone inputs" verticalOnly>
+      {fbPanel(surface, 'inputs:local-preview', 'Déclaration VAR',
         <StEditor value={[data?.fb?.local_declaration_base, localVars.length || !data?.fb?.local_declaration_base ? localDeclaration : ''].filter(Boolean).join('\n\n')} readOnly label="Déclaration VAR · aperçu en direct"/>
-      </div>
-      <div className="ov-fb-local-variables"><LocalVariables rows={localVars} disabled={busy || kind === 'instance'}
-        onChange={rows => { setLocalVars(rows); invalidate() }}/></div>
-      {renderMapping('inputs')}
+      , 205, 'ov-fb-part-code')}
+      {fbPanel(surface, 'inputs:locals', 'Variables internes', <>
+        {data?.fb?.manual_declaration && <p>Déclaration en ST manuel. Modifie-la dans « ST complet ».</p>}
+        <LocalVariables rows={localVars} disabled={busy || kind === 'instance' || data?.fb?.manual_declaration}
+          onChange={rows => { setLocalVars(rows); invalidate() }}/>
+      </>)}
+      {renderMapping(surface, 'inputs')}
     </WorkspacePanel>
-    <WorkspacePanel id={`fb:${objectId}:${surface}:processing`} title="Traitement" className="ov-fb-zone processing">
-      <div className="ov-processing-editor">
+    <WorkspacePanel id={`fb:${objectId}:${surface}:processing`} title="Traitement" className="ov-fb-zone processing" verticalOnly>
+      {fbPanel(surface, 'processing:st', 'ST du traitement',
         <StEditor value={processingCode} onChange={setSource(setProcessingCode)} readOnly={kind === 'instance'} label="ST du traitement" insertVariables={insertVariables}/>
-      </div>
-      <details className="ov-fb-extra"><summary>ST avant les entrées et après les sorties</summary>
-        <div className="ov-processing-editor compact">
+      , 350, 'ov-fb-part-code')}
+      <details className="ov-fb-extra"><summary><PanelIcon name="down"/>ST avant les entrées et après les sorties</summary>
+        {fbPanel(surface, 'processing:prefix', 'ST avant les entrées',
           <StEditor value={prefixCode} onChange={setSource(setPrefixCode)} readOnly={kind === 'instance'} label="ST avant les entrées" insertVariables={insertVariables}/>
-        </div>
-        <div className="ov-processing-editor compact">
+        , 225, 'ov-fb-part-code')}
+        {fbPanel(surface, 'processing:suffix', 'ST après les sorties',
           <StEditor value={customCode} onChange={setSource(setCustomCode)} readOnly={kind === 'instance'} label="ST après les sorties" insertVariables={insertVariables}/>
-        </div>
+        , 225, 'ov-fb-part-code')}
       </details>
     </WorkspacePanel>
-    <WorkspacePanel id={`fb:${objectId}:${surface}:outputs`} title="Sorties" className="ov-fb-zone outputs">
-      {renderMapping('outputs')}
+    <WorkspacePanel id={`fb:${objectId}:${surface}:outputs`} title="Sorties" className="ov-fb-zone outputs" verticalOnly>
+      {renderMapping(surface, 'outputs')}
     </WorkspacePanel>
   </div>
   const updateMember = (index: number, key: keyof Member, value: string) => { setDraftDuts(old => old.map(d => d.name !== active ? d : { ...d, members: d.members.map((m, i) => i === index ? { ...m, [key]: value } : m) })); invalidate() }
@@ -332,9 +341,9 @@ END_VAR`
     {error && !fbFullscreen && <div className="ov-alert" role="alert">{error}</div>}
     {data && <>
       <header className="ov-header"><div><div className="ov-breadcrumb">Objects <span>/</span> {kind === 'type' ? 'Type' : 'Instance'}</div><h2>{data.name}</h2><p>{data.kind} <span>·</span> revision {data.revision}{dirty && <em className="ov-dirty">Draft changes</em>}</p></div><div className="ov-actions">{kind === 'instance' && data.type_id && onOpenType && <button type="button" className="ov-secondary" onClick={() => onOpenType(data.type_id!)}>Modifier le type</button>}{kind === 'type' && dirty && <button type="button" className="ov-secondary" disabled={busy} onClick={discardDraft}>Annuler le brouillon</button>}{kind === 'type' && <button type="button" className="ov-primary" disabled={!dirty || busy} onClick={() => void makePreview()}>{busy ? 'Preparing…' : 'Enregistrer'}</button>}</div></header>
-      {!codeOnly && <WorkspacePanel id={`object:${kind}:${objectId}:graph`} title="Object relationship graph" className={`ov-canvas-host ${graphFullscreen ? 'is-fullscreen' : ''}`} initialHeight={360}><ObjectCanvas key={`${kind}:${objectId}`} duts={draftDuts} fbName={data.fb?.name || data.name} active={active} onSelect={changeDut} objectKey={`${kind}:${objectId}`} /><button className="ov-canvas-fullscreen" type="button" aria-pressed={graphFullscreen} onClick={toggleCanvasFullscreen}>{graphFullscreen ? 'Reduce graph' : 'Fullscreen graph'}</button></WorkspacePanel>}
+      {!codeOnly && <WorkspacePanel id={`object:${kind}:${objectId}:graph`} title="Object relationship graph" className={`ov-canvas-host ${graphFullscreen ? 'is-fullscreen' : ''}`} initialHeight={360}><ObjectCanvas key={`${kind}:${objectId}`} duts={draftDuts} fbName={data.fb?.name || data.name} active={active} onSelect={changeDut} objectKey={`${kind}:${objectId}`} /><button className="ov-canvas-fullscreen" type="button" aria-pressed={graphFullscreen} title={graphFullscreen ? 'Réduire le graphique' : 'Agrandir le graphique'} aria-label={graphFullscreen ? 'Réduire le graphique' : 'Agrandir le graphique'} onClick={toggleCanvasFullscreen}><PanelIcon name={graphFullscreen ? 'shrink' : 'expand'}/></button></WorkspacePanel>}
       <div className={`ov-layout ${kind === 'type' ? 'type-editor-layout' : ''} ${codeOnly ? 'code-only-layout' : ''}`}>{!codeOnly && <aside className="ov-object-rail"><div className="ov-rail-title">Structures</div>{data.duts.map(d => <button key={d.name} type="button" className={`ov-structure-item ${active === d.name ? 'active' : ''}`} onClick={() => changeDut(d.name)}><span className="ov-dut-glyph">▧</span><span>{d.name}</span><small>{d.role || 'DUT'}</small></button>)}{data.fb && <button type="button" className={`ov-structure-item ${active === '__fb' ? 'active' : ''}`} onClick={() => changeDut('__fb')}><span className="ov-fb-glyph">ƒ</span><span>{data.fb.name || data.name}</span><small>Function block</small></button>}</aside>}
-      <WorkspacePanel id={`object:${kind}:${objectId}:editor`} title="Object declaration and editor" className="ov-editor-panel" contentClassName="ov-main">{active === '__fb' && data.fb ? <><div className="ov-content-heading"><div><span className="ov-eyebrow">FUNCTION BLOCK</span><h3>{data.fb.name || data.name}</h3><p>Les mappings génèrent le ST des entrées et sorties. Chaque zone peut passer en mode manuel; PROCESSING is editable.</p></div><button type="button" className="ov-secondary" onClick={() => setFbFullscreen(true)}>Open full editor</button></div>
+      <WorkspacePanel id={`object:${kind}:${objectId}:editor`} title="Object declaration and editor" className="ov-editor-panel" contentClassName="ov-main">{active === '__fb' && data.fb ? <><div className="ov-content-heading"><div><span className="ov-eyebrow">FUNCTION BLOCK</span><h3>{data.fb.name || data.name}</h3><p>Les mappings génèrent le ST des entrées et sorties. Chaque zone peut passer en mode manuel; PROCESSING is editable.</p></div><button type="button" className="ov-secondary ov-expand-editor" title="Ouvrir l’éditeur" aria-label="Ouvrir l’éditeur" onClick={() => setFbFullscreen(true)}><PanelIcon name="expand"/></button></div>
         {kind === 'type' && <button className="ov-secondary ov-raw-button" type="button" onClick={() => openRaw(data.fb?.name)}>Ouvrir le ST complet</button>}
         {!fbFullscreen && renderFbEditor('inline')}</> : <>{currentDut ? <><div className="ov-content-heading"><div><span className="ov-eyebrow">DATA UNIT TYPE</span><h3>{currentDut.name}</h3><p>{currentDut.role || 'Structure'} · {currentDut.members.length} members</p></div><div className="ov-dut-heading-tools">{kind === 'type' && <button type="button" className="ov-secondary" onClick={() => openRaw(currentDut.name)}>Ouvrir le ST complet</button>}{copyMembersSelect}<div className="ov-tabs"><button className={pane === 'members' ? 'active' : ''} onClick={() => setPane('members')}>Members</button><button className={pane === 'st' ? 'active' : ''} onClick={() => setPane('st')}>ST declaration</button></div></div></div>{pane === 'members' ? <div className="ov-table-wrap"><table className="ov-table"><thead><tr><th className="ov-order-col" title="Member order is preserved in the generated ST declaration.">↕</th><th title="IEC variable identifier. Prefix and basename are joined as PREFIX_basename in the canonical member name.">Name</th><th title="IEC 61131-3 data type used by Structured Text.">IEC type</th><th title="Initial ST value assigned at declaration.">Default</th><th title="Comment separator group inside this DUT declaration. This does not choose an ST VAR_INPUT or VAR_OUTPUT declaration section.">Comment group</th><th title="Engineering unit for this value.">Unit</th><th title="Documentation comment emitted with the ST member.">Comment</th><th title="External exchange identifier or tag reference.">Exchange</th></tr></thead><tbody>{currentDut.members.map((m, i) => <tr key={i} draggable={kind === 'type'} onDragStart={() => setDragging(i)} onDragOver={e => e.preventDefault()} onDrop={() => { if (dragging !== null) moveMember(dragging, i); setDragging(null) }} className={dragging === i ? 'dragging' : ''}><td className="ov-order-col"><button aria-label={`Move ${m.name} up`} disabled={kind === 'instance' || i === 0} onClick={() => moveMember(i, i - 1)}>↑</button><button aria-label={`Move ${m.name} down`} disabled={kind === 'instance' || i === currentDut.members.length - 1} onClick={() => moveMember(i, i + 1)}>↓</button>{renderRemoveMember(m, i)}</td><td><div className="ov-name-parts"><select title="Optional member prefix. The canonical ST name is PREFIX_basename." aria-label={`${m.name} prefix`} disabled={kind === 'instance'} value={memberParts(m.name).prefix} onChange={e => e.target.value === '__add' ? void addCatalogOption('prefixes') : setMemberParts(i, e.target.value, memberParts(m.name).basename)}><option value="">No prefix</option>{knownPrefixes.map(prefix => <option key={prefix}>{prefix}</option>)}<option value="__add">＋ Add prefix…</option></select><span>{memberParts(m.name).prefix ? '_' : ''}</span><input title={m.name} aria-label={`${m.name} basename`} disabled={kind === 'instance'} value={memberParts(m.name).basename} onChange={e => setMemberParts(i, memberParts(m.name).prefix, e.target.value)}/></div></td><td><select aria-label={`${m.name} IEC type`} disabled={kind === 'instance'} value={['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING','DUT_Union_Real_Word',...draftDuts.map(d => d.name)].includes(m.iec_type) ? m.iec_type : '__custom'} onChange={e => updateMember(i, 'iec_type', e.target.value === '__custom' ? '' : e.target.value)}><option value="__custom">Custom type…</option>{['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING','DUT_Union_Real_Word',...draftDuts.map(d => d.name)].map((type, ti) => <option key={`${type}-${ti}`} value={type}>{type}</option>)}</select>{!['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING','DUT_Union_Real_Word',...draftDuts.map(d => d.name)].includes(m.iec_type) && <input aria-label={`${m.name} custom IEC type`} disabled={kind === 'instance'} value={m.iec_type} onChange={e => updateMember(i, 'iec_type', e.target.value)} placeholder="e.g. ARRAY[0..3] OF INT"/>}</td>{(['default_value','section','unit','comment','exchange'] as const).map(key => <td key={key}>{key === 'section' ? <div className="ov-catalog-select"><select title="Comment separator group inside this DUT. It does not select an ST VAR_INPUT or VAR_OUTPUT declaration section." aria-label={`${m.name} comment group`} disabled={kind === 'instance'} value={m.section || 'INTERNAL'} onChange={e => e.target.value === '__add' ? void addCatalogOption('sections') : updateMember(i, 'section', e.target.value)}>{[...new Set([...catalog.sections, m.section || 'INTERNAL'])].map(value => <option key={value}>{value}</option>)}<option value="__add">＋ Add section…</option></select></div> : <input title={key === 'default_value' ? 'Initial value assigned in the ST declaration.' : key === 'unit' ? 'Engineering unit used to describe this value.' : key === 'comment' ? 'Human-readable documentation comment for this member.' : 'External exchange or tag identifier associated with this member.'} aria-label={`${m.name} ${key}`} disabled={kind === 'instance'} value={printable(m[key])} onChange={e => updateMember(i, key, e.target.value)} />}</td>)}</tr>)}</tbody></table>{emptyMembers}{kind === 'type' && <button className="ov-add" onClick={addMember}>＋ Add member</button>}</div> : <div className="ov-st-preview"><StEditor value={liveDeclaration} readOnly label={`${currentDut.name}.st · generated declaration`}/></div>}</> : <div className="ov-empty">Choose a structure or function block.</div>}</>}</WorkspacePanel>
       {kind === 'instance' && <aside className="ov-links"><div className="ov-links-head"><div><span className="ov-eyebrow">CONNECTED DATA</span><h3>Related tags</h3></div></div>{([['Communication','tcp_points','RTU slaves','rtu_slaves'],['Exchange','exchange_calls','PA values','pa_values'],['I/O channels','io_channels','RTU channels','rtu_channels']] as const).map(([label,key,label2,key2]) => <section className="ov-link-group" key={key}><h4>{label}</h4>{arr(data.links?.[key]).length ? arr(data.links?.[key]).map((item,i) => <LinkTag key={i} item={item}/> ) : <p className="ov-none">No linked tags</p>}<h4>{label2}</h4>{arr(data.links?.[key2]).length ? arr(data.links?.[key2]).map((item,i) => <LinkTag key={i} item={item}/> ) : <p className="ov-none">No linked tags</p>}</section>)}</aside>}</div>

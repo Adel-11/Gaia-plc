@@ -1,7 +1,8 @@
 import ModalFullscreen from './ModalFullscreen'
 import { useEffect, useId, useState } from 'react'
 import { StEditor } from './V2ObjectView'
-import type { VariableOption } from './FbMappingEditor'
+import { declarationVariables, visibleVariables, type StVariable } from './StVariables'
+import WorkspacePanel from './WorkspacePanel'
 import './st-source.css'
 
 type Source = {
@@ -12,7 +13,7 @@ type Part = 'declaration' | 'body'
 type Draft = Partial<Record<Part, string | null>>
 
 export default function RawStEditor({ name, csrf, onClose, onSaved, insertVariables }: {
-  name: string; csrf: string; onClose: () => void; onSaved: () => void; insertVariables?: VariableOption[]
+  name: string; csrf: string; onClose: () => void; onSaved: () => void; insertVariables?: StVariable[]
 }) {
   const title = useId()
   const [source, setSource] = useState<Source>()
@@ -58,9 +59,8 @@ export default function RawStEditor({ name, csrf, onClose, onSaved, insertVariab
     const manual = source[`manual_${part}`]
     const modified = part in draft
     const reset = modified && draft[part] === null
-    return <section className="raw-st-part">
+    return <WorkspacePanel id={`source:${name}:${part}`} title={label} className="raw-st-part" initialHeight={360} verticalOnly>
       <div className="raw-st-part-head">
-        <h3>{label}</h3>
         <span>{reset ? 'Retour au modèle à l’enregistrement' : manual || modified ? 'ST manuel' : 'Issu du modèle'}</span>
         {reset ? <button type="button" onClick={() => setDraft(previous => {
           const next = { ...previous }; delete next[part]; return next
@@ -70,14 +70,15 @@ export default function RawStEditor({ name, csrf, onClose, onSaved, insertVariab
             else setDraft(previous => { const next = { ...previous }; delete next[part]; return next })
           }}>Revenir au modèle</button>}
       </div>
-      <StEditor label={label} value={draft[part] ?? original} readOnly={busy || reset} insertVariables={part === 'body' ? insertVariables : undefined}
+      <StEditor label={label} value={draft[part] ?? original} readOnly={busy || reset}
+        insertVariables={part === 'body' ? visibleVariables((insertVariables ?? []).filter(row => !row.internal), declarationVariables(draft.declaration ?? source.declaration)) : undefined}
         onChange={value => setDraft(previous => {
           const next = { ...previous }
           if (value === original) delete next[part]
           else next[part] = value
           return next
         })}/>
-    </section>
+    </WorkspacePanel>
   }
 
   return <div className="raw-st-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
