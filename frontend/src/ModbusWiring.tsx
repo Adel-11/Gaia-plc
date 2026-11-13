@@ -197,7 +197,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     setBusy(true); setError(''); setReview(null)
     try {
       setReview(await request('/preview', {revision, changes: [], modbus_template: {
-        instance_id: instance, protocol: mode, client, line: selectedLine?.id,
+        instance_id: instance, protocol: mode, client: tcp ? client : undefined, line: selectedLine?.id,
         address: selectedSlave ? Number(selectedSlave) : undefined, include: includeGfc,
       }}))
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible de préparer le modèle Modbus.') }

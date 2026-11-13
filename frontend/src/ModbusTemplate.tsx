@@ -22,7 +22,7 @@ export function TemplateRows({rows, variables, onChange, disabled}: {
   const update = (index: number, patch: Partial<TemplateRow>) => onChange(rows.map((row, i) => i === index ? {...row, ...patch} : row))
   const add = () => onChange([...rows, {protocol, table: 'coils', member: '', inbound: protocol === 'tcp', order: 'LSW_FIRST'}])
   const addButton = <button type="button" className="button secondary" disabled={disabled} onClick={add}>＋ Ajouter une ligne {protocol.toUpperCase()}</button>
-  return <fieldset disabled={disabled}>
+  return <fieldset className="modbus-template-rows" disabled={disabled}>
     <p>En TCP, les adresses sont attribuées à l’instance. En RTU, saisis les registres indiqués par le fabricant.</p>
     <div className="modbus-wiring-controls"><label>Protocole<select value={protocol} onChange={e => setProtocol(e.target.value as TemplateRow['protocol'])}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>{addButton}</div>
     <div className="v2-table-scroll"><table className="v2-table"><thead><tr><th>Table</th><th>Variable COM</th><th>Sens</th>{protocol === 'rtu' && <th>Registre RTU</th>}<th>Ordre des mots</th><th>Actions</th></tr></thead>

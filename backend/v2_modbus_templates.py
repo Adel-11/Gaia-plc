@@ -231,7 +231,8 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
         for offset, word in enumerate(WORD_ORDERS[row.order] if wide else (None,)):
             number = start + offset
             path = f"{union_base}.Word_value[{0 if word == 'LSW' else 1}]" if union else member
-            point = {"id": f"{protocol}:{client or name}:{table}:{number}", "Instance": name, "instance": name,
+            peer = client if tcp else name
+            point = {"id": f"{protocol}:{peer}:{table}:{number}", "Instance": name, "instance": name,
                      "instance_id": name, "Name": f"{name}.{row.member}", "Direction": direction,
                      "direction": direction, "Type": dtype, "data_type": dtype, "table": table,
                      "member_name": row.member.split(".")[0].split("[")[0], "Word": word, "word": word,
