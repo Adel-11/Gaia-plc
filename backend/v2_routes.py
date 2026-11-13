@@ -402,6 +402,9 @@ def register_v2_routes(app, get_session, current_user, csrf):
         target.write_bytes(content)
         return FileResponse(target, filename=filename, media_type=media_type, headers={"Cache-Control": "no-store"})
 
+    from backend.v2_gvl import register as register_gvl
+    register_gvl(app, get_session, current_user, csrf, project_for)
+
     @app.get("/api/v2/project")
     def get_project(session=Depends(get_session), user=Depends(current_user)):
         state = project_for(session)

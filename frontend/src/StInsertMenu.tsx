@@ -26,7 +26,7 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
   x: number; y: number; initialMode: InsertMode; variables: StVariable[]
   onInsert: (text: string, placeholder?: string) => void; onClose: (restoreFocus: boolean) => void
 }) {
-  const [mode, setMode] = useState(initialMode)
+  const [mode, setMode] = useState<InsertMode>(initialMode)
   const [group, setGroup] = useState('')
   const [query, setQuery] = useState('')
   const { blocks, functions } = useContext(StTypeCatalog)
@@ -50,27 +50,15 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
   const groups = [...new Set(available.map(variable => groupOf(variable.path)))]
   const matches = available.filter(variable => (isLocal || !group || groupOf(variable.path) === group) &&
     `${variable.path} ${variable.iec_type}`.toLowerCase().includes(query.trim().toLowerCase()))
-  const top = Math.max(8, Math.min(y, window.innerHeight - 290))
-  return createPortal(<div ref={panel} className="st-insert-menu" role="dialog" aria-label="Insérer dans le ST"
-    style={{ left: Math.max(8, Math.min(x, window.innerWidth - 378)), top, maxHeight: Math.min(370, window.innerHeight - top - 8) }}
-    onKeyDown={event => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
-    }}>
-    <div className="st-insert-tabs">
-      <button type="button" aria-pressed={mode === 'variables'} onClick={() => setMode('variables')}>Variables des DUT</button>
-      <button type="button" aria-pressed={isLocal} onClick={() => setMode('locals')}>Variables internes</button>
-      <button type="button" aria-pressed={mode === 'snippets'} onClick={() => setMode('snippets')}>Instructions ST</button>
-      <button type="button" aria-pressed={mode === 'functions'} onClick={() => { setQuery(''); setMode('functions') }}>Fonctions du projet</button>
-    </div>
-    {isVariableMode && <>
-      <div className="st-insert-filters">
-        {!isLocal && <select aria-label="DUT" value={group} onChange={event => setGroup(event.target.value)}>
-          <option value="">Tous les DUT</option>
-          {groups.map(role => <option key={role} value={role} data-variable-family={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
-        </select>}
-        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => setQuery(event.target.value)}/>
-      </div>
-      <div className="st-insert-results">
+  const narrow = window.innerWidth < 850
+  const top = Math.max(8, Math.min(y, window.innerHeight - 280))
+  const left = Math.max(8, Math.min(x, window.innerWidth - 210))
+  const roomLeft = left - 12
+  const roomRight = window.innerWidth - left - 214
+  const side = roomLeft >= 485 || roomLeft >= roomRight ? 'left' : 'right'
+  const submenuWidth = Math.min(345, Math.max(150, (side === 'left' ? roomLeft : roomRight) - 143))
+  const changeMode = (next: InsertMode) => { setMode(next); setGroup(''); setQuery('') }
+  const variableResults = <>
         {matches.map(variable => {
           const call = isLocal ? blockCall(variable.path, variable.iec_type, blocks) : undefined
           return <div className="st-insert-result" key={variable.path} data-variable-family={groupOf(variable.path)}>
@@ -80,6 +68,28 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
             {call && <button type="button" className="st-insert-name" aria-label={`Insérer uniquement le nom ${variable.path}`} onClick={() => onInsert(variable.path)}>Nom seul</button>}
           </div>
         })}
+  </>
+  return createPortal(<div ref={panel} className={`st-cascade ${narrow ? 'compact' : side} ${mode === 'variables' && group ? 'has-third' : ''}`} role="dialog" aria-label="Insérer dans le ST"
+    style={{ left, top, '--st-submenu-width': `${submenuWidth}px`, '--st-menu-height': `${Math.max(100, window.innerHeight - top - 8)}px` } as React.CSSProperties}
+    onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
+    }}>
+    <div className="st-insert-menu st-cascade-main">
+      {([['variables','Variables des DUT'],['locals','Variables internes'],['snippets','Instructions ST'],['functions','Fonctions du projet']] as const)
+        .map(([key,label]) => <button key={key} type="button" aria-expanded={mode === key} onClick={() => changeMode(mode === key ? 'choices' : key)}>
+          {label}<span aria-hidden="true">{!narrow && side === 'left' ? '‹' : '›'}</span>
+        </button>)}
+    </div>
+    {mode !== 'choices' && <div className="st-insert-menu st-cascade-sub">
+    {isVariableMode && <>
+      <div className="st-insert-filters">
+        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => { setQuery(event.target.value); setGroup('') }}/>
+      </div>
+      <div className="st-insert-results">
+        {!isLocal && !query.trim() && groups.map(role => <button key={role} type="button" data-variable-family={role} aria-expanded={group === role} onClick={() => setGroup(group === role ? '' : role)}>
+          <b>{role === 'INTERN' ? 'INT (INTERN)' : role}</b><span aria-hidden="true">{!narrow && side === 'left' ? '‹' : '›'}</span>
+        </button>)}
+        {(isLocal || query.trim()) && variableResults}
         {!matches.length && <p>Aucune variable trouvée.</p>}
       </div>
     </>}
@@ -98,5 +108,7 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
         {!Object.keys(functions || {}).length && <p>Aucune fonction disponible.</p>}
       </div>
     </>}
+    </div>}
+    {mode === 'variables' && group && <div className="st-insert-menu st-cascade-third"><div className="st-insert-results">{variableResults}</div></div>}
   </div>, document.body)
 }

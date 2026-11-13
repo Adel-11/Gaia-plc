@@ -48,3 +48,9 @@
 .ex-wiring-viewport{max-height:min(48dvh,600px);overflow:auto}
 .ex-wiring-grid{cursor:grab}
 .ex-wiring-grid:active{cursor:grabbing}
+.ex-node-filter{position:absolute;z-index:6;top:70px;right:14px;max-width:min(325px,calc(100% - 28px));padding:.5rem .8rem;background:#fffaf3;border:1px solid #e5dacb;border-radius:8px;box-shadow:0 4px 16px #30210f15}
+.ex-node-filter summary{cursor:pointer}
+.ex-node-checklist{display:flex;flex-wrap:wrap;gap:.4rem .9rem;max-height:9rem;overflow:auto;padding:.4rem 0}
+.ex-node-checklist label{display:flex;align-items:center;gap:.25rem}
+.ex-drag-arrow{stroke:#246685;stroke-width:2.5;stroke-dasharray:5 3;fill:none}
+.ex-node .ex-port{cursor:crosshair}

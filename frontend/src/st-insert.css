@@ -30,3 +30,19 @@
 .st-insert-result { display: flex; align-items: center; }
 .st-insert-result > button:first-child { min-width: 0; }
 .st-insert-results .st-insert-name { width: auto; flex: none; white-space: nowrap; color: #445b77; font-size: 12px; }
+.st-cascade{position:fixed;z-index:3000;width:200px;max-width:calc(100vw - 16px)}
+.st-cascade .st-insert-menu{position:static;width:100%;max-height:var(--st-menu-height);padding:4px}
+.st-cascade-main>button{display:flex;justify-content:space-between;gap:.4rem;width:100%;padding:.5rem .6rem;background:transparent;border:0;text-align:left;border-radius:4px}
+.st-cascade-main>button:is(:hover,[aria-expanded=true]){background:#eef2f5}
+.st-cascade .st-cascade-sub{position:absolute;top:0;width:var(--st-submenu-width)}
+.st-cascade.left .st-cascade-sub{right:calc(100% + 3px)}
+.st-cascade.right .st-cascade-sub{left:calc(100% + 3px)}
+.st-cascade.compact{max-height:var(--st-menu-height);overflow:auto}
+.st-cascade.compact .st-cascade-sub{position:static;width:100%;margin-top:3px;box-shadow:none}
+.st-cascade .st-insert-results{max-height:min(300px,calc(var(--st-menu-height) - 50px))}
+.st-cascade.has-third .st-cascade-sub{width:140px}
+.st-cascade .st-cascade-third{position:absolute;top:0;width:var(--st-submenu-width)}
+.st-cascade.left .st-cascade-third{right:calc(100% + 146px)}
+.st-cascade.right .st-cascade-third{left:calc(100% + 146px)}
+.st-cascade.compact .st-cascade-third,.st-cascade.compact.has-third .st-cascade-sub{position:static;width:100%;margin-top:3px}
+.st-cascade-sub button[aria-expanded=true]{background:#eef2f5}

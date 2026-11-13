@@ -285,6 +285,9 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
             listed = {**options, **{key: {**option, 'missing': True}
                                    for key, option in _variable_options(state, generated=True).items() if key not in options}}
         result = {'revision': state['revision'], 'hardware': None, 'can_load_gaia': _can_load_gaia(state), **copy_options(state, listed)}
+        folders = state.get("gvl_folders", {}).get("GVL_IOMAP", {})
+        for variable in result["variables"]:
+            variable["folder"] = folders.get(variable["name"].casefold(), "")
         if not hardware:
             return result
         _, channels = parse(hardware['xml'].encode('utf-8'))
@@ -373,6 +376,8 @@ def register_io_hardware_routes(app, get_session, current_user, csrf):
                 if body.action == 'delete' and key in options and (state.get('st_overrides') or {}).get('GVL_IOMAP', {}).get('declaration') is not None:
                     raise ValueError(f'GVL_IOMAP utilise une déclaration ST manuelle. Retirez {name} dans l’éditeur ST ou revenez à la déclaration générée avant de supprimer la variable ici.')
                 remove_copy(state, name, delete=body.action == 'delete')
+                if body.action == 'delete':
+                    state.get("gvl_folders", {}).get("GVL_IOMAP", {}).pop(key, None)
 
             if body.channel_key and (body.action != 'assign' or not hardware):
                 raise ValueError('Chargez un XML du rack avant d’assigner un canal matériel.')

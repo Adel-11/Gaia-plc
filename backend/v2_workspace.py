@@ -96,7 +96,7 @@ def _lock(session):
 
 def _changes(previous,state):
     previous=previous or {};changes=[];activities={}
-    for key,label in {**COLLECTIONS, 'removed_iomap_variables': 'Variables IOMAP supprimées', 'generic_objects': 'Objets génériques', 'st_overrides': 'ST manuel', 'codesys_io_hardware': 'Mappage du rack E/S'}.items():
+    for key,label in {**COLLECTIONS, 'removed_iomap_variables': 'Variables IOMAP supprimées', 'gvl_folders': 'Dossiers des GVL', 'generic_objects': 'Objets génériques', 'st_overrides': 'ST manuel', 'codesys_io_hardware': 'Mappage du rack E/S'}.items():
         if digest(previous.get(key))==digest(state.get(key)):continue
         old=previous.get(key,[]);new=state.get(key,[])
         names=[]

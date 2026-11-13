@@ -27,6 +27,7 @@ export default function LocalVariables({ rows, onChange, onSave, disabled, dirty
       <label>Valeur initiale (facultative)<input value={row.default_value} disabled={disabled} onChange={e => update(i, { default_value: e.target.value })}/></label>
       <button type="button" className="button secondary" disabled={disabled} aria-label={`Retirer la variable interne ${row.name || i + 1}`} onClick={() => onChange(rows.filter((_, n) => n !== i))}>Retirer</button>
     </div>)}
+    {rows.length > 0 && <button type="button" className="button secondary" disabled={disabled} onClick={() => onChange([...rows, { name: '', iec_type: '', default_value: '' }])}>＋ Ajouter une variable interne</button>}
     {onSave && <button type="button" className="button primary" disabled={disabled || !dirty} onClick={onSave}>Enregistrer</button>}
   </section>
 }

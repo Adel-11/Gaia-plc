@@ -1,0 +1,8 @@
+.gvl-page{display:grid;gap:1rem}
+.gvl-toolbar{display:flex;flex-wrap:wrap;gap:.65rem;align-items:end}
+.gvl-toolbar label{display:grid;gap:.3rem}
+.gvl-table{overflow:auto;max-height:55vh}
+.gvl-st{min-height:240px;height:360px;resize:vertical;overflow:hidden}
+.gvl-st .ov-editor-wrap{height:100%}
+.gvl-assigned{color:#2c624a}
+.gvl-free{color:#665b4a}

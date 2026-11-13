@@ -32,3 +32,10 @@
   border-radius: 0 !important;
   box-sizing: border-box;
 }
+.modal-view-controls{padding:0;min-height:32px;align-items:center;gap:0}
+.modal-view-controls>button{border:0;border-radius:0;width:44px;height:32px;padding:0;display:grid;place-items:center;background:transparent;box-shadow:none}
+.modal-view-controls>button:not(:disabled):hover{background:#3d342416}
+.modal-view-controls>button.modal-window-close{font-size:22px;line-height:1}
+.modal-view-controls>button.modal-window-close:not(:disabled):hover{background:#a5363b;color:#fff}
+.v2-workspace button:not(:disabled),.st-cascade button:not(:disabled){cursor:pointer;transition:filter .14s,background-color .14s}
+.v2-workspace button:not(:disabled):hover{filter:brightness(.95)}

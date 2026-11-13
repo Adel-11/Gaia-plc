@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import WorkspacePanel from './WorkspacePanel'
+import ExchangeWiring from './ExchangeWiring'
 
 type Direction = 'input' | 'output'
-type Variable = { name: string; iec_type: string; direction?: Direction | null; missing?: boolean }
+type Variable = { name: string; iec_type: string; direction?: Direction | null; missing?: boolean; folder?: string }
 type Member = Variable & { path: string }
 type Copy = { iomap: string; instance: string; target: string; block: string; direction: Direction; st: string; generated: boolean }
 type Channel = { key: string; module: string; label: string; iec_type: string; direction: Direction; locked: boolean; variable: string }
@@ -22,6 +23,9 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
   const [create, setCreate] = useState(false), [newName, setNewName] = useState('')
   const [direction, setDirection] = useState<Direction>('input'), [channelKey, setChannel] = useState('')
   const [search, setSearch] = useState('')
+  const [folder, setFolder] = useState('')
+  const [graph, setGraph] = useState(false)
+  const [armed, setArmed] = useState<string | null>(null)
   const instanceInput = useRef<HTMLSelectElement>(null)
   const instances = state?.instances.filter(item => !scope || scope.instances.includes(item.name)) || []
   const instance = pickedInstance || (scope ? instances[0]?.name || '' : '')
@@ -29,7 +33,8 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
   const member = memberList.find(item => item.name === memberName)
   const sense = member?.direction || direction
   const variables = state?.variables || []
-  const matching = variables.filter(variable => member && !variable.missing && variable.iec_type === member.iec_type && (!variable.direction || variable.direction === sense))
+  const matching = variables.filter(variable => member && !variable.missing && (!folder || variable.folder === folder || variable.name === iomap) &&
+    variable.iec_type === member.iec_type && (!variable.direction || variable.direction === sense))
   const selected = create && member && newName.trim() ? { name: newName.trim(), iec_type: member.iec_type } : matching.find(variable => variable.name === iomap)
   const copies = state?.copies || []
   const hardware = state?.hardware
@@ -43,6 +48,20 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
   const rhs = `GVL_IOMAP.${selected?.name || ''}`
   const statement = member && selected ? (sense === 'input' ? `${member.path} := ${rhs};` : `${rhs} := ${member.path};`) : ''
   const disabled = busy || blocked
+  const instanceCopies = copies.filter(copy => copy.instance === instance)
+  const linked = new Set(instanceCopies.map(copy => copy.iomap))
+  const graphVariables = variables.filter(variable => linked.has(variable.name) || (!folder || variable.folder === folder) &&
+    !variable.missing && memberList.some(item => item.iec_type === variable.iec_type && (!item.direction || !variable.direction || item.direction === variable.direction)))
+  function chooseWire(first: string, second: string) {
+    if (disabled) return
+    const [global, local] = first.startsWith('GVL_IOMAP.') ? [first,second] : [second,first]
+    const variable = graphVariables.find(item => 'GVL_IOMAP.' + item.name === global)
+    const target = memberList.find(item => item.path === local)
+    if (!variable || !target || variable.iec_type !== target.iec_type ||
+        (variable.direction && target.direction && variable.direction !== target.direction)) return
+    setCreate(false); setIomap(variable.name); setMember(target.name); setChannel('')
+    setDirection(target.direction || variable.direction || direction)
+  }
 
   function edit(copy: Copy) {
     setInstance(copy.instance); setMember(copy.target.split('.').pop() || ''); setDirection(copy.direction)
@@ -57,6 +76,19 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
       {blocked && <p className="comm-warning">Enregistre ou annule d’abord le brouillon du rack ci-dessous.</p>}
       {!state && !error && <p role="status">Chargement des instances et des variables E/S…</p>}
       {state && <>
+        {instance && <div className="rack-io-toolbar"><strong>{instance} · {instanceCopies.length} connexion(s)</strong>
+          <button type="button" className="comm-btn" onClick={() => { setGraph(!graph); setArmed(null) }}>{graph ? 'Masquer le dessin' : 'Mapper graphiquement'}</button>
+        </div>}
+        {graph && instance && <><p>Relie deux variables dans le dessin, puis enregistre la recopie proposée.</p>
+          <ExchangeWiring sources={graphVariables.map(variable => ({path:'GVL_IOMAP.' + variable.name, iec_type:variable.iec_type}))}
+            destinations={memberList.map(item => ({...item,member:item.name}))}
+            sourceParameter="GVL_IOMAP" destinationParameter={instance} bidirectional
+            mappings={instanceCopies.map(copy => {
+              const global = 'GVL_IOMAP.' + copy.iomap
+              return {source:copy.direction === 'input' ? global : copy.target, destination:copy.direction === 'input' ? copy.target : global}
+            })}
+            armed={armed} selected={null} onArm={setArmed} onConnect={chooseWire} onSelect={() => {}}/>
+        </>}
         <form className="rack-io-copy-form" onSubmit={event => {
           event.preventDefault()
           if (!member || !selected || disabled || targetBusy || manual) return
@@ -75,6 +107,9 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
             </select></label>
             <label>Sens de la recopie<select value={sense} disabled={disabled || !member || !!member.direction} onChange={event => { setDirection(event.target.value as Direction); setIomap(''); setChannel('') }}>
               <option value="input">Entrée · IOMAP → instance</option><option value="output">Sortie · instance → IOMAP</option>
+            </select></label>
+            <label>Dossier IOMAP<select value={folder} onChange={event => {setFolder(event.target.value);setArmed(null)}}><option value="">Tous les dossiers</option>
+              {[...new Set(variables.map(variable => variable.folder).filter(Boolean))].sort().map(item => <option key={item}>{item}</option>)}
             </select></label>
             <label>Variable GVL_IOMAP<select value={create ? ':new' : selected?.name || ''} disabled={disabled || !member} onChange={event => { setCreate(event.target.value === ':new'); setIomap(event.target.value === ':new' ? '' : event.target.value); setChannel('') }}>
               <option value="">Choisir une variable…</option>
@@ -97,7 +132,7 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
         <div className="rack-io-toolbar"><b>Variables déclarées dans GVL_IOMAP</b><label className="rack-io-search">Filtrer<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Variable, instance ou membre"/></label></div>
         <div className="rack-io-table-wrap"><table className="v2-table rack-io-table">
           <thead><tr><th>Variable · type</th><th>Recopie ST</th><th>Canaux du rack</th><th>Actions</th></tr></thead>
-          <tbody>{variables.filter(variable => (!scope || copies.some(copy => copy.iomap === variable.name && copy.target === member?.path)) &&
+          <tbody>{variables.filter(variable => (!scope || linked.has(variable.name)) &&
             [variable.name, ...copies.filter(copy => copy.iomap === variable.name).map(copy => copy.target)].some(value => value.toLowerCase().includes(search.trim().toLowerCase()))).map(variable => {
             const links = copies.filter(copy => copy.iomap === variable.name)
             const channels = hardware?.channels.filter(item => item.variable.toLowerCase() === path(variable.name)) || []

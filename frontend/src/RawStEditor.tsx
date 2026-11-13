@@ -84,9 +84,9 @@ export default function RawStEditor({ name, csrf, onClose, onSaved, insertVariab
   return <div className="raw-st-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
     <section className="raw-st-dialog" role="dialog" aria-modal="true" aria-labelledby={title}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() } }}>
-      <ModalFullscreen/>
+      <ModalFullscreen onClose={close} disabled={busy}/>
       <header><div><h2 id={title}>{name} · ST complet</h2><p>Le texte modifié est utilisé à l’export. Les formulaires et mappings restent disponibles si tu reviens au modèle.</p></div>
-        <button type="button" className="button secondary" disabled={busy} onClick={close}>Fermer</button>
+
       </header>
       <div className="raw-st-body">
         {error && <p className="v2-alert error" role="alert">{error}</p>}

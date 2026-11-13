@@ -74,8 +74,8 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
       onSaved={fresh => { setConfig(fresh as Configuration); onSaved() }} onClose={onClose}/>
   }
   return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="instance-mapping-title">
-    <ModalFullscreen/>
-    <header><h3 id="instance-mapping-title">{role === 'IO' ? 'Mapping IOMAP' : 'Mapping Modbus'}</h3><button type="button" className="comm-btn" onClick={onClose} disabled={busy}>Fermer</button></header>
+    <ModalFullscreen onClose={onClose} disabled={busy}/>
+    <header><h3 id="instance-mapping-title">{role === 'IO' ? 'Mapping IOMAP' : 'Mapping Modbus'}</h3></header>
     <div className="modbus-wiring-scroll">
       {io && config ? (instances.length ? <IoCopyManager state={io} busy={busy} blocked={false} error={error}
         notice={notice} update={updateCopy} scope={{ instances: instances.map(row => row.name) }}/>

@@ -194,8 +194,8 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     else setOrders(previous => ({ ...previous, [link.id]: order }))
   }
 
-  return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen/>
-    <header><div><h3 id="modbus-wiring-title">Mapping graphique Modbus {mode.toUpperCase()}</h3><p>Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.</p></div><button type="button" className="comm-btn" disabled={busy} onClick={close}>Fermer</button></header>
+  return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen onClose={close} disabled={busy}/>
+    <header><div><h3 id="modbus-wiring-title">Mapping graphique Modbus {mode.toUpperCase()}</h3><p>Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.</p></div></header>
     <div className="modbus-wiring-scroll">
       <div className="modbus-wiring-controls">
         {switchMode && <label>Protocole<select value={mode} disabled={dirty || busy} onChange={event => switchMode(event.target.value as 'tcp' | 'rtu')}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>}

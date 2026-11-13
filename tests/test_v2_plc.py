@@ -15,6 +15,7 @@ def _state():
 
 def test_full_export_contains_reference_free_objects_without_union_or_application():
     state = _state()
+    next(row for row in state["instances"] if row["name"] == "DOSENSOR_1")["comment"] = "Capteur du bassin"
     objects = build_program(state)
     assert len(objects) == 55
     assert "DUT_Union_Real_Word" not in objects
@@ -25,6 +26,9 @@ def test_full_export_contains_reference_free_objects_without_union_or_applicatio
     assert root.find("p:types/p:pous", ns) is not None
     assert not any(etree.QName(node).localname in {"Application", "device", "task", "library"} for node in root.iter())
     assert len(root.xpath(".//p:ProjectStructure//p:Object", namespaces=ns)) == 55
+    notes = root.xpath(".//p:globalVars[@name='GVL_IO']/p:variable[@name='IO_DOSENSOR_1']/p:documentation", namespaces=ns)
+    assert len(notes) == 1
+    assert notes[0][0].text.splitlines()[:2] == ["DOSENSOR_1", "Capteur du bassin"]
 
 
 def test_partial_export_has_only_selected_objects_and_stable_ids():

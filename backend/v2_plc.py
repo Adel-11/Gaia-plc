@@ -343,6 +343,22 @@ def _mapped_name(value):
     return str(value or "").removeprefix("GVL_MODBUS.").removeprefix("GVL_IOMAP.")
 
 
+def _instance_docs(objects, state):
+    from backend.v2_gvl import prepend_documentation
+    instances = {str(row.get("name") or row.get("id")).casefold(): row for row in state.get("instances", [])}
+    for role in ("COM", "IO", "EXC", "PA"):
+        element = objects.get(f"GVL_{role}", {}).get("element")
+        if element is None:
+            continue
+        for variable in element.findall(NS + "variable"):
+            name = variable.get("name", "")
+            instance = instances.get(name[len(role) + 1:].casefold()) if name.startswith(role + "_") else None
+            if instance:
+                label = str(instance.get("name") or instance.get("id"))
+                comment = str(instance.get("comment", instance.get("Comment") or instance.get("description") or "")).strip()
+                prepend_documentation(variable, label + ("\n" + comment if comment else ""))
+
+
 def _tcp_address_expression(point, state):
     """Use the mapped array's existing name while deriving its index from the current address."""
     raw = str(point.get("GVL_MODBUS variable") or "")
@@ -666,10 +682,14 @@ def build_program(state, include_union: bool = False) -> dict:
     for name, obj in objs.items():
         append_local_vars(obj["element"], locals_by_pou.get(name), imported_locals.get(name, []))
         _set_object_id(obj["element"], name, state)
+    _instance_docs(objs, state)
     from backend.v2_st_overrides import apply_overrides
     for name, override in (state.get("st_overrides") or {}).items():
         if name in objs:
             apply_overrides(objs[name], override)
+    if "GVL_IOMAP" in objs and (folders := state.get("gvl_folders", {}).get("GVL_IOMAP")):
+        from backend.v2_gvl import organize
+        organize(objs["GVL_IOMAP"]["element"], folders)
     return objs
 
 

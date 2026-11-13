@@ -222,3 +222,35 @@ def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):
     assert not next(row for row in unlinked['hardware']['channels'] if row['key'] == analog_out['key'])['variable']
     assert name.encode() in post('/exports/gvl').content
     assert post('/exports/gfc').content == gfc_bytes
+
+
+def test_iomap_inventory_groups_and_edits_unassigned_declarations(rack_client):
+    client, headers = rack_client
+    view = client.get('/api/v2/gvl').json()
+
+    def iomap(result):
+        return next(item for item in result['lists'] if item['name'] == 'GVL_IOMAP')
+
+    assert next(row for row in iomap(view)['rows'] if row['name'] == 'IOMAP_DI_FAULT_DOSENSOR_1')['assigned']
+
+    created = client.post('/api/v2/gvl', headers=headers, json={
+        'revision': view['revision'], 'gvl': 'GVL_IOMAP', 'name': '',
+        'new_name': 'QA_FREE_IOMAP', 'iec_type': 'BOOL', 'folder': 'QA field signals',
+    })
+    assert created.status_code == 200, created.text
+    listing = iomap(created.json())
+    assert '// ---------------------------- QA field signals\n\tQA_FREE_IOMAP : BOOL;' in listing['st']
+    assert next(row for row in listing['rows'] if row['name'] == 'QA_FREE_IOMAP')['editable']
+
+    updated = client.post('/api/v2/gvl', headers=headers, json={
+        'revision': created.json()['revision'], 'gvl': 'GVL_IOMAP', 'name': 'QA_FREE_IOMAP',
+        'new_name': 'QA_FREE_IOMAP', 'iec_type': 'REAL', 'folder': 'QA field signals',
+    })
+    assert updated.status_code == 200, updated.text
+    assert 'QA_FREE_IOMAP : REAL;' in iomap(updated.json())['st']
+
+    deleted = client.post('/api/v2/io-hardware/copies', headers=headers, json={
+        'revision': updated.json()['revision'], 'action': 'delete', 'iomap': 'QA_FREE_IOMAP',
+    })
+    assert deleted.status_code == 200, deleted.text
+    assert 'QA_FREE_IOMAP' not in iomap(client.get('/api/v2/gvl').json())['st']

@@ -1,3 +1,4 @@
+import V2Gvl from './V2Gvl'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import TransferHub from './TransferHub'
 import V2ObjectView from './V2ObjectView'
@@ -41,6 +42,7 @@ const pages = [
   { id: 'instances', label: 'Instances', detail: 'Objets du projet', icon: '⌂', title: 'Instances du projet', description: 'Déclarez les blocs de vos instances. Configurez ensuite les communications et ajoutez les appels dans les GFC / GFB.' },
   { id: 'communications', label: 'Communications', detail: 'Modbus et E/S', icon: '⌁', title: 'Communications', description: 'Consultez les clients TCP, les lignes RTU et les affectations des entrées et sorties.' },
   { id: 'exchanges', label: 'Exchanges', detail: 'Connections and conditions', icon: '⇆', title: 'Equipment exchanges', description: 'Connect instances, wire their variables and define conditional copies.' },
+  { id: 'gvl', label: 'Variables globales', detail: 'GVL et IOMAP', icon: '▤', title: 'Variables globales', description: 'Consulte les déclarations et organise les variables IOMAP.' },
   { id: 'generated', label: 'Code généré', detail: 'Appels GFC et GFB', icon: '⌘', title: 'Code généré', description: 'Consultez les objets calculés depuis le modèle et leurs différences avec la référence CODESYS.' },
   { id: 'functions', label: 'Fonctions', detail: 'Utilitaires et échanges', icon: 'ƒ', title: 'Fonctions du programme', description: 'Consultez et modifiez les fonctions utilitaires ; retrouvez les fonctions d’échange et leur mapping.' },
   { id: 'tree', label: 'Arborescence', detail: 'Objets CODESYS', icon: '⌘', title: 'Arborescence CODESYS', description: 'Parcourez les types, instances et objets du programme.' },
@@ -158,7 +160,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         {[
           {id: 'project', label: 'Projet', ids: ['overview']},
           {id: 'design', label: 'Conception', ids: ['types', 'generic', 'instances', 'communications', 'exchanges', 'tree']},
-          {id: 'code', label: 'Programme', ids: ['generated', 'functions']},
+          {id: 'code', label: 'Programme', ids: ['gvl', 'generated', 'functions']},
           {id: 'delivery', label: 'Livrables', ids: ['transfers']},
         ].map(group => <section className="v2-nav-group" key={group.id}>
           <button className="v2-nav-group-toggle" aria-expanded={expandedGroups[group.id]} aria-controls={`nav-group-${group.id}`} onClick={() => setExpandedGroups(old => ({...old, [group.id]: !old[group.id]}))}><span>{group.label}</span><span aria-hidden="true">{expandedGroups[group.id] ? '⌄' : '›'}</span></button>
@@ -203,6 +205,9 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exchanges" aria-labelledby="tab-exchanges" hidden={activePage !== 'exchanges'}>
           {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}
+        </div>
+        <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-gvl" aria-labelledby="tab-gvl" hidden={activePage !== 'gvl'}>
+          {activePage === 'gvl' && <V2Gvl csrf={csrf} revision={project?.revision} onSaved={() => void load()}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-generated" aria-labelledby="tab-generated" hidden={activePage !== 'generated'}>
           {project && (activePage === 'generated' || openedCodePages.generated) && <V2Code category="generated" initialObject={treeCodeSelection?.category === 'generated' ? treeCodeSelection.name : undefined} initialObjectVersion={treeCodeRequestVersion} csrf={csrf} projectRevision={project.revision} onSaved={() => void load()} onOpenExchanges={() => openPage('exchanges')} onDirtyChange={dirty => setCodeDirty(old => old.generated === dirty ? old : {...old, generated: dirty})} />}

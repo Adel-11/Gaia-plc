@@ -102,5 +102,6 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
         }}>×</button></td>}</tr>
       })}
     </tbody></table></div> : <p className="fb-map-empty">Aucun mapping affiché.</p>}
+    {!readOnly && <button type="button" className="fb-map-add-bottom" onClick={add} disabled={!sourceOptions.length || !destinationOptions.length}>＋ Ajouter un mapping</button>}
   </section>
 }

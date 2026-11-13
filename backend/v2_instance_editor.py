@@ -8,7 +8,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.db import ImportPreview
 from backend.v2_engine import _sheet_map, _member_from_var
@@ -26,6 +26,7 @@ class Preview(BaseModel):
     rtu_slaves: list[dict] = []
     rtu_channels: list[dict] = []
     iomap: list[dict] = []
+    comment: str = Field(default="", max_length=1000)
 
 
 class Apply(BaseModel):
@@ -330,6 +331,8 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                 typ = _type(state, body.type_id)
                 name = (body.name or "").strip()
                 _add_instance(state, name, typ, {})
+                if body.comment.strip():
+                    state["instances"][-1]["comment"] = body.comment.strip()
                 changes.append(f"Create instance {name} ({typ.get('name') if typ else body.type_id})")
                 if body.iomap:
                     from backend.v2_io_copies import assign_copy, instance_options
@@ -355,6 +358,9 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                     from backend.v2_configuration import synchronize_io_workbook
                     synchronize_io_workbook(state)
             elif not inst: raise ValueError("Instance not found")
+            elif body.action == "comment":
+                inst["comment"] = body.comment.strip()
+                changes.append(f"Mettre à jour le commentaire de {_name(inst)}")
             elif body.action == "delete":
                 name = _name(inst)
                 from backend.v2_program_membership import freeze_membership

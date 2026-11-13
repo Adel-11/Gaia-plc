@@ -139,6 +139,7 @@ def test_instance_creation_review_has_no_collection_side_effects_and_pa_is_lazy(
         )}
         preview = client.post("/api/v2/instances/preview", headers=headers, json={
             "revision": project["revision"], "action": "create", "name": "SIMPLE_INSTANCE_1", "type_id": "DIP1500",
+            "comment": "PLC comment for the instance",
             # Submitted old-style configuration recipes are ignored during creation.
             "tcp_points": [{"id": "ignored", "address": 1}], "rtu_slaves": [{"id": "ignored", "address": 1}],
         })
@@ -152,6 +153,10 @@ def test_instance_creation_review_has_no_collection_side_effects_and_pa_is_lazy(
         assert all("SIMPLE_INSTANCE_1" not in names for names in staged["program_membership"].values())
         assert client.post("/api/v2/instances/apply", headers=headers, json={"token": result["token"]}).status_code == 200
         configuration = client.get("/api/v2/instances/SIMPLE_INSTANCE_1/configuration").json()
+        gvls = client.get("/api/v2/gvl").json()["lists"]
+        for role in ("PA", "COM", "IO", "EXC"):
+            st = next(gvl["st"] for gvl in gvls if gvl["name"] == f"GVL_{role}")
+            assert f"// SIMPLE_INSTANCE_1\n\t// PLC comment for the instance\n\t{role}_SIMPLE_INSTANCE_1 :" in st
         assert configuration["pa_values"]
         assert configuration["tcp_points"] == [] and configuration["rtu_channels"] == []
         member = configuration["pa_values"][0]
