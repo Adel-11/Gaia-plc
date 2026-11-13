@@ -58,8 +58,12 @@ export function StEditor({ value, onChange, readOnly = false, label, insertVaria
   const editor = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange
   const applyingValue = useRef(false)
-  const [insertMenu, setInsertMenu] = useState<{ x: number; y: number; mode: InsertMode } | null>(null)
+  const [insertMenu, setInsertMenu] = useState<{ x: number; y: number; mode: InsertMode; bounds?: DOMRect } | null>(null)
   const canInsert = !readOnly && !!onChange
+  const openInsert = (x: number, y: number, mode: InsertMode) => {
+    const bounds = host.current?.closest('[aria-modal="true"]')?.getBoundingClientRect()
+    setInsertMenu({x, y, mode, bounds})
+  }
   const closeInsert = (restoreFocus: boolean) => {
     setInsertMenu(null)
     if (restoreFocus) editor.current?.focus()
@@ -96,7 +100,7 @@ export function StEditor({ value, onChange, readOnly = false, label, insertVaria
         {(['IF', 'FOR'] as const).map(key => <button key={key} type="button" title={`Insérer ${key}`} onClick={() => insert(...stSnippets[key])}>{key}</button>)}
         {(['variables', 'snippets'] as const).map(mode => <button key={mode} type="button" aria-haspopup="dialog" onClick={event => {
           const rect = event.currentTarget.getBoundingClientRect()
-          setInsertMenu({ x: rect.left, y: rect.bottom + 4, mode })
+          openInsert(rect.left, rect.bottom + 4, mode)
         }}>{mode === 'variables' ? 'Variables' : 'Instructions'}</button>)}
       </>}
       <button type="button" onClick={() => editor.current && openSearchPanel(editor.current)} aria-label="Find in source">Find <kbd>Ctrl F</kbd></button>
@@ -108,7 +112,7 @@ export function StEditor({ value, onChange, readOnly = false, label, insertVaria
       const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
       const { from, to } = view.state.selection.main
       if (pos != null && (pos < from || pos > to)) view.dispatch({ selection: { anchor: pos } })
-      setInsertMenu({ x: event.clientX, y: event.clientY, mode: 'choices' })
+      openInsert(event.clientX, event.clientY, 'choices')
     }}/>
     {canInsert && insertMenu && <StInsertMenu key={`${insertMenu.mode}:${insertMenu.x}:${insertMenu.y}`} {...insertMenu}
       initialMode={insertMenu.mode} variables={insertVariables ?? []} onInsert={insert} onClose={closeInsert}/>}

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from backend.db import ImportPreview
@@ -454,6 +454,20 @@ def register_v2_routes(app, get_session, current_user, csrf):
         except ValueError as exc:
             raise HTTPException(409, f"FUXA export rejected: {exc}") from exc
         return download(content, "SCADA_V1-devices_v4.csv", "text/csv; charset=utf-8")
+
+    @app.get("/api/v2/exports/panelview.xlsx")
+    def export_hmi(controller: str = "PLC-1", session=Depends(get_session), user=Depends(current_user)):
+        from backend.v2_panelview_export import export_panelview, has_panelview
+
+        state = project_for(session)
+        if not has_panelview(state):
+            raise HTTPException(404, "Ce projet ne contient pas de client Modbus TCP HMI.")
+        try:
+            content = export_panelview(state, controller)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": 'attachment; filename="VARIABLES_HMI.xlsx"', "Cache-Control": "no-store"})
 
     @app.get("/api/v2/exports/{filename}")
     def export_workbook(filename: str, session=Depends(get_session), user=Depends(current_user)):

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import V2PlcExport from './V2PlcExport'
 import V2CodesysImport from './V2CodesysImport'
 
-type Project = { workbooks?: { filename: string }[]; phase?: number; program_profile?: string; v7_archive_revision?: number }
+type Project = { workbooks?: { filename: string }[]; phase?: number; program_profile?: string; v7_archive_revision?: number; tcp_clients?: { Client?: string; id?: string }[] }
 type ExcelRow = { sheet: string; key: unknown; row?: Record<string, unknown>; before?: Record<string, unknown>; after?: Record<string, unknown> }
 type ExcelDiff = { added: ExcelRow[]; modified: ExcelRow[]; removed: ExcelRow[] }
 type ExcelPreview = { kind: 'excel'; token: string; filename?: string; mode?: 'merge' | 'replace'; diff: ExcelDiff; validation: { errors?: unknown[]; warnings?: unknown[] } }
@@ -30,6 +30,8 @@ export default function TransferHub({ csrf, project, revision, onChanged }: { cs
   const [excelFile,setExcelFile]=useState<File|null>(null), [restoreFile,setRestoreFile]=useState<File|null>(null)
   const [mode,setMode]=useState<'merge'|'replace'>('merge'), [preview,setPreview]=useState<Preview|null>(null), [reviewed,setReviewed]=useState(false), [error,setError]=useState(''), [busy,setBusy]=useState(false)
   const [templates,setTemplates]=useState<Template[]>([]), [templatesLoading,setTemplatesLoading]=useState(false)
+  const [hmiController, setHmiController] = useState('PLC-1')
+  const hasPanelView = project.tcp_clients?.some(client => (client.Client || client.id)?.toLowerCase() === 'hmi')
   useEffect(()=>{if(tab!=='templates'||templates.length)return;let active=true;setTemplatesLoading(true);fetch('/api/v2/templates',{credentials:'same-origin'}).then(async response=>{if(!response.ok)throw new Error(`Chargement des modèles impossible (${response.status})`);return response.json() as Promise<TemplateResponse>}).then(data=>{if(active)setTemplates(data.templates||[])}).catch(e=>{if(active)setError(e instanceof Error?e.message:'Chargement des modèles impossible')}).finally(()=>{if(active)setTemplatesLoading(false)});return()=>{active=false}},[tab,templates.length])
   const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError('');try{await fn()}catch(e){setError(e instanceof Error?e.message:'Opération échouée')}finally{setBusy(false)}}
   const showPreview=async(kind:'excel'|'restore')=>run(async()=>{
@@ -39,7 +41,16 @@ export default function TransferHub({ csrf, project, revision, onChanged }: { cs
     setPreview(kind==='excel'?{...(payload as Omit<ExcelPreview,'kind'>),kind:'excel'}:{...(payload as Omit<RestorePreview,'kind'>),kind:'restore'})
     setReviewed(false)
   })
-  const download=async(path:string,name:string,post=false)=>run(async()=>{const r=await fetch(`/api/v2${path}`,{method:post?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:post?{'X-CSRF-Token':csrf}:undefined});if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);const d=r.headers.get('content-disposition')||'',m=d.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i);save(await r.blob(),m?.[1]?decodeURIComponent(m[1].replaceAll('"','')):name);if(post)onChanged()})
+  const download = async (path: string, name: string, post = false) => run(async () => {
+    const response = await fetch(`/api/v2${path}`, {method: post ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', headers: post ? {'X-CSRF-Token': csrf} : undefined})
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      throw new Error(typeof data?.detail === 'string' ? data.detail : `${response.status} ${response.statusText}`)
+    }
+    const filename = response.headers.get('content-disposition')?.match(/filename\*?=(?:UTF-8''|\")?([^;\"\r\n]+)/i)?.[1]
+    save(await response.blob(), filename ? decodeURIComponent(filename) : name)
+    if (post) onChanged()
+  })
   const apply=()=>{const current=preview;if(!current||!current.token)return;const token=current.token;void run(async()=>{await applyRequest(current.kind==='excel'?'/imports/apply':'/workspace/restore/apply',csrf,token);setPreview(null);setReviewed(false);onChanged()})}
   const excelErrors=preview?.kind==='excel'?messages(preview.validation?.errors):[]
   const restoreErrors=preview?.kind==='restore'?messages(preview.errors):[]
@@ -54,6 +65,17 @@ export default function TransferHub({ csrf, project, revision, onChanged }: { cs
         {excelErrors.map((item,index)=><p className="error-text" key={`e${index}`}>Erreur : {item}</p>)}{restoreErrors.map((item,index)=><p className="error-text" key={`r${index}`}>Erreur : {item}</p>)}{warnings.map((item,index)=><p className="warning-text" key={`w${index}`}>Avertissement : {item}</p>)}
         <label><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={excelErrors.length>0||restoreErrors.length>0||!preview.token}/> J’ai vérifié l’aperçu et ses avertissements.</label><div><button className="button secondary" onClick={()=>{setPreview(null);setReviewed(false)}}>Annuler</button><button className="button primary" disabled={!reviewed||busy||!preview.token||excelErrors.length>0||restoreErrors.length>0} onClick={apply}>Appliquer</button></div></article>}</div>}
     {tab === 'exports' && <div className="transfer-grid">
+      {hasPanelView && <article className="v2-panel">
+        <h2>IHM PanelView</h2>
+        <p>Exporte les variables du client Modbus TCP HMI dans la feuille External Tags.</p>
+        <form onSubmit={event => {
+          event.preventDefault()
+          void download(`/exports/panelview.xlsx?controller=${encodeURIComponent(hmiController.trim())}`, 'VARIABLES_HMI.xlsx')
+        }}>
+          <label>Contrôleur dans l’IHM <input required maxLength={64} value={hmiController} onChange={event => setHmiController(event.target.value)}/></label>
+          <button className="button primary" disabled={busy || !hmiController.trim()}>Télécharger VARIABLES_HMI.xlsx</button>
+        </form>
+      </article>}
       <article className="v2-panel">
         <h2>Classeurs Excel</h2>
         <p>Téléchargez un classeur individuel ou l’ensemble en ZIP.</p>

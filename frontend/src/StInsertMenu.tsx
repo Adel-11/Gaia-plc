@@ -22,8 +22,9 @@ export type InsertMode = 'choices' | 'variables' | 'locals' | 'snippets' | 'func
 
 const groupOf = variableFamily
 
-export default function StInsertMenu({ x, y, initialMode, variables, onInsert, onClose }: {
+export default function StInsertMenu({ x, y, bounds, initialMode, variables, onInsert, onClose }: {
   x: number; y: number; initialMode: InsertMode; variables: StVariable[]
+  bounds?: DOMRect
   onInsert: (text: string, placeholder?: string) => void; onClose: (restoreFocus: boolean) => void
 }) {
   const [mode, setMode] = useState<InsertMode>(initialMode)
@@ -50,13 +51,19 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
   const groups = [...new Set(available.map(variable => groupOf(variable.path)))]
   const matches = available.filter(variable => (isLocal || !group || groupOf(variable.path) === group) &&
     `${variable.path} ${variable.iec_type}`.toLowerCase().includes(query.trim().toLowerCase()))
-  const narrow = window.innerWidth < 850
-  const top = Math.max(8, Math.min(y, window.innerHeight - 280))
-  const left = Math.max(8, Math.min(x, window.innerWidth - 210))
-  const roomLeft = left - 12
-  const roomRight = window.innerWidth - left - 214
-  const side = roomLeft >= 485 || roomLeft >= roomRight ? 'left' : 'right'
-  const submenuWidth = Math.min(345, Math.max(150, (side === 'left' ? roomLeft : roomRight) - 143))
+  const minX = Math.max(0, bounds?.left ?? 0) + 8
+  const maxX = Math.min(window.innerWidth, bounds?.right ?? window.innerWidth) - 8
+  const minY = Math.max(0, bounds?.top ?? 0) + 8
+  const maxY = Math.min(window.innerHeight, bounds?.bottom ?? window.innerHeight) - 8
+  const menuWidth = Math.min(200, maxX - minX)
+  const left = Math.max(minX, Math.min(x, maxX - menuWidth))
+  const roomLeft = left - minX
+  const roomRight = maxX - left - menuWidth
+  const side = roomLeft >= 366 || roomLeft >= roomRight ? 'left' : 'right'
+  const room = side === 'left' ? roomLeft : roomRight
+  const narrow = room < 326
+  const submenuWidth = Math.min(345, room - 146)
+  const top = Math.max(minY, Math.min(y, maxY - 330))
   const changeMode = (next: InsertMode) => { setMode(next); setGroup(''); setQuery('') }
   const variableResults = <>
         {matches.map(variable => {
@@ -70,7 +77,7 @@ export default function StInsertMenu({ x, y, initialMode, variables, onInsert, o
         })}
   </>
   return createPortal(<div ref={panel} className={`st-cascade ${narrow ? 'compact' : side} ${mode === 'variables' && group ? 'has-third' : ''}`} role="dialog" aria-label="Insérer dans le ST"
-    style={{ left, top, '--st-submenu-width': `${submenuWidth}px`, '--st-menu-height': `${Math.max(100, window.innerHeight - top - 8)}px` } as React.CSSProperties}
+    style={{ left, top, width: menuWidth, '--st-submenu-width': `${submenuWidth}px`, '--st-menu-height': `${maxY - top}px` } as React.CSSProperties}
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
     }}>

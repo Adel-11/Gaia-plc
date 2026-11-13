@@ -14,6 +14,7 @@ from backend.v2_codesys import _ids, _objects, _st
 from backend.v2_engine import export_workbook, import_workbook, validate_project
 from backend.v2_fb_flow import convert_body, convert_project, render_flow
 from backend.v2_hmi import PROFILE, REFERENCE, RETIRED, load_hmi_pack
+from backend.v2_panelview_export import export_panelview
 from backend.v2_plc import build_program, serialize_program
 from backend.v2_plc_validation import validate_xml
 from tests.test_v2_plc_acceptance import _dut_signature, _gvl_signature, _interface_signature, _st_tokens
@@ -83,6 +84,21 @@ def test_flow_repair_preserves_edits_made_after_the_old_conversion():
     assert fb['body'] == edited
 
 
+def test_panelview_external_tags_use_current_addresses_and_one_tag_per_pair():
+    state = deepcopy(load_hmi_pack())
+    pair = [point for point in state["tcp_points"] if point["member_name"] == "HMI_OUTPUT_FREQUENCY"]
+    for point, address, word in zip(pair, (501, 502), ("MSW", "LSW")):
+        point.update({"Modbus address": address, "Word": word})
+    rows = openpyxl.load_workbook(io.BytesIO(export_panelview(state, "PLC-2")))["External Tags"]
+    assert rows.max_column == 14 and rows.max_row == 94
+    assert tuple(cell.value for cell in rows[2][:4]) == ("(Tag Name)", "(Data Type)", "(Address)", "(Controller)")
+    tags = {row[0]: row for row in list(rows.values)[2:]}
+    assert tags["ADM100W_1_HMI_OUTPUT_FREQUENCY"][:4] == ("ADM100W_1_HMI_OUTPUT_FREQUENCY", "Real", "30501", "PLC-2")
+    assert tags["DOSENSOR_1_HMI_INPUT_CALIBRATION_HIGH"][1:3] == ("Boolean", "1")
+    assert tags["DOSENSOR_1_HMI_OUTPUT_FAULT"][1:3] == ("Boolean", "10001")
+    assert tags["DIP1500_1_HMI_INPUT_MOTOR_SPEED"][1:3] == ("Real", "40001")
+
+
 def test_startup_upgrade_archives_gaia_and_preserves_other_projects(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("GAIA_UPGRADE_HMI_PROJECT", raising=False)
@@ -106,6 +122,9 @@ def test_startup_upgrade_archives_gaia_and_preserves_other_projects(tmp_path, mo
         assert upgraded["program_profile"] == PROFILE
         assert upgraded["validation"]["errors"] == []
         assert client.get("/api/v2/exports/fuxa.csv").status_code == 404
+        hmi = client.get("/api/v2/exports/panelview.xlsx")
+        assert hmi.status_code == 200 and "VARIABLES_HMI.xlsx" in hmi.headers["content-disposition"]
+        assert openpyxl.load_workbook(io.BytesIO(hmi.content)).sheetnames == ["External Tags"]
         archive = client.get("/api/v2/workspace/archive-v7").json()["state"]
         assert archive["revision"] == gaia["revision"]
         assert archive["types"] == gaia["types"]
