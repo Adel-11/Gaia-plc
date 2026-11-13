@@ -535,6 +535,7 @@ class Preview(BaseModel):
     changes:list[dict]
     allocate_tcp:dict|None=None
     dip1500:dict|None=None
+    modbus_template:dict|None=None
 
 class Apply(BaseModel): token:str
 
@@ -556,6 +557,20 @@ def register_configuration_routes(app,get_session,current_user,csrf):
         state=copy.deepcopy(current); changes=[]
         try:
             warnings,manual=[],[]
+            if body.modbus_template:
+                from backend.v2_modbus_templates import apply_template
+                params = body.modbus_template
+                protocol = params.get("protocol")
+                added, plan = apply_template(state, params.get("instance_id"), protocol, params.get("client"),
+                                             params.get("line"), params.get("address"), params.get("include") is True)
+                changes.extend([f"{len(added)} points ajoutés", *plan])
+                if params.get("include") is True:
+                    changes.append("Inclure l’instance dans GFC_COM_IN et GFC_COM_OUT.")
+                if protocol == "rtu":
+                    manual.append("Vérifie l’adresse physique et configure les canaux de l’esclave dans CODESYS.")
+                from backend.v2_workspace import _compatibility_errors
+                if new_errors := set(_compatibility_errors(state)) - set(_compatibility_errors(current)):
+                    raise ValueError(sorted(new_errors)[0])
             if body.dip1500:
                 from backend.v2_dip1500 import configure_instance
                 params = body.dip1500

@@ -1,3 +1,4 @@
+import { TemplateRows, type TemplateRow } from './ModbusTemplate'
 import { useEffect, useMemo, useState } from 'react'
 import './type-wizard.css'
 import WorkspacePanel from './WorkspacePanel'
@@ -88,8 +89,9 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   const [inheritProcessing, setInheritProcessing] = useState(true)
   const equipment = kind === 'Equipment'
   const [manualProcessing, setManualProcessing] = useState<string | null>(null)
-  const steps = generic ? ['Identité', 'Signaux', 'Variables et logique', 'Vérification'] : equipment ? ['Identité', 'Signaux', 'Blocs', 'Vérification'] : ['Identité', 'Blocs', 'Vérification']
+  const steps = generic ? ['Identité', 'Signaux', 'Variables et logique', 'Modbus', 'Vérification'] : equipment ? ['Identité', 'Signaux', 'Blocs', 'Modbus', 'Vérification'] : ['Identité', 'Blocs', 'Modbus', 'Vérification']
   const reviewStep = steps.length - 1
+  const [modbusTemplate, setModbusTemplate] = useState<TemplateRow[]>([])
   const [catalog, setCatalog] = useState<CatalogOptions>({ sections: BASE_SECTIONS, prefixes: BASE_PREFIXES })
   const [projectRevision, setProjectRevision] = useState<number>(Number(project?.revision || 0))
   const [duts, setDuts] = useState<Dut[]>(() => startingBlocks('Equipment', panelView).duts), [selectedRole, setSelectedRole] = useState('PA')
@@ -148,6 +150,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     setCustomCode('')
   }
   const changeKind = (next: string) => {
+    setModbusTemplate([])
     setKind(next)
     resetBlocks(next)
     setSelectedRole((roles[next] || roles.Equipment)[0])
@@ -169,6 +172,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   }
   const source = generic ? `generic:${generic.id}` : copyFrom ? `type:${copyFrom}` : ''
   const selectSource = (value: string) => {
+    setModbusTemplate([])
     const template = value.startsWith('generic:')
       ? genericTemplates.find(item => item.id === value.slice('generic:'.length)) : undefined
     setGeneric(template)
@@ -187,7 +191,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     }
   }
   const payload = () => ({
-    revision: projectRevision, name: name.trim(), kind, description,
+    revision: projectRevision, name: name.trim(), kind, description, modbus_template: modbusTemplate,
     folder: [folder, createFolder ? newFolder.trim() : ''].filter(Boolean).join('/'),
     ...(generic ? { generic: { template_id: generic.id, signals, members: logicMembers, inherit_processing: inheritProcessing, processing: manualProcessing } } : {
       copy_from: copyFrom || null, signals: equipment ? signals : [],
@@ -297,6 +301,11 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
         <div className="tw-processing"><WorkspacePanel id="wizard-processing" title="PROCESSING"><div className="tw-st-area"><StEditor label="ST du traitement" value={processingCode} onChange={editCode(setProcessingCode)} insertVariables={insertVariables}/></div></WorkspacePanel><WorkspacePanel id="wizard-custom" title="Code personnalisé"><div className="tw-st-area"><StEditor label="ST personnalisé" value={customCode} onChange={editCode(setCustomCode)} insertVariables={insertVariables}/></div></WorkspacePanel></div>
       </div>}
 
+      {step === reviewStep - 1 && <WorkspacePanel id="wizard-modbus" title="Modèle Modbus TCP et RTU">
+        <TemplateRows rows={modbusTemplate} variables={insertVariables} disabled={busy} onChange={rows => {
+          setModbusTemplate(rows); setPreview(null); setReviewed(false)
+        }}/>
+      </WorkspacePanel>}
       {step === reviewStep && <WorkspacePanel id="wizard-review" title="Vérification du type"><div className="tw-review-step"><p className="tw-intro">Vérifie les blocs et le ST du nouveau type. Les adresses et les liaisons se configurent sur ses instances.</p><div className="tw-summary"><div><small>TYPE</small><b>{name || '—'}</b></div><div><small>KIND</small><b>{kind}</b></div><div><small>DUT BLOCKS</small><b>{duts.length}</b></div><div><small>{generic ? "SIGNAUX PHYSIQUES" : "MEMBRES"}</small><b>{generic ? signals.length : effectiveDuts.reduce((count, dut) => count + dut.members.length, 0)}</b></div></div>
         {!preview && <button type="button" className="tw-primary" disabled={!validIdentity || busy} onClick={() => void prepare()}>{busy ? 'Vérification…' : 'Vérifier le type'}</button>}
         {error && <p className="tw-error" role="alert">{error}</p>}

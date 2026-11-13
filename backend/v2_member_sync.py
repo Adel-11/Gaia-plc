@@ -134,6 +134,16 @@ def sync_consumers(state, typ, edits):
     short_roots = {root.split(".", 1)[1]: delta for root, delta in roots.items()}
     errors, changes = [], []
     sync_sheets = False
+    if "COM" in edits and "modbus_template" in typ:
+        updated = []
+        for row in typ["modbus_template"]:
+            removed = set()
+            path = rewrite_st("COM." + row["member"], {"com": edits["COM"]}, removed)[4:]
+            if removed:
+                changes.append(f"Retirer {row['member']} du modèle Modbus.")
+            else:
+                updated.append({**row, "member": path})
+        typ["modbus_template"] = updated
     for collection, role, qualified, simple in (
         ("tcp_points", "COM", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member")),
         ("rtu_channels", "COM", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member", "DUT_COM member")),

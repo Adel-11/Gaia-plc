@@ -120,7 +120,7 @@ def review(state, block, included):
         for row in rtu:
             if ((row.get("Direction") or row.get("direction")) in INPUT_DIRECTIONS) == inbound:
                 register, target = row.get("GVL_MODBUS variable"), row.get("GVL_COM variable")
-                if row.get("manual_scalar") or is_dip1500(state, row) or connection_key("rtu_channels", row) in editable:
+                if row.get("manual_scalar") or row.get("mapped_bank_type") or is_dip1500(state, row) or connection_key("rtu_channels", row) in editable:
                     add("rtu_channels", row, register, target)
     elif role == "IO":
         for collection in ("io_channels", "virtual_io"):

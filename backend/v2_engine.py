@@ -810,6 +810,8 @@ def import_workbook(data: bytes, filename: str, current: dict, mode: str = "merg
         old = old_types.get(str(typ.get("id")))
         if old and "upi_bindings" in old:
             typ["upi_bindings"] = copy.deepcopy(old["upi_bindings"])
+        if old and "modbus_template" in old:
+            typ["modbus_template"] = copy.deepcopy(old["modbus_template"])
         if old and old.get("fb"):
             typ["fb"].update({k: copy.deepcopy(old["fb"].get(k, typ["fb"].get(k)))
                               for k in ("declaration", "body", "custom_code", "flow", "interface_xml", "local_variables") if k in old["fb"]})

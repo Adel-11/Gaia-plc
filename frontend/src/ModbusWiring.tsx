@@ -10,11 +10,12 @@ type Change = { collection: string; op: 'create' | 'update' | 'delete'; id?: str
 type Review = { token?: string; changes?: string[]; errors?: string[]; warnings?: string[]; manual_actions?: string[] }
 type Props = {
   mode: 'tcp' | 'rtu'; revision: number
-  instances: { key: string; name: string }[]; peers: { id: string; label: string; ranges?: Row; wordOrder?: string }[]
+  instances: { key: string; name: string; typeId?: string }[]; peers: { id: string; label: string; ranges?: Row; wordOrder?: string }[]
   points: Row[]; capacity: Row
   members: (instance: string) => Row[]
   switchMode?: (mode: 'tcp' | 'rtu') => void
-  dip1500?: { lines: { id: string; label: string; free: number[] }[] }
+  templateOnly?: boolean
+  templateLines?: {id: string; label: string; occupied: number[]}[]
   request: (path: string, body?: Row) => Promise<any>
   onSaved: (configuration: Row) => void; onClose: () => void
 }
@@ -36,7 +37,7 @@ const memberPath = (row: Row) => {
   return 'COM.' + (fromPlc || String(value(row, 'member_path', 'Member', 'member_name') || '').replace(/^COM\./i, ''))
 }
 
-export default function ModbusWiring({ mode, revision, instances, peers, points, capacity, members, switchMode, dip1500, request, onSaved, onClose }: Props) {
+export default function ModbusWiring({ mode, revision, instances, peers, points, capacity, members, switchMode, templateOnly, templateLines = [], request, onSaved, onClose }: Props) {
   const tcp = mode === 'tcp'
   const tables: Record<string, string> = tcp ? tcpTables : rtuTables
   const [instance, setInstance] = useState(instances[0]?.key || '')
@@ -55,7 +56,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [base, setBase] = useState(revision)
-  const [rtuLine, setRtuLine] = useState(dip1500?.lines[0]?.id || '')
+  const [rtuLine, setRtuLine] = useState('')
   const [slaveAddress, setSlaveAddress] = useState('')
   const [includeGfc, setIncludeGfc] = useState(false)
 
@@ -188,16 +189,18 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible d’enregistrer les liaisons.') }
     finally { setBusy(false) }
   }
-  const freeSlaves = dip1500?.lines.find(line => line.id === rtuLine)?.free || []
-  const selectedSlave = slaveAddress || String(freeSlaves[0] ?? '')
-  const previewDip1500 = async () => {
+  const selectedLine = templateLines.find(line => line.id === rtuLine) || templateLines[0]
+  const maximum = instances.find(row => row.key === instance)?.typeId === 'DIP1500' ? 31 : 247
+  const freeSlaves = selectedLine ? Array.from({length: maximum}, (_, i) => i + 1).filter(n => !selectedLine.occupied.includes(n)) : []
+  const selectedSlave = freeSlaves.includes(Number(slaveAddress)) ? slaveAddress : String(freeSlaves[0] ?? '')
+  const previewTemplate = async () => {
     setBusy(true); setError(''); setReview(null)
     try {
-      setReview(await request('/preview', {revision, changes: [], dip1500: {
-        instance_id: instance, mode, client_id: client, line_id: rtuLine,
+      setReview(await request('/preview', {revision, changes: [], modbus_template: {
+        instance_id: instance, protocol: mode, client, line: selectedLine?.id,
         address: selectedSlave ? Number(selectedSlave) : undefined, include: includeGfc,
       }}))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible de préparer le modèle DIP1500.') }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible de préparer le modèle Modbus.') }
     finally { setBusy(false) }
   }
   const close = () => { if (!dirty || window.confirm('Abandonner les modifications Modbus ?')) onClose() }
@@ -211,32 +214,32 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   }
 
   return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen onClose={close} disabled={busy}/>
-    <header><div><h3 id="modbus-wiring-title">Mapping graphique Modbus {mode.toUpperCase()}</h3><p>Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.</p></div></header>
+    <header><div><h3 id="modbus-wiring-title">{templateOnly ? 'Appliquer le modèle Modbus' : `Mapping graphique Modbus ${mode.toUpperCase()}`}</h3><p>{templateOnly ? 'Choisis le protocole et vérifie les adresses proposées.' : 'Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.'}</p></div></header>
     <div className="modbus-wiring-scroll">
-      {dip1500 && <div className="modbus-wiring-controls" aria-label="Modèle DIP1500">
+      <div className="modbus-wiring-controls" aria-label="Modèle Modbus du type">
+        {switchMode && <label>Protocole<select value={mode} disabled={dirty || busy} onChange={event => switchMode(event.target.value as 'tcp' | 'rtu')}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>}
         {!tcp && !peer && <>
-          <label>Ligne RS-485<select value={rtuLine} disabled={busy || dirty} onChange={event => { setRtuLine(event.target.value); setSlaveAddress('') }}>
-            {dip1500.lines.map(line => <option key={line.id} value={line.id}>{line.label}</option>)}
+          <label>Ligne RS-485<select value={selectedLine?.id || ''} disabled={busy || dirty} onChange={event => { setRtuLine(event.target.value); setSlaveAddress(''); setReview(null) }}>
+            {templateLines.map(line => <option key={line.id} value={line.id}>{line.label}</option>)}
           </select></label>
-          <label>Adresse esclave libre<select value={selectedSlave} disabled={busy || dirty} onChange={event => setSlaveAddress(event.target.value)}>
+          <label>Adresse esclave libre<select value={selectedSlave} disabled={busy || dirty} onChange={event => { setSlaveAddress(event.target.value); setReview(null) }}>
             {freeSlaves.map(number => <option key={number}>{number}</option>)}
           </select></label>
         </>}
-        <label><input type="checkbox" checked={includeGfc} disabled={busy || dirty} onChange={event => setIncludeGfc(event.target.checked)}/> Ajouter aux GFC COM</label>
+        <label><input type="checkbox" checked={includeGfc} disabled={busy || dirty} onChange={event => { setIncludeGfc(event.target.checked); setReview(null) }}/> Ajouter aux GFC COM</label>
         <button type="button" className="comm-btn" disabled={busy || dirty || !instance || (tcp ? !client : !peer && !selectedSlave)}
-          onClick={() => void previewDip1500()}>Préparer le mappage DIP1500 {mode.toUpperCase()}</button>
-      </div>}
+          onClick={() => void previewTemplate()}>Appliquer le modèle {mode.toUpperCase()}…</button>
+      </div>
       <div className="modbus-wiring-controls">
-        {switchMode && <label>Protocole<select value={mode} disabled={dirty || busy} onChange={event => switchMode(event.target.value as 'tcp' | 'rtu')}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>}
         <label>Instance<select value={instance} disabled={dirty || busy || !instances.length} onChange={e => { setInstance(e.target.value); resetScope() }}>{instances.map(row => <option key={row.key} value={row.key}>{row.name}</option>)}</select></label>
         {tcp && <label>Client<select value={client} disabled={dirty || busy} onChange={e => { setClient(e.target.value); resetScope() }}>{peers.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>}
-        <label>Table<select value={table} disabled={dirty || busy} onChange={e => { setTable(e.target.value); resetScope() }}>{Object.entries(tables).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+        {!templateOnly && <><label>Table<select value={table} disabled={dirty || busy} onChange={e => { setTable(e.target.value); resetScope() }}>{Object.entries(tables).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         <label>Sens<select value={objectOnLeft ? 'device' : 'plc'} disabled={readOnly.has(table) || busy} onChange={e => { setTowardPlc(e.target.value === 'plc'); setArmed(null) }}><option value="plc">{tcp ? 'Client' : 'Équipement'} → PLC</option><option value="device">PLC → {tcp ? 'client' : 'équipement'}</option></select></label>
         <label>Afficher à partir de<input type="number" min={min} max={max} step="1" value={start} placeholder={String(offset)} onChange={e => setStart(e.target.value)} disabled={!peer || busy}/></label>
         {choices.some(choice => wideTypes.has(String(choice.iec_type).toUpperCase())) &&
-          <label>Ordre des mots à l’ajout<select value={wordOrder} disabled={busy} onChange={event => setWordOrder(event.target.value as WordOrder)}>{orderOptions}</select></label>}
+          <label>Ordre des mots à l’ajout<select value={wordOrder} disabled={busy} onChange={event => setWordOrder(event.target.value as WordOrder)}>{orderOptions}</select></label>}</>}
       </div>
-      {!instance ? <p className="comm-help">Crée une instance de ce type pour lui affecter des adresses.</p> : !peer ? <p className="comm-help">{tcp ? 'Configure un client TCP avant de mapper une adresse.' : 'Déclare cette instance comme esclave RTU dans Communications avant de mapper une adresse.'}</p> :
+      {!templateOnly && (!instance ? <p className="comm-help">Crée une instance de ce type pour lui affecter des adresses.</p> : !peer ? <p className="comm-help">{tcp ? 'Configure un client TCP avant de mapper une adresse.' : 'Choisis la ligne et l’adresse esclave pour appliquer le modèle RTU.'}</p> :
         <><div className="modbus-view-tools">
           <button type="button" className="comm-btn" aria-pressed={!showMapped} onClick={() => { setShowMapped(!showMapped); setArmed(null) }}>{showMapped ? 'Masquer les variables mappées' : 'Afficher les variables mappées'}</button>
           <button type="button" className="comm-btn" aria-pressed={alignByAddress} onClick={() => { setAlignByAddress(!alignByAddress); setArmed(null) }}>{alignByAddress ? 'Rétablir l’ordre des variables' : 'Aligner par adresse'}</button>
@@ -257,7 +260,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
               if (link.id.startsWith('draft:')) setPending(rows => rows.filter(row => row.id !== link.id))
               else setDeletions(ids => [...ids, link.id])
             }}>Retirer le lien</button>}</li>)}</ul>
-        </>}
+        </>)}
       {error && <p role="alert" className="comm-alert">{error}</p>}
       {revision !== base && dirty && <p role="alert" className="comm-alert">Le projet a changé. Annule ce brouillon puis rouvre le mapping.</p>}
       {review && <section className="modbus-review" aria-label="Revue du mapping">

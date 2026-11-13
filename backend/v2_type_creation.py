@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 from backend.v2_generic_objects import Inheritance, Signal, Variables, _declared, materialize
+from backend.v2_modbus_templates import Mapping, validate_rows
 
 IEC_RESERVED = {"ACTION", "ARRAY", "AT", "BOOL", "CASE", "CONFIGURATION", "CONSTANT", "DATE", "DINT", "ELSE", "ELSIF", "END_ACTION", "END_CASE", "END_CONFIGURATION", "END_FOR", "END_FUNCTION", "END_FUNCTION_BLOCK", "END_IF", "END_PROGRAM", "END_REPEAT", "END_RESOURCE", "END_STRUCT", "END_TYPE", "END_VAR", "END_WHILE", "EXIT", "FALSE", "FOR", "FUNCTION", "FUNCTION_BLOCK", "IF", "INT", "LREAL", "PROGRAM", "REAL", "REPEAT", "RESOURCE", "RETURN", "STRING", "STRUCT", "TIME", "TRUE", "TYPE", "UDINT", "UINT", "VAR", "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_TEMP", "VAR_EXTERNAL", "WHILE", "WORD"}
 ROLES = {"Equipment": ["PA", "COM", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "EXC", "INT"]}
@@ -35,6 +36,7 @@ class TypeCreate(BaseModel):
     rtu: dict | None = None
     supervision: list | None = None
     upi_bindings: list[dict] | None = None
+    modbus_template: list[Mapping] = Field(default_factory=list, max_length=1000)
 
 
 class ApplyTypeCreate(BaseModel):
@@ -587,6 +589,11 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
             normalized["fb"]["flow"] = copy.deepcopy(typ["fb"]["flow"])
         ensure_flow(normalized["fb"])
         state["types"][-1] = normalized
+        try:
+            validate_rows(state, normalized, request.modbus_template)
+            normalized["modbus_template"] = [row.model_dump(by_alias=True) for row in request.modbus_template]
+        except ValueError as exc:
+            errors.append(str(exc))
         if request.folder is not None:
             if folder and folder not in state.setdefault("plc_folders", []):
                 state["plc_folders"].append(folder)

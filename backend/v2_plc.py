@@ -313,7 +313,9 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         member_name=re.sub(r"\[.*$","",parts[1]) if len(parts)>1 else ""
         member=next((m for d in (typ or {}).get("duts",[]) if d.get("role")=="COM" for m in d.get("members",[]) if m.get("name")==member_name),None)
         from backend.v2_dip1500 import is_register, is_simplified
-        if typ and typ.get("name") == "DIP1500" and is_simplified(typ) and is_register(row):
+        if row.get("mapped_bank_type"):
+            _add_gvl_variable(modbus, base, row["mapped_bank_type"])
+        elif typ and typ.get("name") == "DIP1500" and is_simplified(typ) and is_register(row):
             banks = {"Coils": (4, "BOOL"), "InputRegisters": (5, "WORD"), "Holding_Counters": (4, "WORD"),
                      "Holding_Cmd": (6, "WORD"), "Holding_Config": (7, "WORD")}
             suffix = next((key for key in banks if base.endswith("_" + key)), None)
@@ -322,7 +324,7 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
                 _add_gvl_variable(modbus, base, f"ARRAY[0..{count - 1}] OF {kind}")
         elif row.get("manual_scalar"):
             from backend.v2_manual_comm import pair_key
-            _add_gvl_variable(modbus,base,"WORD" if pair_key(row) else row.get("Type") or "BOOL")
+            _add_gvl_variable(modbus,base,"WORD" if pair_key(row) else row.get("mapped_register_type") or row.get("Type") or "BOOL")
         elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
     _ensure_io_declarations(iomap, state, valid_instances)
 
@@ -528,7 +530,7 @@ def _generated_objects(objs, state, sources):
             member = targets[name].get(slot, row.get("GVL_COM variable"))
             if not mapped or not member:
                 continue
-            if not row.get("manual_scalar") and not is_dip1500(state, row) and slot not in split_banks:
+            if not row.get("manual_scalar") and not row.get("mapped_bank_type") and not is_dip1500(state, row) and slot not in split_banks:
                 mapped = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", mapped)
                 member = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", member)
             key = (mapped, member)

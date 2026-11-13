@@ -120,10 +120,11 @@ def test_membership_preview_is_reviewed_owner_scoped_csrf_protected_and_revision
 def test_simplified_dip1500_can_map_two_instances():
     from copy import deepcopy
     from backend.v2_codesys import _st
-    from backend.v2_dip1500 import configure_instance, simplify
+    from backend.v2_dip1500 import simplify
     from backend.v2_hmi import load_hmi_pack
     from backend.v2_plc import build_program
     from backend.v2_workspace import _compatibility_errors
+    from backend.v2_modbus_templates import apply_template, seed_rows
 
     state = deepcopy(load_hmi_pack())
     baseline = set(_compatibility_errors(state))
@@ -131,12 +132,14 @@ def test_simplified_dip1500_can_map_two_instances():
     assert simplify(state)
     assert not simplify(state)
     assert [row["GVL_MODBUS variable"] for row in state["rtu_channels"]] == original_rtu
+    typ = next(row for row in state["types"] if row["name"] == "DIP1500")
+    typ["modbus_template"] = [row.model_dump(by_alias=True) for row in seed_rows(state, typ)]
     state["instances"].append({"id": "DIP1500_2", "name": "DIP1500_2", "type_id": "DIP1500"})
-    rtu = configure_instance(state, "DIP1500_2", "rtu", line_id="RTU_1", address=12, include=True)
-    tcp = configure_instance(state, "DIP1500_2", "tcp", include=True)
+    rtu, _ = apply_template(state, "DIP1500_2", "rtu", line="RTU_1", address=12, include=True)
+    tcp, _ = apply_template(state, "DIP1500_2", "tcp", client="HMI", include=True)
     assert len(rtu) == 26 and len(tcp) == 30
-    assert not configure_instance(state, "DIP1500_2", "rtu")
-    assert not configure_instance(state, "DIP1500_2", "tcp")
+    assert not apply_template(state, "DIP1500_2", "rtu")[0]
+    assert not apply_template(state, "DIP1500_2", "tcp", client="HMI")[0]
     assert set(_compatibility_errors(state)) <= baseline
     objects = build_program(state)
     inbound = _st(objects["GFC_COM_IN"]["element"])

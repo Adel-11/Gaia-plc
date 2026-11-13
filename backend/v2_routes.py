@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from backend.db import ImportPreview
+from backend.v2_modbus_templates import Mapping
 
 
 class ApplyV2Import(BaseModel):
@@ -37,6 +38,11 @@ class ObjectEdit(BaseModel):
 
 class ApplyObjectEdit(BaseModel):
     token: str
+
+
+class ModbusTemplateEdit(BaseModel):
+    revision: int
+    rows: list[Mapping]
 
 
 def register_v2_routes(app, get_session, current_user, csrf):
@@ -74,6 +80,42 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if state is None:
             raise HTTPException(503, "The v2 project has not been initialized")
         return state
+
+    @app.get("/api/v2/types/{type_id}/modbus-template")
+    def get_modbus_template(type_id: str, session=Depends(get_session), user=Depends(current_user)):
+        from backend.v2_modbus_templates import rows_for, _members
+
+        state = project_for(session)
+        typ = next((row for row in state["types"] if str(row["id"]) == type_id), None)
+        if typ is None:
+            raise HTTPException(404, "Type introuvable.")
+        try:
+            return {"revision": state["revision"], "rows": [row.model_dump(by_alias=True) for row in rows_for(state, typ)], "members": _members(typ, state)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/v2/types/{type_id}/modbus-template")
+    def save_modbus_template(type_id: str, body: ModbusTemplateEdit, session=Depends(get_session),
+                             user=Depends(current_user), _=Depends(csrf)):
+        from backend.v2_modbus_templates import validate_rows
+
+        state = project_for(session)
+        if state["revision"] != body.revision:
+            raise HTTPException(409, "Le projet a changé. Rouvre le modèle Modbus.")
+        typ = next((row for row in state["types"] if str(row["id"]) == type_id), None)
+        if typ is None:
+            raise HTTPException(404, "Type introuvable.")
+        try:
+            validate_rows(state, typ, body.rows)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        typ["modbus_template"] = [row.model_dump(by_alias=True) for row in body.rows]
+        try:
+            saved = store.save_project(session, state, username=user.username, expected_revision=body.revision)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        session.commit()
+        return {"revision": saved["revision"], "rows": typ["modbus_template"]}
 
     def object_view(state, obj, kind):
         typ = obj if kind == "type" else next((t for t in state.get("types", []) if str(t.get("name")) == str(obj.get("type_id")) or str(t.get("id")) == str(obj.get("type_id"))), None)

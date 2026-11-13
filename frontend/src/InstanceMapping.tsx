@@ -10,7 +10,7 @@ type Configuration = {
   revision: number
   instances: Instance[]
   tcp_clients: { id: string; Client?: string; word_order?: string; 'Word order (32-bit)'?: string; ranges: Record<string, number[]> }[]
-  rtu_slaves: { id: string; Instance?: string; instance_id?: string; word_order?: string; '32-bit word order'?: string }[]
+  rtu_slaves: { id: string; Instance?: string; instance_id?: string; Line?: string; 'Slave address'?: number | string; word_order?: string; '32-bit word order'?: string }[]
   rtu_lines: { id: string; Line?: string; port?: string }[]
   tcp_points: Record<string, unknown>[]
   rtu_channels: Record<string, unknown>[]
@@ -28,8 +28,9 @@ async function api(path: string, csrf: string, body?: object) {
   return result
 }
 
-export default function InstanceMapping({ role, instance, csrf, onClose, onSaved }: {
+export default function InstanceMapping({ role, instance, csrf, onClose, onSaved, templateOnly }: {
   role: 'IO' | 'COM'; instance: string; csrf: string; onClose: () => void; onSaved: () => void
+  templateOnly?: boolean
 }) {
   const [config, setConfig] = useState<Configuration>()
   const [io, setIo] = useState<CopyState>()
@@ -47,7 +48,7 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
   }, [role, csrf])
 
   const instances = (config?.instances || []).filter(row => instance === row.name || instance === row.id)
-    .map(row => ({ key: String(row.id ?? row.name), name: String(row.name ?? row.id) }))
+    .map(row => ({ key: String(row.id ?? row.name), name: String(row.name ?? row.id), typeId: row.type_id }))
   const updateCopy = async (action: CopyAction) => {
     if (!io) return false
     setBusy(true); setError(''); setNotice('')
@@ -63,21 +64,19 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
     finally { setBusy(false) }
   }
   if (config && role === 'COM') {
-    const dip1500 = config.instances.some(row => (row.name === instance || row.id === instance) && row.type_id === 'DIP1500')
-      ? {lines: config.rtu_lines.map(row => {
-        const id = row.Line || row.id
-        const occupied = config.rtu_slaves.filter(slave => 'Line' in slave && slave.Line === id)
-          .map(slave => Number('Slave address' in slave ? slave['Slave address'] : undefined))
-        return {id, label: row.port ? `${id} · ${row.port}` : id,
-          free: Array.from({length: 31}, (_, index) => index + 1).filter(number => !occupied.includes(number))}
-      })} : undefined
+    const templateLines = config.rtu_lines.map(row => {
+      const id = row.Line || row.id
+      const occupied = config.rtu_slaves.filter(slave => slave.Line === id).map(slave => Number(slave['Slave address']))
+      return {id, label: row.port ? `${id} · ${row.port}` : id, occupied}
+    })
     const peers = mode === 'tcp'
       ? config.tcp_clients.map(row => ({ id: row.Client || row.id, label: row.Client || row.id, ranges: row.ranges,
         wordOrder: row['Word order (32-bit)'] || row.word_order }))
       : config.rtu_slaves.map(row => ({ id: row.Instance || row.instance_id || row.id, label: row.Instance || row.instance_id || row.id,
         wordOrder: row['32-bit word order'] || row.word_order }))
     return <ModbusWiring key={mode} mode={mode} switchMode={setMode} revision={config.revision} instances={instances}
-      peers={peers} points={mode === 'tcp' ? config.tcp_points : config.rtu_channels} capacity={config.tcp_capacity} dip1500={dip1500}
+      peers={peers} points={mode === 'tcp' ? config.tcp_points : config.rtu_channels} capacity={config.tcp_capacity}
+      templateOnly={templateOnly} templateLines={templateLines}
       members={key => config.options.communication_members[instances.find(row => row.key === key)?.name || key] || []}
       request={(path, body) => api('/configuration' + path, csrf, body)}
       onSaved={fresh => { setConfig(fresh as Configuration); onSaved() }} onClose={onClose}/>
