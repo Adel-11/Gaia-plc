@@ -47,7 +47,9 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [onClose])
 
-  const available = variables.filter(variable => isLocal === !!variable.internal)
+  const available = variables.filter(variable => isLocal
+    ? variable.internal || groupOf(variable.path) === 'INTERN'
+    : !variable.internal)
   const groups = [...new Set(available.map(variable => groupOf(variable.path)))]
   const matches = available.filter(variable => (isLocal || !group || groupOf(variable.path) === group) &&
     `${variable.path} ${variable.iec_type}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -64,7 +66,7 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
     }}>
-    <div className="st-insert-tabs" aria-label="Catégories ST">
+    <div className="st-insert-tabs" role="group" aria-label="Catégories ST">
       {([['variables', 'Variables des DUT'], ['locals', 'Variables internes'], ['snippets', 'Instructions ST'],
         ['functions', 'Fonctions du projet']] as const).map(([category, label]) =>
         <button key={category} type="button" aria-pressed={mode === category} onClick={() => { setQuery(''); setMode(category) }}>{label}</button>
@@ -76,7 +78,7 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
           <option value="">Tous les DUT</option>
           {groups.map(role => <option key={role} value={role} data-variable-family={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
         </select>}
-        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => setQuery(event.target.value)}/>
+        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC (ex. BOOL)" value={query} onChange={event => setQuery(event.target.value)}/>
       </div>
       <div className="st-insert-results">
         {matches.map(variable => {

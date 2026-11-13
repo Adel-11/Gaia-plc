@@ -45,7 +45,7 @@ export function localVariableOptions(rows: LocalVariable[]): StVariable[] {
 export function declarationVariables(declaration: string): StVariable[] {
   const code = declaration.replace(/\(\*[\s\S]*?\*\)|\/\/[^\r\n]*|'(?:\$[\s\S]|[^'])*'|"(?:\$[\s\S]|[^"])*"/g, match => ' '.repeat(match.length))
   const options: StVariable[] = []
-  for (const section of code.matchAll(/^\s*VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|EXTERNAL|STAT))?\b[^\r\n]*\r?\n([\s\S]*?)\bEND_VAR\b/gim)) {
+  for (const section of code.matchAll(/^[ \t]*VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|EXTERNAL|STAT))?\b(?:[ \t]+(?:RETAIN|NON_RETAIN|PERSISTENT|CONSTANT)\b)*\s*([\s\S]*?)\bEND_VAR\b/gim)) {
     for (const entry of section[1].matchAll(/(?:^|;)\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?:AT\s+%[\w*.]+\s*)?:\s*([^;]+?)(?=\s*:=|\s*;|$)/g)) {
       for (const path of entry[1].split(',')) options.push({ path: path.trim(), iec_type: entry[2].trim(), internal: true })
     }
