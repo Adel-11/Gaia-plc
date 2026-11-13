@@ -27,7 +27,7 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
   bounds?: DOMRect
   onInsert: (text: string, placeholder?: string) => void; onClose: (restoreFocus: boolean) => void
 }) {
-  const [mode, setMode] = useState<InsertMode>(initialMode)
+  const [mode, setMode] = useState(initialMode)
   const [group, setGroup] = useState('')
   const [query, setQuery] = useState('')
   const { blocks, functions } = useContext(StTypeCatalog)
@@ -51,21 +51,34 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
   const groups = [...new Set(available.map(variable => groupOf(variable.path)))]
   const matches = available.filter(variable => (isLocal || !group || groupOf(variable.path) === group) &&
     `${variable.path} ${variable.iec_type}`.toLowerCase().includes(query.trim().toLowerCase()))
-  const minX = Math.max(0, bounds?.left ?? 0) + 8
-  const maxX = Math.min(window.innerWidth, bounds?.right ?? window.innerWidth) - 8
-  const minY = Math.max(0, bounds?.top ?? 0) + 8
-  const maxY = Math.min(window.innerHeight, bounds?.bottom ?? window.innerHeight) - 8
-  const menuWidth = Math.min(200, maxX - minX)
-  const left = Math.max(minX, Math.min(x, maxX - menuWidth))
-  const roomLeft = left - minX
-  const roomRight = maxX - left - menuWidth
-  const side = roomLeft >= 366 || roomLeft >= roomRight ? 'left' : 'right'
-  const room = side === 'left' ? roomLeft : roomRight
-  const narrow = room < 326
-  const submenuWidth = Math.min(345, room - 146)
-  const top = Math.max(minY, Math.min(y, maxY - 330))
-  const changeMode = (next: InsertMode) => { setMode(next); setGroup(''); setQuery('') }
-  const variableResults = <>
+  const leftEdge = Math.max(0, bounds?.left ?? 0) + 8
+  const rightEdge = Math.min(window.innerWidth, bounds?.right ?? window.innerWidth) - 8
+  const topEdge = Math.max(0, bounds?.top ?? 0) + 8
+  const bottomEdge = Math.min(window.innerHeight, bounds?.bottom ?? window.innerHeight) - 8
+  const width = Math.min(540, rightEdge - leftEdge)
+  const maxHeight = Math.min(520, bottomEdge - topEdge)
+  const left = Math.max(leftEdge, Math.min(x, rightEdge - width))
+  const top = Math.max(topEdge, Math.min(y, bottomEdge - maxHeight))
+  return createPortal(<div ref={panel} className="st-insert-menu" role="dialog" aria-label="Insérer dans le ST"
+    style={{ left, top, width, maxHeight }}
+    onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
+    }}>
+    <div className="st-insert-tabs" aria-label="Catégories ST">
+      {([['variables', 'Variables des DUT'], ['locals', 'Variables internes'], ['snippets', 'Instructions ST'],
+        ['functions', 'Fonctions du projet']] as const).map(([category, label]) =>
+        <button key={category} type="button" aria-pressed={mode === category} onClick={() => { setQuery(''); setMode(category) }}>{label}</button>
+      )}
+    </div>
+    {isVariableMode && <>
+      <div className="st-insert-filters">
+        {!isLocal && <select aria-label="DUT" value={group} onChange={event => setGroup(event.target.value)}>
+          <option value="">Tous les DUT</option>
+          {groups.map(role => <option key={role} value={role} data-variable-family={role}>{role === 'INTERN' ? 'INT (INTERN)' : role === 'VAR' ? 'VAR du bloc' : role}</option>)}
+        </select>}
+        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => setQuery(event.target.value)}/>
+      </div>
+      <div className="st-insert-results">
         {matches.map(variable => {
           const call = isLocal ? blockCall(variable.path, variable.iec_type, blocks) : undefined
           return <div className="st-insert-result" key={variable.path} data-variable-family={groupOf(variable.path)}>
@@ -75,28 +88,6 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
             {call && <button type="button" className="st-insert-name" aria-label={`Insérer uniquement le nom ${variable.path}`} onClick={() => onInsert(variable.path)}>Nom seul</button>}
           </div>
         })}
-  </>
-  return createPortal(<div ref={panel} className={`st-cascade ${narrow ? 'compact' : side} ${mode === 'variables' && group ? 'has-third' : ''}`} role="dialog" aria-label="Insérer dans le ST"
-    style={{ left, top, width: menuWidth, '--st-submenu-width': `${submenuWidth}px`, '--st-menu-height': `${maxY - top}px` } as React.CSSProperties}
-    onKeyDown={event => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true) }
-    }}>
-    <div className="st-insert-menu st-cascade-main">
-      {([['variables','Variables des DUT'],['locals','Variables internes'],['snippets','Instructions ST'],['functions','Fonctions du projet']] as const)
-        .map(([key,label]) => <button key={key} type="button" aria-expanded={mode === key} onClick={() => changeMode(mode === key ? 'choices' : key)}>
-          {label}<span aria-hidden="true">{!narrow && side === 'left' ? '‹' : '›'}</span>
-        </button>)}
-    </div>
-    {mode !== 'choices' && <div className="st-insert-menu st-cascade-sub">
-    {isVariableMode && <>
-      <div className="st-insert-filters">
-        <input ref={search} aria-label="Chercher une variable ou un type IEC" placeholder="Nom ou type IEC" value={query} onChange={event => { setQuery(event.target.value); setGroup('') }}/>
-      </div>
-      <div className="st-insert-results">
-        {!isLocal && !query.trim() && groups.map(role => <button key={role} type="button" data-variable-family={role} aria-expanded={group === role} onClick={() => setGroup(group === role ? '' : role)}>
-          <b>{role === 'INTERN' ? 'INT (INTERN)' : role}</b><span aria-hidden="true">{!narrow && side === 'left' ? '‹' : '›'}</span>
-        </button>)}
-        {(isLocal || query.trim()) && variableResults}
         {!matches.length && <p>Aucune variable trouvée.</p>}
       </div>
     </>}
@@ -115,7 +106,5 @@ export default function StInsertMenu({ x, y, bounds, initialMode, variables, onI
         {!Object.keys(functions || {}).length && <p>Aucune fonction disponible.</p>}
       </div>
     </>}
-    </div>}
-    {mode === 'variables' && group && <div className="st-insert-menu st-cascade-third"><div className="st-insert-results">{variableResults}</div></div>}
   </div>, document.body)
 }
