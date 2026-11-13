@@ -1,0 +1,420 @@
+{
+  "members": {
+    "COM": [
+      {
+        "name": "COM_INPUT_FIRMWARE_VERSION",
+        "iec_type": "WORD",
+        "comment": "//----------------------------COM : Modbus RTU, input (equipment to PLC)\nIR 0x3001 | 3+5+8 bits (major+minor+revision)"
+      },
+      {
+        "name": "COM_INPUT_HARDWARE_VERSION",
+        "iec_type": "WORD",
+        "comment": "IR 0x3002 | 3+5+8 bits (major+sub+reserved)"
+      },
+      {
+        "name": "COM_INPUT_TEMPERATURE",
+        "iec_type": "WORD",
+        "comment": "IR 0x3003 | (raw - 500) / 10 = degC, 65535 = not connected"
+      },
+      {
+        "name": "COM_INPUT_LEVEL_ALARM",
+        "iec_type": "WORD",
+        "comment": "IR 0x3004 | 0 no alarm, 1 alarm, 65535 = not connected"
+      },
+      {
+        "name": "COM_INPUT_DIGITAL_OUTPUT",
+        "iec_type": "WORD",
+        "comment": "IR 0x3005 | Digital output value"
+      },
+      {
+        "name": "COM_INPUT_RUN_ACTUAL",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x4007-0x4008 | Current run | REAL ml (volume mode) / UDINT ms (time mode)"
+      },
+      {
+        "name": "COM_INPUT_RUN_TOTAL",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x4009-0x400A | Accumulated run | REAL ml (volume mode) / UDINT ms (time mode)"
+      },
+      {
+        "name": "COM_OUTPUT_RUN",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------COM : Modbus RTU, output (PLC to equipment)\nCoil 0x0001 | 0 stop, 1 start"
+      },
+      {
+        "name": "COM_OUTPUT_CLOCKWISE",
+        "iec_type": "BOOL",
+        "comment": "Coil 0x0002 | 0 counterclockwise, 1 clockwise"
+      },
+      {
+        "name": "COM_OUTPUT_SAVE_FLASH",
+        "iec_type": "BOOL",
+        "comment": "Coil 0x0003 | 1 s pulse, saves pump parameters to flash"
+      },
+      {
+        "name": "COM_OUTPUT_VOLUME_MODE",
+        "iec_type": "BOOL",
+        "comment": "Coil 0x0004 | 0 time mode, 1 volume mode"
+      },
+      {
+        "name": "COM_OUTPUT_SPEED",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x4001-0x4002 | Motor speed | rpm"
+      },
+      {
+        "name": "COM_OUTPUT_MAX_MOTOR_SPEED",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x4003-0x4004 | Max motor speed | rpm"
+      },
+      {
+        "name": "COM_OUTPUT_RUN_SETPOINT",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x4005-0x4006 | Run setpoint | REAL ml (volume mode) / UDINT ms (time mode), 0 = continuous"
+      },
+      {
+        "name": "COM_OUTPUT_CALIBRATION_COEFFICIENT",
+        "iec_type": "DUT_Union_Real_Word",
+        "comment": "HR 0x400B-0x400C | Flow / speed calibration coefficient | ml/min or rpm"
+      },
+      {
+        "name": "COM_OUTPUT_FOOT_SWITCH_INPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HR 0x400D | Foot switch input mode"
+      },
+      {
+        "name": "COM_OUTPUT_LIQUID_LEVEL_INPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HR 0x400E | Liquid level input mode"
+      },
+      {
+        "name": "COM_OUTPUT_STATE_OUTPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HR 0x400F | State output mode"
+      },
+      {
+        "name": "COM_OUTPUT_COMMUNICATION_ADDRESS",
+        "iec_type": "WORD",
+        "comment": "HR 0x4010 | Pump Modbus address, 1..31"
+      },
+      {
+        "name": "COM_OUTPUT_BAUD_RATE_INDEX",
+        "iec_type": "WORD",
+        "comment": "HR 0x4011 | 0=1200 .. 3=9600 .. 7=115200"
+      }
+    ],
+    "INT": [
+      {
+        "name": "HMI_LOCAL_REQUEST",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------Control mode\nFrom HMI : local request (pulse or maintained)"
+      },
+      {
+        "name": "HMI_AUTO_REQUEST",
+        "iec_type": "BOOL",
+        "comment": "From HMI : auto request, releases the individual HMI local"
+      },
+      {
+        "name": "GLOBAL_LOCAL_HMI",
+        "iec_type": "BOOL",
+        "comment": "From UPI_LOCAL_HMI : global HMI local active"
+      },
+      {
+        "name": "LOCAL_HMI_INDIVIDUAL",
+        "iec_type": "BOOL",
+        "comment": "Memory : individual HMI local, set by local request, reset by auto request"
+      },
+      {
+        "name": "LOCAL_HMI",
+        "iec_type": "BOOL",
+        "comment": "Result : equipment in HMI local (individual or global)"
+      },
+      {
+        "name": "AUTO",
+        "iec_type": "BOOL",
+        "comment": "Result : no local mode, commands come from the functional units (UPI)"
+      },
+      {
+        "name": "CMD_RUN",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------Commands (to pump), from the active source\n0 stop, 1 start"
+      },
+      {
+        "name": "CMD_CLOCKWISE",
+        "iec_type": "BOOL",
+        "comment": "0 counterclockwise, 1 clockwise"
+      },
+      {
+        "name": "CMD_VOLUME_MODE",
+        "iec_type": "BOOL",
+        "comment": "0 time mode, 1 volume mode"
+      },
+      {
+        "name": "CMD_SPEED",
+        "iec_type": "REAL",
+        "comment": "rpm"
+      },
+      {
+        "name": "CMD_RUN_SETPOINT",
+        "iec_type": "REAL",
+        "comment": "ms (time mode) or ml (volume mode), 0 = continuous"
+      },
+      {
+        "name": "CMD_SAVE_FLASH",
+        "iec_type": "BOOL",
+        "comment": "1 s pulse to coil 0x0003, saves pump parameters to flash"
+      },
+      {
+        "name": "RUN_SETPOINT_MS",
+        "iec_type": "UDINT",
+        "comment": "Run setpoint as an integer, format used by the pump in time mode"
+      },
+      {
+        "name": "FLASH_SAVE_REQUEST",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------Parameters (from the HMI, in local HMI)\nFlash save request (rising edge used)"
+      },
+      {
+        "name": "PARAM_WRITE_ENABLE",
+        "iec_type": "BOOL",
+        "comment": "1 = take the HMI parameters into PA and write the configuration to the pump"
+      },
+      {
+        "name": "PARAM_MAX_MOTOR_SPEED",
+        "iec_type": "REAL",
+        "comment": "HMI value | rpm"
+      },
+      {
+        "name": "PARAM_CALIBRATION_COEFFICIENT",
+        "iec_type": "REAL",
+        "comment": "HMI value | ml/min or rpm"
+      },
+      {
+        "name": "PARAM_FOOT_SWITCH_INPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HMI value"
+      },
+      {
+        "name": "PARAM_LIQUID_LEVEL_INPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HMI value"
+      },
+      {
+        "name": "PARAM_STATE_OUTPUT_MODE",
+        "iec_type": "WORD",
+        "comment": "HMI value"
+      },
+      {
+        "name": "PARAM_COMMUNICATION_ADDRESS",
+        "iec_type": "WORD",
+        "comment": "HMI value | 1..31"
+      },
+      {
+        "name": "PARAM_BAUD_RATE_INDEX",
+        "iec_type": "WORD",
+        "comment": "HMI value | 0=1200 .. 3=9600 .. 7=115200"
+      },
+      {
+        "name": "PARAM_VALID",
+        "iec_type": "BOOL",
+        "comment": "HMI parameters usable : address 1..31, baud index 0..7, max speed > 0, calibration coefficient > 0"
+      },
+      {
+        "name": "PULSE_500MS",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------Write triggers\nSquare wave, 500 ms period, source of the trigger edges"
+      },
+      {
+        "name": "CMD_CHANGED",
+        "iec_type": "BOOL",
+        "comment": "A command value changed this cycle"
+      },
+      {
+        "name": "CMD_TRIGGER",
+        "iec_type": "BOOL",
+        "comment": "Command channel trigger, 3 s of edges after the last change"
+      },
+      {
+        "name": "CONFIG_TRIGGER",
+        "iec_type": "BOOL",
+        "comment": "Configuration channel trigger"
+      },
+      {
+        "name": "PREV_RUN",
+        "iec_type": "BOOL",
+        "comment": "//----------------------------Previous command values\nPrevious values for change detection"
+      },
+      {
+        "name": "PREV_CLOCKWISE",
+        "iec_type": "BOOL",
+        "comment": ""
+      },
+      {
+        "name": "PREV_VOLUME_MODE",
+        "iec_type": "BOOL",
+        "comment": ""
+      },
+      {
+        "name": "PREV_SAVE_FLASH",
+        "iec_type": "BOOL",
+        "comment": ""
+      },
+      {
+        "name": "PREV_SPEED",
+        "iec_type": "REAL",
+        "comment": ""
+      },
+      {
+        "name": "PREV_MAX_SPEED",
+        "iec_type": "REAL",
+        "comment": ""
+      },
+      {
+        "name": "PREV_RUN_SETPOINT",
+        "iec_type": "REAL",
+        "comment": ""
+      },
+      {
+        "name": "FBK_FIRMWARE_VERSION",
+        "iec_type": "WORD",
+        "comment": "//----------------------------Feedback (from pump)\n3+5+8 bits (major+minor+revision)"
+      },
+      {
+        "name": "FBK_HARDWARE_VERSION",
+        "iec_type": "WORD",
+        "comment": "3+5+8 bits (major+sub+reserved)"
+      },
+      {
+        "name": "FBK_TEMPERATURE",
+        "iec_type": "WORD",
+        "comment": "(raw - 500) / 10 = degC, 65535 = not connected"
+      },
+      {
+        "name": "FBK_LEVEL_ALARM",
+        "iec_type": "WORD",
+        "comment": "0 no alarm, 1 alarm, 65535 = not connected"
+      },
+      {
+        "name": "FBK_DIGITAL_OUTPUT",
+        "iec_type": "WORD",
+        "comment": "Digital output value"
+      },
+      {
+        "name": "FBK_RUN_ACTUAL",
+        "iec_type": "REAL",
+        "comment": "Current run, ms (time mode) or ml (volume mode)"
+      },
+      {
+        "name": "FBK_RUN_TOTAL",
+        "iec_type": "REAL",
+        "comment": "Accumulated run, ms (time mode) or ml (volume mode)"
+      }
+    ]
+  },
+  "rtu": {
+    "DIP1500_InputRegisters[0]": {
+      "path": "COM_INPUT_FIRMWARE_VERSION",
+      "address": "0x3001"
+    },
+    "DIP1500_InputRegisters[1]": {
+      "path": "COM_INPUT_HARDWARE_VERSION",
+      "address": "0x3002"
+    },
+    "DIP1500_InputRegisters[2]": {
+      "path": "COM_INPUT_TEMPERATURE",
+      "address": "0x3003"
+    },
+    "DIP1500_InputRegisters[3]": {
+      "path": "COM_INPUT_LEVEL_ALARM",
+      "address": "0x3004"
+    },
+    "DIP1500_InputRegisters[4]": {
+      "path": "COM_INPUT_DIGITAL_OUTPUT",
+      "address": "0x3005"
+    },
+    "DIP1500_Holding_Counters[0]": {
+      "path": "COM_INPUT_RUN_ACTUAL.Word_value[0]",
+      "address": "0x4007"
+    },
+    "DIP1500_Holding_Counters[1]": {
+      "path": "COM_INPUT_RUN_ACTUAL.Word_value[1]",
+      "address": "0x4008"
+    },
+    "DIP1500_Holding_Counters[2]": {
+      "path": "COM_INPUT_RUN_TOTAL.Word_value[0]",
+      "address": "0x4009"
+    },
+    "DIP1500_Holding_Counters[3]": {
+      "path": "COM_INPUT_RUN_TOTAL.Word_value[1]",
+      "address": "0x400A"
+    },
+    "DIP1500_Coils[0]": {
+      "path": "COM_OUTPUT_RUN",
+      "address": "0x0001"
+    },
+    "DIP1500_Coils[1]": {
+      "path": "COM_OUTPUT_CLOCKWISE",
+      "address": "0x0002"
+    },
+    "DIP1500_Coils[2]": {
+      "path": "COM_OUTPUT_SAVE_FLASH",
+      "address": "0x0003"
+    },
+    "DIP1500_Coils[3]": {
+      "path": "COM_OUTPUT_VOLUME_MODE",
+      "address": "0x0004"
+    },
+    "DIP1500_Holding_Cmd[0]": {
+      "path": "COM_OUTPUT_SPEED.Word_value[0]",
+      "address": "0x4001"
+    },
+    "DIP1500_Holding_Cmd[1]": {
+      "path": "COM_OUTPUT_SPEED.Word_value[1]",
+      "address": "0x4002"
+    },
+    "DIP1500_Holding_Cmd[2]": {
+      "path": "COM_OUTPUT_MAX_MOTOR_SPEED.Word_value[0]",
+      "address": "0x4003"
+    },
+    "DIP1500_Holding_Cmd[3]": {
+      "path": "COM_OUTPUT_MAX_MOTOR_SPEED.Word_value[1]",
+      "address": "0x4004"
+    },
+    "DIP1500_Holding_Cmd[4]": {
+      "path": "COM_OUTPUT_RUN_SETPOINT.Word_value[0]",
+      "address": "0x4005"
+    },
+    "DIP1500_Holding_Cmd[5]": {
+      "path": "COM_OUTPUT_RUN_SETPOINT.Word_value[1]",
+      "address": "0x4006"
+    },
+    "DIP1500_Holding_Config[0]": {
+      "path": "COM_OUTPUT_CALIBRATION_COEFFICIENT.Word_value[0]",
+      "address": "0x400B"
+    },
+    "DIP1500_Holding_Config[1]": {
+      "path": "COM_OUTPUT_CALIBRATION_COEFFICIENT.Word_value[1]",
+      "address": "0x400C"
+    },
+    "DIP1500_Holding_Config[2]": {
+      "path": "COM_OUTPUT_FOOT_SWITCH_INPUT_MODE",
+      "address": "0x400D"
+    },
+    "DIP1500_Holding_Config[3]": {
+      "path": "COM_OUTPUT_LIQUID_LEVEL_INPUT_MODE",
+      "address": "0x400E"
+    },
+    "DIP1500_Holding_Config[4]": {
+      "path": "COM_OUTPUT_STATE_OUTPUT_MODE",
+      "address": "0x400F"
+    },
+    "DIP1500_Holding_Config[5]": {
+      "path": "COM_OUTPUT_COMMUNICATION_ADDRESS",
+      "address": "0x4010"
+    },
+    "DIP1500_Holding_Config[6]": {
+      "path": "COM_OUTPUT_BAUD_RATE_INDEX",
+      "address": "0x4011"
+    }
+  },
+  "body": "\n//==============================================================================\n// FB_INST_DIP1500\n// Kamoer DIP1500 peristaltic pump, Modbus RTU, 32-bit low word first (CDAB)\n// 1. INPUTS     : requests, control mode, command source, equipment feedback -> INTERN\n// 2. PROCESSING : on INTERN only\n// 3. OUTPUTS    : INTERN -> COM / IO / EXC\n// Parameters    : pump configuration in PA (persistent), taken from the HMI in local HMI with \"parameter write enable\"\n// Control mode  : local HMI (individual or global) > auto (functional units)\n//==============================================================================\n\n//------------------------------------------------------------------------------\n// 1. INPUTS\n//------------------------------------------------------------------------------\n\t//--- Control mode requests (HMI, global HMI local from UPI_LOCAL_HMI)\n\tINTERN.HMI_LOCAL_REQUEST := COM.HMI_INPUT_LOCAL_REQUEST;\n\tINTERN.HMI_AUTO_REQUEST  := COM.HMI_INPUT_AUTO_REQUEST;\n\tINTERN.GLOBAL_LOCAL_HMI  := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;\n\n\t//--- Control mode\n\t// Individual memory : set by the local request, reset by the auto request (auto wins if both)\n\tIF INTERN.HMI_LOCAL_REQUEST THEN\n\t\tINTERN.LOCAL_HMI_INDIVIDUAL := TRUE;\n\tEND_IF\n\tIF INTERN.HMI_AUTO_REQUEST THEN\n\t\tINTERN.LOCAL_HMI_INDIVIDUAL := FALSE;\n\tEND_IF\n\n\t// Resulting mode : HMI local (individual OR global), otherwise auto\n\tINTERN.LOCAL_HMI := INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI;\n\tINTERN.AUTO      := NOT INTERN.LOCAL_HMI;\n\n\t//--- Command source : local HMI > auto (UPI)\n\tIF INTERN.LOCAL_HMI THEN\n\t\tINTERN.CMD_RUN            := COM.HMI_INPUT_MOTOR_START_STOP;\n\t\tINTERN.CMD_CLOCKWISE      := COM.HMI_INPUT_MOTOR_DIRECTION;\n\t\tINTERN.CMD_VOLUME_MODE    := COM.HMI_INPUT_OPERATION_MODE;\n\t\tINTERN.CMD_SPEED          := COM.HMI_INPUT_MOTOR_SPEED.Real_value;\n\t\tINTERN.CMD_RUN_SETPOINT   := COM.HMI_INPUT_RUN_TIME_OR_VOLUME_SETPOINT.Real_value;\n\t\tINTERN.FLASH_SAVE_REQUEST := COM.HMI_INPUT_FLASH_SAVE;\n\t\tINTERN.PARAM_WRITE_ENABLE := COM.HMI_INPUT_PARAM_WRITE_ENABLE;\n\tELSE\n\t\t// Auto : functional units (UPI), the configuration is never written in auto\n\t\tINTERN.CMD_RUN            := EXC.UPI_INPUT_RUN;\n\t\tINTERN.CMD_CLOCKWISE      := EXC.UPI_INPUT_CLOCKWISE;\n\t\tINTERN.CMD_VOLUME_MODE    := EXC.UPI_INPUT_VOLUME_MODE;\n\t\tINTERN.CMD_SPEED          := EXC.UPI_INPUT_SPEED;\n\t\tINTERN.CMD_RUN_SETPOINT   := EXC.UPI_INPUT_RUN_SETPOINT;\n\t\tINTERN.FLASH_SAVE_REQUEST := FALSE;\n\t\tINTERN.PARAM_WRITE_ENABLE := FALSE;\n\tEND_IF\n\n\t//--- Parameters typed on the HMI\n\tINTERN.PARAM_MAX_MOTOR_SPEED         := COM.HMI_INPUT_MAX_MOTOR_SPEED.Real_value;\n\tINTERN.PARAM_CALIBRATION_COEFFICIENT := COM.HMI_INPUT_FLOW_RATE_OR_SPEED_CALIBRATION_COEFFICIENT.Real_value;\n\tINTERN.PARAM_FOOT_SWITCH_INPUT_MODE  := COM.HMI_INPUT_FOOT_SWITCH_INPUT_MODE;\n\tINTERN.PARAM_LIQUID_LEVEL_INPUT_MODE := COM.HMI_INPUT_LIQUID_LEVEL_INPUT_MODE;\n\tINTERN.PARAM_STATE_OUTPUT_MODE       := COM.HMI_INPUT_STATE_OUTPUT_MODE;\n\tINTERN.PARAM_COMMUNICATION_ADDRESS   := COM.HMI_INPUT_COMMUNICATION_ADDRESS;\n\tINTERN.PARAM_BAUD_RATE_INDEX         := COM.HMI_INPUT_BAUD_RATE_INDEX;\n\n\t//--- COM : feedback from the pump\n\tINTERN.FBK_FIRMWARE_VERSION := COM.COM_INPUT_FIRMWARE_VERSION;\n\tINTERN.FBK_HARDWARE_VERSION := COM.COM_INPUT_HARDWARE_VERSION;\n\tINTERN.FBK_TEMPERATURE      := COM.COM_INPUT_TEMPERATURE;\n\tINTERN.FBK_LEVEL_ALARM      := COM.COM_INPUT_LEVEL_ALARM;\n\tINTERN.FBK_DIGITAL_OUTPUT   := COM.COM_INPUT_DIGITAL_OUTPUT;\n\n\t// Run counters : REAL (ml) in volume mode, UDINT (ms) in time mode\n\tIF INTERN.CMD_VOLUME_MODE THEN\n\t\tINTERN.FBK_RUN_ACTUAL := COM.COM_INPUT_RUN_ACTUAL.Real_value;\n\t\tINTERN.FBK_RUN_TOTAL  := COM.COM_INPUT_RUN_TOTAL.Real_value;\n\tELSE\n\t\tINTERN.FBK_RUN_ACTUAL := UDINT_TO_REAL(SHL(WORD_TO_UDINT(COM.COM_INPUT_RUN_ACTUAL.Word_value[1]), 16) OR WORD_TO_UDINT(COM.COM_INPUT_RUN_ACTUAL.Word_value[0]));\n\t\tINTERN.FBK_RUN_TOTAL  := UDINT_TO_REAL(SHL(WORD_TO_UDINT(COM.COM_INPUT_RUN_TOTAL.Word_value[1]), 16) OR WORD_TO_UDINT(COM.COM_INPUT_RUN_TOTAL.Word_value[0]));\n\tEND_IF\n\n\n//------------------------------------------------------------------------------\n// 2. PROCESSING\n//------------------------------------------------------------------------------\n\t//--- Parameters : the HMI values are saved in PA while \"parameter write enable\" is on and they are valid\n\t// PA is persistent : it keeps its value after a restart or a download. Default = declaration value.\n\tINTERN.PARAM_VALID := (WORD_TO_UINT(INTERN.PARAM_COMMUNICATION_ADDRESS) >= 1) AND (WORD_TO_UINT(INTERN.PARAM_COMMUNICATION_ADDRESS) <= 31)\n\t                      AND (WORD_TO_UINT(INTERN.PARAM_BAUD_RATE_INDEX) <= 7)\n\t                      AND (INTERN.PARAM_MAX_MOTOR_SPEED > 0.0) AND (INTERN.PARAM_CALIBRATION_COEFFICIENT > 0.0);\n\n\tIF INTERN.PARAM_WRITE_ENABLE AND INTERN.PARAM_VALID THEN\n\t\tPA.MAX_MOTOR_SPEED         := INTERN.PARAM_MAX_MOTOR_SPEED;\n\t\tPA.CALIBRATION_COEFFICIENT := INTERN.PARAM_CALIBRATION_COEFFICIENT;\n\t\tPA.FOOT_SWITCH_INPUT_MODE  := INTERN.PARAM_FOOT_SWITCH_INPUT_MODE;\n\t\tPA.LIQUID_LEVEL_INPUT_MODE := INTERN.PARAM_LIQUID_LEVEL_INPUT_MODE;\n\t\tPA.STATE_OUTPUT_MODE       := INTERN.PARAM_STATE_OUTPUT_MODE;\n\t\tPA.COMMUNICATION_ADDRESS   := INTERN.PARAM_COMMUNICATION_ADDRESS;\n\t\tPA.BAUD_RATE_INDEX         := INTERN.PARAM_BAUD_RATE_INDEX;\n\tEND_IF\n\n\t//--- Flash save : 1 s pulse on the rising edge of the request\n\tTP_FLASH(IN := INTERN.FLASH_SAVE_REQUEST, PT := T#1S);\n\tINTERN.CMD_SAVE_FLASH := TP_FLASH.Q;\n\n\t//--- Run setpoint in time mode : integer (ms)\n\tINTERN.RUN_SETPOINT_MS := REAL_TO_UDINT(MAX(INTERN.CMD_RUN_SETPOINT, 0.0));\n\n\t//--- Write triggers (the Modbus write channels are sent on a rising edge)\n\t// Square wave 500 ms : each rising edge = one write request\n\tTON_PULSE(IN := NOT TON_PULSE.Q, PT := T#250MS);\n\tIF TON_PULSE.Q THEN\n\t\tINTERN.PULSE_500MS := NOT INTERN.PULSE_500MS;\n\tEND_IF\n\n\t// Command trigger : 3 s of edges after any command change\n\tINTERN.CMD_CHANGED := (INTERN.CMD_RUN <> INTERN.PREV_RUN) OR (INTERN.CMD_CLOCKWISE <> INTERN.PREV_CLOCKWISE)\n\t                      OR (INTERN.CMD_VOLUME_MODE <> INTERN.PREV_VOLUME_MODE) OR (INTERN.CMD_SAVE_FLASH <> INTERN.PREV_SAVE_FLASH)\n\t                      OR (INTERN.CMD_SPEED <> INTERN.PREV_SPEED) OR (PA.MAX_MOTOR_SPEED <> INTERN.PREV_MAX_SPEED)\n\t                      OR (INTERN.CMD_RUN_SETPOINT <> INTERN.PREV_RUN_SETPOINT);\n\tINTERN.PREV_RUN          := INTERN.CMD_RUN;\n\tINTERN.PREV_CLOCKWISE    := INTERN.CMD_CLOCKWISE;\n\tINTERN.PREV_VOLUME_MODE  := INTERN.CMD_VOLUME_MODE;\n\tINTERN.PREV_SAVE_FLASH   := INTERN.CMD_SAVE_FLASH;\n\tINTERN.PREV_SPEED        := INTERN.CMD_SPEED;\n\tINTERN.PREV_MAX_SPEED    := PA.MAX_MOTOR_SPEED;\n\tINTERN.PREV_RUN_SETPOINT := INTERN.CMD_RUN_SETPOINT;\n\n\tTOF_CMD_WINDOW(IN := INTERN.CMD_CHANGED, PT := T#3S);\n\tINTERN.CMD_TRIGGER := TOF_CMD_WINDOW.Q AND (PA.MAX_MOTOR_SPEED > 0.0) AND INTERN.PULSE_500MS;\n\n\t// Configuration trigger : while \"parameter write enable\" is on and the HMI parameters are valid\n\tINTERN.CONFIG_TRIGGER := INTERN.PARAM_WRITE_ENABLE AND INTERN.PARAM_VALID AND INTERN.PULSE_500MS;\n\n\n//------------------------------------------------------------------------------\n// 3. OUTPUTS\n//------------------------------------------------------------------------------\n\t//--- COM : control mode status to HMI\n\tCOM.HMI_OUTPUT_LOCAL_ACTIVE := INTERN.LOCAL_HMI;\n\n\t//--- COM : Modbus RTU commands (sent on the command trigger)\n\tCOM.COM_OUTPUT_RUN                        := INTERN.CMD_RUN;\n\tCOM.COM_OUTPUT_CLOCKWISE                  := INTERN.CMD_CLOCKWISE;\n\tCOM.COM_OUTPUT_SAVE_FLASH                 := INTERN.CMD_SAVE_FLASH;\n\tCOM.COM_OUTPUT_VOLUME_MODE                := INTERN.CMD_VOLUME_MODE;\n\tCOM.COM_OUTPUT_SPEED.Real_value           := INTERN.CMD_SPEED;\n\tCOM.COM_OUTPUT_MAX_MOTOR_SPEED.Real_value := PA.MAX_MOTOR_SPEED;\n\n\t// Run setpoint : REAL (ml) in volume mode, UDINT (ms) in time mode\n\tIF INTERN.CMD_VOLUME_MODE THEN\n\t\tCOM.COM_OUTPUT_RUN_SETPOINT.Real_value := INTERN.CMD_RUN_SETPOINT;\n\tELSE\n\t\tCOM.COM_OUTPUT_RUN_SETPOINT.Word_value[0] := UDINT_TO_WORD(INTERN.RUN_SETPOINT_MS);\n\t\tCOM.COM_OUTPUT_RUN_SETPOINT.Word_value[1] := UDINT_TO_WORD(SHR(INTERN.RUN_SETPOINT_MS, 16));\n\tEND_IF\n\n\t//--- COM : Modbus RTU configuration, always from PA (sent on the configuration trigger)\n\tCOM.COM_OUTPUT_CALIBRATION_COEFFICIENT.Real_value := PA.CALIBRATION_COEFFICIENT;\n\tCOM.COM_OUTPUT_FOOT_SWITCH_INPUT_MODE             := PA.FOOT_SWITCH_INPUT_MODE;\n\tCOM.COM_OUTPUT_LIQUID_LEVEL_INPUT_MODE            := PA.LIQUID_LEVEL_INPUT_MODE;\n\tCOM.COM_OUTPUT_STATE_OUTPUT_MODE                  := PA.STATE_OUTPUT_MODE;\n\tCOM.COM_OUTPUT_COMMUNICATION_ADDRESS              := PA.COMMUNICATION_ADDRESS;\n\tCOM.COM_OUTPUT_BAUD_RATE_INDEX                    := PA.BAUD_RATE_INDEX;\n\n\t//--- COM : Modbus RTU write triggers\n\tCOM.COM_OUTPUT_CMD_TRIGGER    := INTERN.CMD_TRIGGER;\n\tCOM.COM_OUTPUT_CONFIG_TRIGGER := INTERN.CONFIG_TRIGGER;\n\n\t//--- COM : feedback to HMI\n\tCOM.HMI_OUTPUT_FIRMWARE_VERSION                          := INTERN.FBK_FIRMWARE_VERSION;\n\tCOM.HMI_OUTPUT_HARDWARE_VERSION                          := INTERN.FBK_HARDWARE_VERSION;\n\tCOM.HMI_OUTPUT_TEMPERATURE                               := INTERN.FBK_TEMPERATURE;\n\tCOM.HMI_OUTPUT_FLOAT_LEVEL_ALARM                         := INTERN.FBK_LEVEL_ALARM;\n\tCOM.HMI_OUTPUT_DIGITAL_OUTPUT_VALUE                      := INTERN.FBK_DIGITAL_OUTPUT;\n\tCOM.HMI_OUTPUT_REAL_TIME_RUN_TIME_OR_VOLUME.Real_value   := INTERN.FBK_RUN_ACTUAL;\n\tCOM.HMI_OUTPUT_ACCUMULATED_RUN_TIME_OR_VOLUME.Real_value := INTERN.FBK_RUN_TOTAL;\n\n"
+}

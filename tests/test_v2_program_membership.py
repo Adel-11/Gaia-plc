@@ -117,3 +117,29 @@ def test_membership_preview_is_reviewed_owner_scoped_csrf_protected_and_revision
         assert applied.status_code == 200, applied.text
         updated = next(row for row in client.get("/api/v2/code").json()["objects"] if row["name"] == "GFB_INST")
         assert updated["included_instances"] == included
+def test_simplified_dip1500_can_map_two_instances():
+    from copy import deepcopy
+    from backend.v2_codesys import _st
+    from backend.v2_dip1500 import configure_instance, simplify
+    from backend.v2_hmi import load_hmi_pack
+    from backend.v2_plc import build_program
+    from backend.v2_workspace import _compatibility_errors
+
+    state = deepcopy(load_hmi_pack())
+    baseline = set(_compatibility_errors(state))
+    original_rtu = [row["GVL_MODBUS variable"] for row in state["rtu_channels"]]
+    assert simplify(state)
+    assert not simplify(state)
+    assert [row["GVL_MODBUS variable"] for row in state["rtu_channels"]] == original_rtu
+    state["instances"].append({"id": "DIP1500_2", "name": "DIP1500_2", "type_id": "DIP1500"})
+    rtu = configure_instance(state, "DIP1500_2", "rtu", line_id="RTU_1", address=12, include=True)
+    tcp = configure_instance(state, "DIP1500_2", "tcp", include=True)
+    assert len(rtu) == 26 and len(tcp) == 30
+    assert not configure_instance(state, "DIP1500_2", "rtu")
+    assert not configure_instance(state, "DIP1500_2", "tcp")
+    assert set(_compatibility_errors(state)) <= baseline
+    objects = build_program(state)
+    inbound = _st(objects["GFC_COM_IN"]["element"])
+    assert "COM_DIP1500_1.COM_INPUT_RUN_ACTUAL.Word_value[0] := GVL_MODBUS.DIP1500_Holding_Counters[0]" in inbound
+    assert "COM_DIP1500_2.COM_INPUT_RUN_ACTUAL.Word_value[0] := GVL_MODBUS.DIP1500_2_Holding_Counters[0]" in inbound
+    assert not objects["FB_INST_DIP1500"]["element"].xpath(".//*[@name='R_TRIG_FLASH']")

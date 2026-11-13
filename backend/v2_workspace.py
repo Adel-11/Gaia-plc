@@ -134,7 +134,7 @@ def _persist(session,pid,state,previous,username,revision,event=None):
         state['_program_digests']=copy.deepcopy((previous or {}).get('_program_digests',{}))
         state['_program_digests'][digest_key]=fingerprint
     elif changes:
-        version=f'{parts[0]}.{parts[1]}.{parts[2]+1}';history_kind='change';comment=' ; '.join(changes)
+        version=f'{parts[0]}.{parts[1]}.{parts[2]+1}';history_kind='change';comment=event.get('comment') if event and event.get('comment') else ' ; '.join(changes)
     state['version']=version
     activity=copy.deepcopy((previous or {}).get('activity',{}));activity.update(activities)
     if event:

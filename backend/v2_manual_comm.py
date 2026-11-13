@@ -26,7 +26,7 @@ def editable_pair_key(row):
     if key := pair_key(row):
         return key
     path = str(row.get('GVL_COM variable') or '')
-    if ((client := row.get('Client') or row.get('client_id'))
+    if ((client := row.get('Client') or row.get('client_id') or row.get('slave_id'))
             and str(row.get('Word') or '').upper() in {'MSW', 'LSW'}
             and re.search(r'\.Word_value\[\d+\]$', path, re.I)):
         return tuple(str(value or '').casefold() for value in (
@@ -79,24 +79,33 @@ def _assign_word(row, collection, address, word):
         row.update({'Modbus address': address, 'Client address': client_address_for(row['table'], address, row['Client']),
                     'GVL_MODBUS variable': _tcp_variable(row['table'], address)})
         row['client_address'] = row['Client address']
-        path = row['GVL_COM variable']
-        row['GVL_COM variable'] = re.sub(r'(\.Word_value)\[\d+\]$', rf'\g<1>[{0 if word == "LSW" else 1}]', path, flags=re.I)
     else:
-        row['Equipment address'] = address
+        if str(row.get('Equipment address')).lower().startswith('0x'):
+            row['Equipment address'] = row['address'] = f'0x{address:04X}'
+        else:
+            row['Equipment address'] = address
+    path = row['GVL_COM variable']
+    row['GVL_COM variable'] = re.sub(r'(\.Word_value)\[\d+\]$', rf'\g<1>[{0 if word == "LSW" else 1}]', path, flags=re.I)
 
 
 def update_pair(state, collection, row, group, values):
     from backend.v2_configuration import _num
     if len(group) != 2:
         raise ValueError('Cette liaison est incomplète. Retire-la, puis recrée les deux mots.')
-    by_address = sorted(group, key=lambda item: int(item['address']))
-    old_start = int(by_address[0]['address'])
+    def register(item):
+        raw = str(item['address'])
+        return int(raw, 16) if raw.lower().startswith('0x') else int(raw)
+
+    by_address = sorted(group, key=register)
+    old_start = register(by_address[0])
     address_field = 'Modbus address' if collection == 'tcp_points' else 'Equipment address'
     permitted = {address_field, 'modbus_address' if collection == 'tcp_points' else 'address', 'Register word order'}
     if set(values) - permitted:
         raise ValueError('Modifie la paire depuis le mapping graphique.')
     address = values.get(address_field, values.get('modbus_address' if collection == 'tcp_points' else 'address'))
-    start = old_start if address is None else _num(address, address_field, True) - (int(row['address']) - old_start)
+    start = old_start if address is None else _num(address, address_field, True) - (register(row) - old_start)
+    if row.get('dip1500_register') and start != old_start:
+        raise ValueError('L’adresse RTU est fixe pour ce registre du modèle DIP1500.')
     order = values.get('Register word order')
     words = WORD_ORDERS.get(order) if order else tuple(str(item['Word']).upper() for item in by_address)
     if not words:

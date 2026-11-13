@@ -312,7 +312,15 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
         parts=com.split("."); typ=types.get(str(instances.get(inst,{}).get("type_id")))
         member_name=re.sub(r"\[.*$","",parts[1]) if len(parts)>1 else ""
         member=next((m for d in (typ or {}).get("duts",[]) if d.get("role")=="COM" for m in d.get("members",[]) if m.get("name")==member_name),None)
-        if row.get("manual_scalar"):
+        from backend.v2_dip1500 import is_register, is_simplified
+        if typ and typ.get("name") == "DIP1500" and is_simplified(typ) and is_register(row):
+            banks = {"Coils": (4, "BOOL"), "InputRegisters": (5, "WORD"), "Holding_Counters": (4, "WORD"),
+                     "Holding_Cmd": (6, "WORD"), "Holding_Config": (7, "WORD")}
+            suffix = next((key for key in banks if base.endswith("_" + key)), None)
+            if suffix:
+                count, kind = banks[suffix]
+                _add_gvl_variable(modbus, base, f"ARRAY[0..{count - 1}] OF {kind}")
+        elif row.get("manual_scalar"):
             from backend.v2_manual_comm import pair_key
             _add_gvl_variable(modbus,base,"WORD" if pair_key(row) else row.get("Type") or "BOOL")
         elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
@@ -528,6 +536,11 @@ def _generated_objects(objs, state, sources):
                 continue
             seen_rtu.add(key)
             statement = f"{member} := {mapped};" if inbound else f"{mapped} := {member};"
+            from backend.v2_dip1500 import is_register
+            if is_dip1500(state, row) and is_register(row):
+                signal = re.sub(r"\.Word_value\[[01]\]$", "", member.split(".", 2)[-1])
+                word = {"LSW": " (low word)", "MSW": " (high word)"}.get(row.get("Word"), "")
+                statement += f" // {row.get('Equipment address')} | {instance_name(row)}.{signal}{word}"
             rtu_copies.setdefault(instance_name(row), []).append(statement)
         authored_locals = (state.get("generated_local_variables") or {}).get(name, [])
         wide = _wide_modbus_copies(tcp + rtu, register, objs[name]["element"], inbound, authored_locals, targets[name])
@@ -614,6 +627,11 @@ def build_program(state, include_union: bool = False) -> dict:
     from backend.v2_fb_flow import convert_body, render_flow, repair_migrated_flow
     for typ in state.get("types", []):
         fb = typ.get("fb", {}); name = fb.get("name")
+        if name == "FB_INST_DIP1500" and name in objs:
+            from backend.v2_dip1500 import is_simplified
+            if is_simplified(typ):
+                for local in objs[name]["element"].xpath(".//p:localVars/p:variable[@name='R_TRIG_FLASH']", namespaces={"p": PLC}):
+                    local.getparent().remove(local)
         if name in objs and fb.get("body") is not None:
             body=objs[name]["element"].find(NS+"body/"+NS+"ST/"+HNS+"xhtml")
             if body is not None:

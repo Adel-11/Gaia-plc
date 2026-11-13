@@ -14,6 +14,7 @@ type Props = {
   points: Row[]; capacity: Row
   members: (instance: string) => Row[]
   switchMode?: (mode: 'tcp' | 'rtu') => void
+  dip1500?: { lines: { id: string; label: string; free: number[] }[] }
   request: (path: string, body?: Row) => Promise<any>
   onSaved: (configuration: Row) => void; onClose: () => void
 }
@@ -35,7 +36,7 @@ const memberPath = (row: Row) => {
   return 'COM.' + (fromPlc || String(value(row, 'member_path', 'Member', 'member_name') || '').replace(/^COM\./i, ''))
 }
 
-export default function ModbusWiring({ mode, revision, instances, peers, points, capacity, members, switchMode, request, onSaved, onClose }: Props) {
+export default function ModbusWiring({ mode, revision, instances, peers, points, capacity, members, switchMode, dip1500, request, onSaved, onClose }: Props) {
   const tcp = mode === 'tcp'
   const tables: Record<string, string> = tcp ? tcpTables : rtuTables
   const [instance, setInstance] = useState(instances[0]?.key || '')
@@ -54,6 +55,9 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [base, setBase] = useState(revision)
+  const [rtuLine, setRtuLine] = useState(dip1500?.lines[0]?.id || '')
+  const [slaveAddress, setSlaveAddress] = useState('')
+  const [includeGfc, setIncludeGfc] = useState(false)
 
   const orderCount = Object.keys(orders).length
   const dirty = pending.length > 0 || deletions.length > 0 || orderCount > 0
@@ -71,7 +75,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const rawDirection = (row: Row) => String(value(row, 'Direction', 'direction') || '')
   const pairedMember = (row: Row) => memberPath(row).replace(/\.Word_value\[\d+\]$/i, '.Real_value')
   const pairWord = (row: Row) => /^(LSW|MSW)$/i.test(row.Word || '') &&
-    (tcp && pairedMember(row) !== memberPath(row) || (tcp || row.manual_scalar === true) &&
+    (pairedMember(row) !== memberPath(row) || (tcp || row.manual_scalar === true) &&
       wideTypes.has(String(value(row, 'Type', 'data_type') || '').toUpperCase()))
   const removed = new Set(deletions)
   const existing: Link[] = []
@@ -87,7 +91,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
       if (removed.has(id)) removed.add(String(other.id))
     }
     existing.push({ id, member: other ? pairedMember(row) : memberPath(row), address: address(row), direction: rawDirection(row),
-      manual: row.manual_scalar === true, plcVariable: String(value(row, 'GVL_MODBUS variable') || ''),
+      manual: row.manual_scalar === true || row.dip1500_register === true, plcVariable: String(value(row, 'GVL_MODBUS variable') || ''),
       wordOrder: other ? orders[id] || (String(row.Word).toUpperCase() === 'MSW' ? 'MSW_FIRST' : 'LSW_FIRST') : undefined })
   }
   const effective = [...existing.filter(link => !deletions.includes(link.id)), ...pending]
@@ -184,6 +188,18 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible d’enregistrer les liaisons.') }
     finally { setBusy(false) }
   }
+  const freeSlaves = dip1500?.lines.find(line => line.id === rtuLine)?.free || []
+  const selectedSlave = slaveAddress || String(freeSlaves[0] ?? '')
+  const previewDip1500 = async () => {
+    setBusy(true); setError(''); setReview(null)
+    try {
+      setReview(await request('/preview', {revision, changes: [], dip1500: {
+        instance_id: instance, mode, client_id: client, line_id: rtuLine,
+        address: selectedSlave ? Number(selectedSlave) : undefined, include: includeGfc,
+      }}))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible de préparer le modèle DIP1500.') }
+    finally { setBusy(false) }
+  }
   const close = () => { if (!dirty || window.confirm('Abandonner les modifications Modbus ?')) onClose() }
   const objectOnLeft = !actualDirection.endsWith(' to PLC')
   const objectLabel = `COM · ${instanceName}`
@@ -197,6 +213,19 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen onClose={close} disabled={busy}/>
     <header><div><h3 id="modbus-wiring-title">Mapping graphique Modbus {mode.toUpperCase()}</h3><p>Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.</p></div></header>
     <div className="modbus-wiring-scroll">
+      {dip1500 && <div className="modbus-wiring-controls" aria-label="Modèle DIP1500">
+        {!tcp && !peer && <>
+          <label>Ligne RS-485<select value={rtuLine} disabled={busy || dirty} onChange={event => { setRtuLine(event.target.value); setSlaveAddress('') }}>
+            {dip1500.lines.map(line => <option key={line.id} value={line.id}>{line.label}</option>)}
+          </select></label>
+          <label>Adresse esclave libre<select value={selectedSlave} disabled={busy || dirty} onChange={event => setSlaveAddress(event.target.value)}>
+            {freeSlaves.map(number => <option key={number}>{number}</option>)}
+          </select></label>
+        </>}
+        <label><input type="checkbox" checked={includeGfc} disabled={busy || dirty} onChange={event => setIncludeGfc(event.target.checked)}/> Ajouter aux GFC COM</label>
+        <button type="button" className="comm-btn" disabled={busy || dirty || !instance || (tcp ? !client : !peer && !selectedSlave)}
+          onClick={() => void previewDip1500()}>Préparer le mappage DIP1500 {mode.toUpperCase()}</button>
+      </div>}
       <div className="modbus-wiring-controls">
         {switchMode && <label>Protocole<select value={mode} disabled={dirty || busy} onChange={event => switchMode(event.target.value as 'tcp' | 'rtu')}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>}
         <label>Instance<select value={instance} disabled={dirty || busy || !instances.length} onChange={e => { setInstance(e.target.value); resetScope() }}>{instances.map(row => <option key={row.key} value={row.key}>{row.name}</option>)}</select></label>
@@ -234,7 +263,8 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
       {review && <section className="modbus-review" aria-label="Revue du mapping">
         <h4>Vérifier les liaisons avant d’enregistrer</h4>
         {[...(review.errors || []), ...(review.warnings || []), ...(review.manual_actions || [])].map((item, i) => <p key={i}>{String(item)}</p>)}
-        {!!review.token && <p>{pending.length} liaison(s) à ajouter · {deletions.length} à retirer · {orderCount} ordre(s) des mots à modifier.</p>}
+        {!dirty && review.changes?.map(item => <p key={item}>{item}</p>)}
+        {!!review.token && dirty && <p>{pending.length} liaison(s) à ajouter · {deletions.length} à retirer · {orderCount} ordre(s) des mots à modifier.</p>}
       </section>}
     </div>
     <footer><span>{pending.length} ajout(s) · {deletions.length} retrait(s){orderCount > 0 && ` · ${orderCount} modification(s)`}</span>{dirty && <button type="button" className="comm-btn" disabled={busy} onClick={() => { setPending([]); setDeletions([]); setOrders({}); setReview(null); setError('') }}>Annuler le brouillon</button>}

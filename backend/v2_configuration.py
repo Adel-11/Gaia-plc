@@ -534,6 +534,7 @@ class Preview(BaseModel):
     revision:int
     changes:list[dict]
     allocate_tcp:dict|None=None
+    dip1500:dict|None=None
 
 class Apply(BaseModel): token:str
 
@@ -555,6 +556,20 @@ def register_configuration_routes(app,get_session,current_user,csrf):
         state=copy.deepcopy(current); changes=[]
         try:
             warnings,manual=[],[]
+            if body.dip1500:
+                from backend.v2_dip1500 import configure_instance
+                params = body.dip1500
+                mode = str(params.get("mode"))
+                name = str(params.get("instance_id"))
+                added = configure_instance(state, name, mode, client_id=params.get("client_id", "HMI"),
+                                           line_id=params.get("line_id"), address=params.get("address"),
+                                           include=params.get("include") is True)
+                addresses = ", ".join(str(row["address"]) for row in added)
+                changes.append(f"{name} · {mode.upper()} · {len(added)} adresses ajoutées : {addresses or 'aucune'}")
+                if mode == "rtu":
+                    manual.append("Dans CODESYS, configure l’esclave RS-485, les canaux et les deux déclencheurs d’écriture.")
+                if params.get("include") is True:
+                    changes.append(f"Ajouter {name} à GFC_COM_IN et GFC_COM_OUT.")
             if body.allocate_tcp:
                 from backend.v2_addressing import allocate_tcp_points
                 alloc=body.allocate_tcp; added=allocate_tcp_points(state,str(alloc["instance_id"]),str(alloc["client_id"]))
