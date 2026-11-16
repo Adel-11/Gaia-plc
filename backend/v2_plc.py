@@ -324,7 +324,8 @@ def _ensure_mapped_declarations(objs, state, valid_instances):
                 _add_gvl_variable(modbus, base, f"ARRAY[0..{count - 1}] OF {kind}")
         elif row.get("manual_scalar"):
             from backend.v2_manual_comm import pair_key
-            _add_gvl_variable(modbus,base,"WORD" if pair_key(row) else row.get("mapped_register_type") or row.get("Type") or "BOOL")
+            word = pair_key(row) or str(row.get("Word") or "").upper() in {"LSW", "MSW"} and ".word_value[" in com.casefold()
+            _add_gvl_variable(modbus,base,"WORD" if word else row.get("mapped_register_type") or row.get("Type") or "BOOL")
         elif member is not None: _add_gvl_variable(modbus,base,member.get("iec_type"))
     _ensure_io_declarations(iomap, state, valid_instances)
 
@@ -480,7 +481,8 @@ def _generated_objects(objs, state, sources):
             if nm not in membership["GFB_UPI"]: continue
             text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
         _pou_text(objs["GFB_UPI"], text, preserve_reference=True)
-    from backend.v2_gfc_mappings import connection_key, editable_rtu_banks, instance_name, is_dip1500, resolved_targets
+    from backend.v2_gfc_mappings import connection_key, editable_rtu_banks, instance_name, is_dip1500, modbus_inbound, resolved_targets
+    from backend.v2_io_copies import copy_block, variable_direction
     from backend.v2_manual_comm import pair_key
     targets = {block: resolved_targets(state, block, membership[block]) for block in
                ("GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC")}
@@ -499,9 +501,9 @@ def _generated_objects(objs, state, sources):
             continue
         def rank(row):
             return ranks[name].get(_com_key(row.get("GVL_COM variable")), 10**9)
-        tcp = sorted((p for p in tcp_points if (p.get("Direction") == "Client to PLC") == inbound
+        tcp = sorted((p for p in tcp_points if modbus_inbound(p) == inbound
                       and included(name, instance_name(p))), key=rank)
-        rtu = sorted((p for p in rtu_points if (p.get("Direction") == "Equipment to PLC") == inbound
+        rtu = sorted((p for p in rtu_points if modbus_inbound(p) == inbound
                       and included(name, instance_name(p))), key=rank)
         tcp_copies, rtu_copies = {}, {}
         for row in tcp:
@@ -521,7 +523,7 @@ def _generated_objects(objs, state, sources):
                 statement += f" // {row.get('Modbus address', row.get('address'))} | {label}"
             tcp_copies.setdefault(instance_name(row), []).append(statement)
         seen_rtu = set()
-        split_banks = set().union(*(bank for bank in editable_rtu_banks(state, rtu) if bank.intersection(targets[name])))
+        complete_banks = set().union(*(bank for bank in editable_rtu_banks(state, rtu) if not bank.intersection(targets[name])))
         for row in rtu:
             if pair_key(row):
                 continue
@@ -530,7 +532,7 @@ def _generated_objects(objs, state, sources):
             member = targets[name].get(slot, row.get("GVL_COM variable"))
             if not mapped or not member:
                 continue
-            if not row.get("manual_scalar") and not row.get("mapped_bank_type") and not is_dip1500(state, row) and slot not in split_banks:
+            if slot in complete_banks and not row.get("mapped_bank_type") and not is_dip1500(state, row):
                 mapped = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", mapped)
                 member = re.sub(r"\[[^]]+\](?:\.\d+)?$", "", member)
             key = (mapped, member)
@@ -551,8 +553,11 @@ def _generated_objects(objs, state, sources):
     io_rows = [(collection, row) for collection in ("io_channels", "virtual_io") for row in state.get(collection, [])]
     io_copies = {"GFC_IO_IN": {}, "GFC_IO_OUT": {}}
     for collection, row in sorted(io_rows, key=lambda item: (0 if item[1].get("I/O type") == "DI" else 1, str(item[1].get("id", "")))):
-        inbound = str(row.get("I/O type", "")).upper() in {"AI", "DI"}
-        block = "GFC_IO_IN" if inbound else "GFC_IO_OUT"
+        direction = variable_direction(row)
+        if not direction:
+            continue
+        inbound = direction == "input"
+        block = copy_block(direction)
         instance = instance_name(row)
         if not ((not instance and legacy_membership) or (instance in valid_instances and included(block, instance))):
             continue

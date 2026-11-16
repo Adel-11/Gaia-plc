@@ -604,6 +604,9 @@ def register_configuration_routes(app,get_session,current_user,csrf):
                 extra_warnings,extra_manual=apply_changes(state,body.changes)
                 warnings.extend(extra_warnings); manual.extend(extra_manual)
             changes.extend(f"{c['op']} {c['collection']} {c.get('id','')}: {c.get('values',{})}" for c in body.changes)
+            from backend.v2_gfc_mappings import reconcile_copy_choices, manual_mapping_changes
+            reconcile_copy_choices(current, state)
+            warnings.extend(manual_mapping_changes(current, state))
             synchronize_workbooks(state)
             validation=v2_engine.validate_project(state); baseline=set(v2_engine.validate_project(current).get("errors",[]))
             errors=[e for e in validation.get("errors",[]) if e not in baseline]

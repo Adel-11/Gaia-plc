@@ -135,6 +135,14 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
       const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); setNotice(`${name} downloaded`); await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Download failed') } finally { setBusy(false) }
   }
+  const openGenerated = (block?: string) => {
+    if (block) {
+      setTreeCodeSelection({category: 'generated', name: block})
+      setTreeCodeRequestVersion(version => version + 1)
+    }
+    openPage('generated')
+  }
+
   const openTreeObject = (object: PlcTreeObject) => {
     if (object.type_id && !object.role) { setTreeInstanceName(object.name); openPage('instances'); return }
     if (object.type_id && object.role) { if (selectType(String(object.type_id), true)) { setTreeStructureSelection({ typeId: String(object.type_id), name: object.role.toUpperCase() === 'FB' ? '__fb' : object.name }); setTreeStructureRequestVersion(version => version + 1); openPage('types') } return }
@@ -144,7 +152,7 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
       setTreeCodeSelection({ category: 'functions', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('functions'); return
     }
     if (/^(?:GFC_(?:(?:COM|IO)_(?:IN|OUT)|EXC)|GFB_(?:INST|UPI)|PLC_PRG)$/.test(object.name)) {
-      setTreeCodeSelection({ category: 'generated', name: object.name }); setTreeCodeRequestVersion(version => version + 1); openPage('generated'); return
+      openGenerated(object.name); return
     }
     setTreeInspectorName(object.name)
   }
@@ -201,10 +209,10 @@ export default function V2Project({ csrf, onWorkspaceChanged }: { csrf: string; 
             csrf={csrf} onChanged={() => void load()} onUse={openWizard} />}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-instances" aria-labelledby="tab-instances" hidden={activePage !== 'instances'}>
-          {project && <><div className="type-page-actions"><button className="button secondary" disabled={busy} onClick={()=>void downloadPost('/plc/export/instances','instances-and-types.xml')}>Exporter les instances et leurs types en XML</button></div><WorkspacePanel id="instances:table" title="Instances du projet"><V2Instances project={project} csrf={csrf} openInstanceName={treeInstanceName} onSaved={()=>void load()} onCommunications={()=>openPage('communications')} onProgram={()=>openPage('generated')} onOpenInstanceHandled={()=>setTreeInstanceName('')}/></WorkspacePanel></>}
+          {project && <><div className="type-page-actions"><button className="button secondary" disabled={busy} onClick={()=>void downloadPost('/plc/export/instances','instances-and-types.xml')}>Exporter les instances et leurs types en XML</button></div><WorkspacePanel id="instances:table" title="Instances du projet"><V2Instances project={project} csrf={csrf} openInstanceName={treeInstanceName} onSaved={()=>void load()} onCommunications={()=>openPage('communications')} onProgram={openGenerated} onOpenInstanceHandled={()=>setTreeInstanceName('')}/></WorkspacePanel></>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-communications" aria-labelledby="tab-communications" hidden={activePage !== 'communications'}>
-          {project && <V2Communications csrf={csrf} onSaved={() => void load()} project={project} onOpenInstance={()=>openPage('instances')}/>}
+          {project && <V2Communications csrf={csrf} onSaved={() => void load()} project={project} onOpenCode={openGenerated} onOpenInstance={()=>openPage('instances')}/>}
         </div>
         <div className="v2-tab-panel" role="tabpanel" tabIndex={0} id="page-exchanges" aria-labelledby="tab-exchanges" hidden={activePage !== 'exchanges'}>
           {project && <V2Exchanges csrf={csrf} projectRevision={project.revision} onSaved={()=>void load()}/>}

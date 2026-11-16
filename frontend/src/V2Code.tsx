@@ -20,7 +20,7 @@ const lines = (s?: string) => (s || '').split(/\r?\n/).length
 const date = (s?: string | null) => s ? new Date(s).toLocaleString('fr-FR') : '—'
 
 async function api<T>(path: string, body?: unknown, csrf = ''): Promise<T> {
-  const response = await fetch(path, { method: body ? 'POST' : 'GET', credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } : {}, body: body ? JSON.stringify(body) : undefined })
+  const response = await fetch(path, { method: body ? 'POST' : 'GET', cache: 'no-store', credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } : {}, body: body ? JSON.stringify(body) : undefined })
   const json = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(json.detail || json.message || `Erreur ${response.status}`)
   return json as T
@@ -45,6 +45,7 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
   const [rawName, setRawName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ name: string; revision: number } | null>(null)
   const lastAppliedInitialObject = useRef<string | undefined>(undefined)
+  const requestNumber = useRef(0)
   const [drafts, setDrafts] = useState<Record<string, { body?: string; custom_code?: string; local_variables?: LocalVariable[] }>>({}), [pane, setPane] = useState<'code' | 'compare'>('code')
   const [review, setReview] = useState<Review | null>(null), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [membershipDrafts,setMembershipDrafts]=useState<Record<string,string[]>>({})
   const [copyEdits, setCopyEdits] = useState<Record<string, string>>({})
@@ -54,22 +55,28 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
   const membershipHasChanges = (data?.objects || []).some(o => { const selected=membershipDrafts[o.name]; return !!o.membership_block && !!selected && (selected.length !== (o.included_instances||[]).length || selected.some(name => !(o.included_instances||[]).includes(name))) })
   useEffect(() => { onDirtyChange?.(dirty.length > 0 || membershipHasChanges || !!Object.keys(copyEdits).length) }, [dirty.length, membershipHasChanges, copyEdits, onDirtyChange])
   async function load(force = false) {
+    const request = ++requestNumber.current
     setError('')
     try {
       const fresh = await api<Data>('/api/v2/code')
-      if (!force && data && Number(fresh.revision) !== Number(data.revision) && (dirty.length || membershipHasChanges)) { setNotice('Le projet a changé ailleurs. Votre brouillon est conservé. Rechargez pour comparer avec la dernière version enregistrée.'); return }
+      if (request !== requestNumber.current) return
+      if (!force && data && Number(fresh.revision) !== Number(data.revision) && (dirty.length || membershipHasChanges || Object.keys(copyEdits).length)) { setNotice('Le projet a changé ailleurs. Votre brouillon est conservé. Rechargez pour comparer avec la dernière version enregistrée.'); return }
       setData(fresh); setNotice('')
+      if (!force && fresh.revision !== data?.revision) closeReview()
       setSelected(current => fresh.objects.some(o => o.name === current) ? current : fresh.objects.find(o => category === 'generated' ? o.category === 'generated' : o.category !== 'generated')?.name || '')
-    } catch (e) { setError(e instanceof Error ? e.message : 'Impossible de charger le code') }
+    } catch (e) { if (request === requestNumber.current) setError(e instanceof Error ? e.message : 'Impossible de charger le code') }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (!data || (projectRevision !== undefined && projectRevision !== data.revision)) void load()
+  }, [projectRevision])
   useEffect(() => {
     const requestKey = `${initialObjectVersion ?? 0}:${initialObject || ''}`
     if (!initialObject || !data?.objects.some(item => item.name === initialObject) || lastAppliedInitialObject.current === requestKey) return
     setSelected(initialObject)
+    setQuery('')
+    setPane('code')
     lastAppliedInitialObject.current = requestKey
   }, [initialObject, initialObjectVersion, data])
-  useEffect(() => { if (projectRevision !== undefined && data && Number(projectRevision) !== Number(data.revision)) void load() }, [projectRevision])
   const visible = useMemo(() => (data?.objects || []).filter(o => category === 'generated' ? o.category === 'generated' : o.category === 'function' || o.category === 'exchange').filter(o => category !== 'functions' || kindFilter === 'all' || o.category === kindFilter).filter(o => filter === 'all' || (o.status || (o.changed ? 'changed' : 'unchanged')) === filter).filter(o => !query || `${o.name} ${o.kind} ${o.folder || ''}`.toLowerCase().includes(query.toLowerCase())), [data, category, filter, kindFilter, query])
   const object = data?.objects.find(o => o.name === selected)
   const draft = object ? drafts[object.name] || {} : {}
@@ -121,7 +128,7 @@ export default function V2Code({ csrf, projectRevision, onSaved, onOpenExchanges
   return <main className={`code-page ${category === 'generated' ? 'generated' : 'functions'}`}>
     <header className="code-head"><div><span className="code-kicker">PROJET · CODE SOURCE</span><h1>{category === 'generated' ? 'Code généré' : 'Fonctions et échanges'}</h1><p>{category === 'generated' ? 'Code calculé depuis le modèle du projet, en lecture seule.' : 'Consultez les fonctions et comparez-les à la référence CODESYS.'}</p></div><div className="code-head-meta"><span>Révision {data?.revision ?? '—'}</span><span>Calcul {date(data?.calculated_at)}</span><button onClick={() => void load()} disabled={busy}>Actualiser</button></div></header>
     {category === 'generated' && <div className="code-calc"><b>Dernier calcul réel</b><span>{date(data?.calculated_at)}</span><b>Snapshot importé</b><span>{date(data?.snapshot_imported_at)}</span></div>}
-    {notice && <div className="code-notice" role="status">{notice} <button onClick={() => { setDrafts({}); void load(true) }}>Abandonner le brouillon et recharger</button></div>}
+    {notice && <div className="code-notice" role="status">{notice} <button onClick={() => { setDrafts({}); setMembershipDrafts({}); closeReview(); void load(true) }}>Abandonner le brouillon et recharger</button></div>}
     {error && <div className="code-error" role="alert">{error}</div>}
     {messages(data?.validation?.errors).length > 0 && <div className="code-error" role="alert"><b>Export à corriger</b>{messages(data?.validation?.errors).map((message,index) => <p key={index}>{message}</p>)}</div>}
     {messages(data?.validation?.warnings).length > 0 && <details className="code-notice"><summary>{messages(data?.validation?.warnings).length} avertissement(s) de validation</summary>{messages(data?.validation?.warnings).map((message,index) => <p key={index}>{message}</p>)}</details>}

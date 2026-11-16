@@ -18,7 +18,7 @@ async function rackRequest(path: string, options?: RequestInit): Promise<Respons
   return response
 }
 
-export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: string; revision?: number; onSaved: () => void }) {
+export default function RackIoMapping({ csrf, revision, onSaved, onOpenCode }: { csrf: string; revision?: number; onSaved: () => void; onOpenCode?: (block: string) => void }) {
   const [state, setState] = useState<RackState>()
   const [file, setFile] = useState<File | null>(null), [module, setModule] = useState('')
   const [choices, setChoices] = useState<Record<string, string>>({})
@@ -199,6 +199,6 @@ export default function RackIoMapping({ csrf, revision, onSaved }: { csrf: strin
         {message('exports')}
       </div>
     </WorkspacePanel>
-    <IoCopyManager state={state} busy={busy} blocked={false} error={feedback?.area === 'copies' ? feedback.error || '' : ''} notice={feedback?.area === 'copies' ? feedback.notice || '' : ''} update={updateCopy}/>
+    <IoCopyManager state={state} busy={busy} blocked={false} error={feedback?.area === 'copies' ? feedback.error || '' : ''} notice={feedback?.area === 'copies' ? feedback.notice || '' : ''} update={updateCopy} onOpenCode={onOpenCode}/>
   </>
 }

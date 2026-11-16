@@ -56,6 +56,50 @@ def test_freeze_initializes_all_programs_by_equipment_and_upi_eligibility():
     assert set(membership["GFC_IO_OUT"]) == equipment
 
 
+def test_rtu_removal_rebuilds_existing_instance_copy_and_manual_body_is_reported():
+    from backend.v2_gfc_mappings import manual_mapping_changes
+    from backend.v2_hmi import load_hmi_pack
+
+    state = copy.deepcopy(load_hmi_pack())
+    freeze_membership(state)
+    block = "GFC_COM_IN"
+    current = _body(build_program(state), block)
+    assert "COM_INPUT_IR := GVL_MODBUS.ADM100W_InputRegisters;" in current
+
+    updated = copy.deepcopy(state)
+    updated["rtu_channels"] = [row for row in updated["rtu_channels"]
+                               if row.get("GVL_MODBUS variable") != "GVL_MODBUS.ADM100W_InputRegisters[0]"]
+    output = _body(build_program(updated), block)
+    assert "COM_INPUT_IR := GVL_MODBUS.ADM100W_InputRegisters;" not in output
+    assert "COM_ADM100W_1.COM_INPUT_IR[0] :=" not in output
+    assert "COM_ADM100W_1.COM_INPUT_IR[1] := GVL_MODBUS.ADM100W_InputRegisters[1];" in output
+    assert updated["program_membership"] == state["program_membership"]
+
+    for project in (state, updated):
+        project["st_overrides"] = {block: {"body": current}}
+    assert len(manual_mapping_changes(state, updated)) == 1
+    assert _body(build_program(updated), block) == current
+
+
+def test_saved_copy_choice_is_released_when_connection_is_reassigned():
+    from backend.v2_gfc_mappings import reconcile_copy_choices, review, save_choices
+    from backend.v2_hmi import load_hmi_pack
+
+    state = copy.deepcopy(load_hmi_pack())
+    block, name = "GFC_COM_OUT", "DIP1500_1"
+    group, = review(state, block, [name])
+    row = next(row for row in group["rows"] if len(row["choices"]) >= 3)
+    alternatives = [target for target in row["choices"] if target != row["automatic"]]
+    save_choices(state, block, [name], {row["key"]: alternatives[0]})
+    updated = copy.deepcopy(state)
+    collection, identifier = row["key"].split(":", 1)
+    connection = next(point for point in updated[collection] if point["id"] == identifier)
+    connection["GVL_COM variable"] = alternatives[1]
+    reconcile_copy_choices(state, updated)
+    assert row["key"] not in updated["gfc_copy_overrides"][block]
+    assert f":= {alternatives[1]};" in _body(build_program(updated), block)
+
+
 def test_freezing_before_new_instance_keeps_its_call_opt_in_but_declares_it():
     state = copy.deepcopy(load_pack())
     membership = freeze_membership(state)

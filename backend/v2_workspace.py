@@ -96,7 +96,7 @@ def _lock(session):
 
 def _changes(previous,state):
     previous=previous or {};changes=[];activities={}
-    for key,label in {**COLLECTIONS, 'removed_iomap_variables': 'Variables IOMAP supprimées', 'gvl_folders': 'Dossiers des GVL', 'generic_objects': 'Objets génériques', 'st_overrides': 'ST manuel', 'codesys_io_hardware': 'Mappage du rack E/S'}.items():
+    for key,label in {**COLLECTIONS, 'removed_iomap_variables': 'Variables IOMAP supprimées', 'gvl_folders': 'Dossiers des GVL', 'generic_objects': 'Objets génériques', 'st_overrides': 'ST manuel', 'codesys_io_hardware': 'Mappage du rack E/S', 'gfc_copy_overrides': 'Corrections des recopies GFC'}.items():
         if digest(previous.get(key))==digest(state.get(key)):continue
         old=previous.get(key,[]);new=state.get(key,[])
         names=[]
@@ -192,7 +192,10 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
         raise ValueError('Le catalogue isolé existe déjà ; actualisez avant de réessayer')
     current=overlay(raw,json.loads(previous_catalog.payload)) if raw and previous_catalog else raw
     from backend.v2_st_overrides import discard_removed_overrides
+    from backend.v2_gfc_mappings import reconcile_copy_choices
     discard_removed_overrides(current, state)
+    if not event or event["kind"] not in {"history_restore", "backup_import"}:
+        reconcile_copy_choices(current, state)
     shared=_catalog(state);changed=catalog is not None and digest(shared)!=digest(json.loads(catalog.payload))
     affected=[]
     if changed:
@@ -226,6 +229,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
                 errors=[f"Type {i.get('type_id')} is still used by {i.get('name')}" for i in proposed.get('instances',[]) if str(i.get('type_id')) not in known]
             else:
                 baseline_errors=set(_compatibility_errors(before))
+                reconcile_copy_choices(before, proposed)
                 errors=[e for e in _compatibility_errors(proposed) if e not in baseline_errors]
             if errors:raise ValueError(f"Catalogue incompatible avec le projet {other.name} : {errors[0]}")
             affected.append((other.id,before,proposed))

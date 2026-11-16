@@ -28,9 +28,10 @@ async function api(path: string, csrf: string, body?: object) {
   return result
 }
 
-export default function InstanceMapping({ role, instance, csrf, onClose, onSaved, templateOnly }: {
+export default function InstanceMapping({ role, instance, csrf, onClose, onSaved, templateOnly, onOpenCode }: {
   role: 'IO' | 'COM'; instance: string; csrf: string; onClose: () => void; onSaved: () => void
   templateOnly?: boolean
+  onOpenCode?: (block: string) => void
 }) {
   const [config, setConfig] = useState<Configuration>()
   const [io, setIo] = useState<CopyState>()
@@ -54,7 +55,7 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
     setBusy(true); setError(''); setNotice('')
     try {
       setIo(await api('/io-hardware/copies', csrf, { revision: io.revision, ...action }))
-      setNotice('Mapping IOMAP enregistré.')
+      setNotice('Recopie IOMAP mise à jour.')
       onSaved()
       return true
     } catch (cause) {
@@ -86,7 +87,8 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
     <header><h3 id="instance-mapping-title">{role === 'IO' ? 'Mapping IOMAP' : 'Mapping Modbus'}</h3></header>
     <div className="modbus-wiring-scroll">
       {io && config ? (instances.length ? <IoCopyManager state={io} busy={busy} blocked={false} error={error}
-        notice={notice} update={updateCopy} scope={{ instances: instances.map(row => row.name) }}/>
+        notice={notice} update={updateCopy} scope={{ instances: instances.map(row => row.name) }}
+        onOpenCode={onOpenCode && (block => { onClose(); onOpenCode(block) })}/>
         : <p>Instance introuvable.</p>) : error ? <p role="alert" className="comm-alert">{error}</p> : <p role="status">Chargement du mapping…</p>}
     </div>
   </section></div>

@@ -15,9 +15,10 @@ export type CopyState = {
 export type CopyAction = { action: 'assign'; iomap: string; instance: string; member: string; direction: Direction; channel_key?: string; create?: boolean }
   | { action: 'disconnect' | 'delete'; iomap: string }
 
-export default function IoCopyManager({ state, busy, blocked, error, notice, update, scope }: {
+export default function IoCopyManager({ state, busy, blocked, error, notice, update, scope, onOpenCode }: {
   state?: CopyState; busy: boolean; blocked: boolean; error: string; notice: string; update: (action: CopyAction) => Promise<boolean>
   scope?: { instances: string[] }
+  onOpenCode?: (block: string) => void
 }) {
   const [pickedInstance, setInstance] = useState(''), [memberName, setMember] = useState(''), [iomap, setIomap] = useState('')
   const [create, setCreate] = useState(false), [newName, setNewName] = useState('')
@@ -26,6 +27,7 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
   const [folder, setFolder] = useState('')
   const [graph, setGraph] = useState(false)
   const [armed, setArmed] = useState<string | null>(null)
+  const [savedBlock, setSavedBlock] = useState('')
   const instanceInput = useRef<HTMLSelectElement>(null)
   const instances = state?.instances.filter(item => !scope || scope.instances.includes(item.name)) || []
   const instance = pickedInstance || (scope ? instances[0]?.name || '' : '')
@@ -72,7 +74,7 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
     <div className="rack-io-mapping">
       <p>Choisis une instance, son membre E/S et une variable IOMAP compatible. Tu peux aussi relier un canal du rack à cette variable dans la même opération.</p>
       {error && <p role="alert" className="comm-alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
+      {notice && <p role="status">{notice}{savedBlock && onOpenCode && <> <button type="button" className="comm-btn" onClick={() => onOpenCode(savedBlock)}>Voir {savedBlock} ↗</button></>}</p>}
       {blocked && <p className="comm-warning">Enregistre ou annule d’abord le brouillon du rack ci-dessous.</p>}
       {!state && !error && <p role="status">Chargement des instances et des variables E/S…</p>}
       {state && <>
@@ -94,6 +96,7 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
           if (!member || !selected || disabled || targetBusy || manual) return
           if (replacing && !window.confirm(`Remplacer la recopie existante vers ${replacing.target} ?`)) return
           void update({ action: 'assign', iomap: selected.name, instance, member: member.name, direction: sense, channel_key: channel?.key, create }).then(saved => {
+            if (saved) setSavedBlock(block)
             if (saved && create) { setCreate(false); setIomap(selected.name); setNewName('') }
           })
         }}>
@@ -138,13 +141,16 @@ export default function IoCopyManager({ state, busy, blocked, error, notice, upd
             const channels = hardware?.channels.filter(item => item.variable.toLowerCase() === path(variable.name)) || []
             return <tr key={variable.name}>
               <td><code>{variable.name}</code><small>{variable.iec_type}{variable.missing && ' · retirée de la déclaration manuelle'}</small></td>
-              <td>{links.length ? links.map((copy, index) => <div key={index} className="rack-io-copy-line"><b>{copy.block}{!copy.generated && ' · non générée'}</b><code>{copy.st}</code></div>) : 'Aucune recopie'}</td>
+              <td>{links.length ? links.map((copy, index) => <div key={index} className="rack-io-copy-line">
+                {onOpenCode ? <button type="button" className="comm-btn" onClick={() => onOpenCode(copy.block)}>{copy.block} ↗</button> : <b>{copy.block}</b>}
+                {!copy.generated && <small>Recopie non générée</small>}<code>{copy.st}</code>
+              </div>) : 'Aucune recopie'}</td>
               <td>{channels.length ? channels.map(item => `${item.module} · ${item.label}`).join(', ') : '—'}</td>
               <td><div className="rack-io-row-actions">
                 {links.length === 1 && links[0].instance && <button type="button" className="comm-btn" disabled={disabled} onClick={() => edit(links[0])}>Modifier</button>}
-                {!!links.length && <button type="button" className="comm-btn" disabled={disabled} onClick={() => void update({ action: 'disconnect', iomap: variable.name })}>Retirer la recopie</button>}
+                {!!links.length && <button type="button" className="comm-btn" disabled={disabled} onClick={() => void update({ action: 'disconnect', iomap: variable.name }).then(saved => { if (saved) setSavedBlock(links.length === 1 ? links[0].block : '') })}>Retirer la recopie</button>}
                 <button type="button" className="comm-btn rack-io-danger" disabled={disabled} aria-label={`Supprimer ${variable.name}`} onClick={() => {
-                  if (window.confirm(`Supprimer GVL_IOMAP.${variable.name} du projet ? Ses recopies générées et ses liaisons dans le XML du rack seront retirées.`)) void update({ action: 'delete', iomap: variable.name })
+                  if (window.confirm(`Supprimer GVL_IOMAP.${variable.name} du projet ? Ses recopies générées et ses liaisons dans le XML du rack seront retirées.`)) void update({ action: 'delete', iomap: variable.name }).then(saved => { if (saved) setSavedBlock(links.length === 1 ? links[0].block : '') })
                 }}>Supprimer</button>
               </div></td>
             </tr>

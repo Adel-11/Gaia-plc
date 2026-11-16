@@ -70,25 +70,32 @@ def instance_options(state):
 
 
 def copy_options(state, variables):
+    from backend.v2_gfc_mappings import connection_key, resolved_targets
+
     overrides = state.get('st_overrides') or {}
     manual = [name for name in ('GFC_IO_IN', 'GFC_IO_OUT', 'PLC_PRG') if overrides.get(name, {}).get('body') is not None]
     stored = state.get('program_membership') or {}
     eligible = eligible_instances(state)
+    targets = {block: resolved_targets(state, block, stored.get(block, eligible[block]))
+               for block in ('GFC_IO_IN', 'GFC_IO_OUT')}
     copies = []
-    for _, row, key in variable_rows(state):
+    for collection, row, key in variable_rows(state):
         target, direction = row.get('GVL_IO member'), variable_direction(row)
         if key not in variables or not target or not direction:
             continue
         instance = str(row.get('Instance') or row.get('instance_id') or '')
         block = copy_block(direction)
+        effective = targets[block].get(connection_key(collection, row), target)
         copies.append({'iomap': variables[key]['name'], 'instance': instance, 'target': target, 'block': block,
-                       'direction': direction, 'st': copy_statement(variables[key]['name'], target, direction),
+                       'direction': direction, 'st': copy_statement(variables[key]['name'], effective, direction),
                        'generated': block not in manual and (instance in stored.get(block, eligible[block])
                                      if instance else not stored)})
     return {'variables': list(variables.values()), 'instances': instance_options(state), 'copies': copies, 'manual_blocks': manual}
 
 
 def assign_copy(state, variable, instance_name, member_name, direction, *, include=True):
+    from backend.v2_gfc_mappings import connection_key
+
     instance = next((item for item in instance_options(state) if item['name'] == instance_name), None)
     member = next((item for item in (instance or {}).get('members', []) if item['name'] == member_name), None)
     if member is None:
@@ -129,6 +136,8 @@ def assign_copy(state, variable, instance_name, member_name, direction, *, inclu
                 'I/O type': row.get('I/O type') if variable_direction(row) else _io_type(kind, direction), 'IOMAP type': kind})
     if row.get('Slot') == 'VIRTUAL':
         row['direction'] = direction
+    collection = next((collection for collection, candidate, _ in rows if candidate is row), 'virtual_io')
+    state.get('gfc_copy_overrides', {}).get(block, {}).pop(connection_key(collection, row), None)
     if include:
         membership = freeze_membership(state)[block]
         if instance_name not in membership:

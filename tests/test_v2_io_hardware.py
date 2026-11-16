@@ -162,6 +162,12 @@ def test_delete_and_reassign_legacy_iomap_updates_program_and_rack(rack_client):
     assert created['hardware']['channels'][0]['variable'].endswith('.QA_IOMAP_NEW_FAULT')
     assert 'QA_IOMAP_NEW_FAULT : BOOL' in code('GVL_IOMAP')['declaration']
     assert 'GVL_IO.IO_DOSENSOR_1.INPUT_SENSOR_FAULT := GVL_IOMAP.QA_IOMAP_NEW_FAULT;' in code('GFC_IO_IN')['body']
+    refreshed = client.post('/api/v2/plc/preview', json={'mode': 'full'}, headers=headers).json()
+    assert not refreshed['errors'], refreshed
+    fresh_xml = client.get(f'/api/v2/plc/download/{refreshed["token"]}')
+    xml_root = etree.fromstring(fresh_xml.content)
+    assert xml_root.xpath('//*[local-name()="pou"][@name="GFC_IO_IN"]/*[local-name()="body"]//*[contains(text(),"GVL_IOMAP.QA_IOMAP_NEW_FAULT;")]')
+    assert not xml_root.xpath('//*[local-name()="pou"][@name="GFC_COM_IN"]//*[contains(text(),"GVL_IOMAP.QA_IOMAP_NEW_FAULT;")]')
 
 
 def test_real_gaia_cards_create_move_unlink_and_export_scoped_xml(rack_client):

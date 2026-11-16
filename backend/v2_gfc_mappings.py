@@ -9,7 +9,13 @@ from backend.v2_fb_flow import variable_options
 from backend.v2_manual_comm import pair_key
 
 COPY_BLOCKS = {"GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC"}
-INPUT_DIRECTIONS = {"Client to PLC", "Equipment to PLC"}
+COPY_COLLECTIONS = ("tcp_points", "rtu_channels", "io_channels", "virtual_io", "exchange_calls")
+
+
+def modbus_inbound(row):
+    return str(row.get("Direction") or row.get("direction") or "").strip().casefold() in {
+        "client to plc", "equipment to plc",
+    }
 
 
 def instance_name(row):
@@ -20,6 +26,61 @@ def connection_key(collection, row):
     if collection in {"tcp_points", "rtu_channels"} and (pair := pair_key(row)):
         return collection + ":pair:" + "|".join(pair)
     return f"{collection}:{row.get('id', '')}"
+
+
+def _connection_targets(state):
+    slots = defaultdict(set)
+    for collection in COPY_COLLECTIONS:
+        for row in state.get(collection, []):
+            if collection == "exchange_calls":
+                target = ("GFC_EXC", row.get("instance_a_id"), row.get("instance_b_id"),
+                          row.get("function_id") or row.get("FC"), row.get("parameter_b_value"))
+            elif collection in {"io_channels", "virtual_io"}:
+                target = (str(row.get("I/O type") or "").upper(), instance_name(row), row.get("GVL_IO member"))
+                if not row.get("GVL_IO member") or not row.get("GVL_IOMAP variable"):
+                    continue
+            else:
+                target = (modbus_inbound(row), instance_name(row), row.get("GVL_COM variable"))
+            slots[connection_key(collection, row)].add(target)
+    return slots
+
+
+def reconcile_copy_choices(previous, state):
+    """Keep reviewed corrections attached to the mapping they were made against."""
+    overrides = state.get("gfc_copy_overrides")
+    if not previous or not overrides or not any(previous.get(key) != state.get(key) for key in COPY_COLLECTIONS):
+        return
+    before, after = _connection_targets(previous), _connection_targets(state)
+    for choices in overrides.values():
+        for key in list(choices):
+            if key not in after or before.get(key) != after[key]:
+                del choices[key]
+
+
+def manual_mapping_changes(previous, state, blocks=COPY_BLOCKS):
+    """Identify saved manual bodies that mask changes to generated copies."""
+    from backend.v2_codesys import _st
+    from backend.v2_plc import build_program
+
+    overrides = state.get("st_overrides") or {}
+    manual = {block for block in blocks if overrides.get(block, {}).get("body") is not None}
+    if not manual or not any(previous.get(key) != state.get(key) for key in COPY_COLLECTIONS):
+        return []
+
+    def automatic(project):
+        from copy import deepcopy
+
+        project = deepcopy(project)
+        for block in manual:
+            project.get("st_overrides", {}).get(block, {}).pop("body", None)
+        return build_program(project)
+
+    before, after = automatic(previous), automatic(state)
+    return [
+        f"{block} utilise un corps ST manuel. Pour appliquer ces recopies, adapte ce corps ou rétablis le ST généré."
+        for block in sorted(manual) if block in before and block in after
+        and _st(before[block]["element"]) != _st(after[block]["element"])
+    ]
 
 
 def is_dip1500(state, row):
@@ -111,17 +172,15 @@ def review(state, block, included):
 
     if role == "COM":
         for row in state.get("tcp_points", []):
-            if ((row.get("Direction") or row.get("direction")) in INPUT_DIRECTIONS) == inbound:
+            if modbus_inbound(row) == inbound:
                 register = _tcp_address_expression(row, state)
                 if register:
                     add("tcp_points", row, "GVL_MODBUS." + register, row.get("GVL_COM variable"))
         rtu = state.get("rtu_channels", [])
-        editable = set().union(*editable_rtu_banks(state, rtu))
         for row in rtu:
-            if ((row.get("Direction") or row.get("direction")) in INPUT_DIRECTIONS) == inbound:
+            if modbus_inbound(row) == inbound:
                 register, target = row.get("GVL_MODBUS variable"), row.get("GVL_COM variable")
-                if row.get("manual_scalar") or row.get("mapped_bank_type") or is_dip1500(state, row) or connection_key("rtu_channels", row) in editable:
-                    add("rtu_channels", row, register, target)
+                add("rtu_channels", row, register, target)
     elif role == "IO":
         for collection in ("io_channels", "virtual_io"):
             for row in state.get(collection, []):

@@ -6,7 +6,7 @@ import WorkspacePanel from './WorkspacePanel'
 import RackIoMapping from './RackIoMapping'
 
 type Row = Record<string, any>
-type Props = { project: any; csrf: string; onSaved: () => void; onOpenInstance?: (id: string) => void }
+type Props = { project: any; csrf: string; onSaved: () => void; onOpenInstance?: (id: string) => void; onOpenCode?: (block: string) => void }
 type Edit = { collection: string; row?: Row; values: Row; title: string; creating?: boolean }
 type Field = { key: string; label: string; type?: string; options?: string[]; locked?: boolean }
 type Preview = { token?: string; errors?: any[]; warnings?: any[]; changes?: any[]; manual_actions?: any[]; configuration?: any }
@@ -37,7 +37,7 @@ const fieldSets: Record<string, Field[]> = {
   io_modules: [{key:'Description',label:'Description'},{key:'CODESYS device',label:'CODESYS device'},{key:'Status',label:'Status'}]
 }
 
-export default function V2Communications({ project, csrf, onSaved, onOpenInstance }: Props) {
+export default function V2Communications({ project, csrf, onSaved, onOpenInstance, onOpenCode }: Props) {
   const [wiring, setWiring] = useState<'tcp' | 'rtu' | null>(null)
   const [section,setSection]=useState<'tcp'|'rtu'|'io'>('tcp'), [filter,setFilter]=useState('all'), [query,setQuery]=useState(''), [addressSearch,setAddressSearch]=useState('')
   const [edit,setEdit]=useState<Edit|null>(null), [busy,setBusy]=useState(false), [error,setError]=useState(''), [preview,setPreview]=useState<Preview|null>(null), [drafts,setDrafts]=useState<any[]>([]), [selectedClient,setSelectedClient]=useState('all'), [selectedLine,setSelectedLine]=useState('all'), [selectedSlot,setSelectedSlot]=useState(''), [config,setConfig]=useState<any>(null), [draftRevision,setDraftRevision]=useState<number|null>(null)
@@ -129,7 +129,7 @@ export default function V2Communications({ project, csrf, onSaved, onOpenInstanc
       {table(['Instance','Table','Equipment address','Channel offset','Name / scale','Unit','Mapped path','FC',''],visibleRtu.map((r,i)=><tr key={r.id??i}><td><button className="comm-link" onClick={()=>openInstance(instanceOf(r))}>{instName(instanceOf(r))}</button></td><td>{str(alias(r,'Table','table'))}</td><td><code>{str(alias(r,'Equipment address','address'))}</code></td><td>{str(alias(r,'Channel offset','channel_offset'))}</td><td>{str(alias(r,'Name','name'))} · {str(alias(r,'Scale','scale'))}</td><td>{str(alias(r,'Unit','unit'))}</td><td>{str(alias(r,'GVL_MODBUS variable'))}</td><td>{str(alias(r,'FC','Function'))}</td><td>{editBtn('rtu_channels',r)}</td></tr>),!visibleRtu.length,9)}
     </>}
     {section==='io'&&<>
-      <RackIoMapping csrf={csrf} revision={project?.revision} onSaved={onSaved}/>
+      <RackIoMapping csrf={csrf} revision={project?.revision} onSaved={onSaved} onOpenCode={onOpenCode}/>
       <WorkspacePanel id="communications:io-wiring" title="Créer une variable GVL_IOMAP"><section className="comm-io-create" aria-label="Créer une variable GVL_IOMAP">
         <label>Nom du signal<input value={ioName} onChange={e=>setIoName(e.target.value)} placeholder="Ex. Pump_Run_Feedback"/></label>
         <label>Type IEC<select value={ioType} onChange={e=>setIoType(e.target.value)}>{['BOOL','BYTE','WORD','DWORD','SINT','USINT','INT','UINT','DINT','UDINT','REAL','LREAL'].map(x=><option key={x}>{x}</option>)}</select></label>

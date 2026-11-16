@@ -358,6 +358,9 @@ def register_exchange_routes(app,get_session,current_user,csrf):
             # Check the real final POU, including preserved custom source, just
             # as the object editor does. Existing unrelated issues stay visible.
             if body.action!='layout':
+                from backend.v2_gfc_mappings import reconcile_copy_choices, manual_mapping_changes
+                reconcile_copy_choices(current, state)
+                warnings.extend(manual_mapping_changes(current, state, {"GFC_EXC"}))
                 from backend.v2_plc import build_program, serialize_program
                 from backend.v2_plc_validation import validate_xml
                 old_objects=build_program(current)
