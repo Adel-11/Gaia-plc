@@ -5,6 +5,7 @@ import WorkspacePanel from './WorkspacePanel'
 import { LogicFields, SignalFields } from './GenericObjects'
 import type { GenericMember, GenericSignal, GenericTemplate } from './GenericObjects'
 import { StEditor, draftVariables } from './V2ObjectView'
+import TypeDraftExcel, { type ExcelDraft } from './TypeDraftExcel'
 
 type Member = { id?: string; name: string; iec_type: string; section?: string; default_value?: string | number | boolean | null; unit?: string; comment?: string }
 type Dut = { role: string; members: Member[] }
@@ -97,6 +98,19 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   const [duts, setDuts] = useState<Dut[]>(() => startingBlocks('Equipment', panelView).duts), [selectedRole, setSelectedRole] = useState('PA')
   const [processingCode, setProcessingCode] = useState(() => startingBlocks('Equipment', panelView).processing), [customCode, setCustomCode] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null), [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const [excelUndo, setExcelUndo] = useState<ExcelDraft | null>(null)
+  const [excelNotice, setExcelNotice] = useState('')
+  const excelDraft: ExcelDraft = { name, kind, generic_template_id: generic?.id,
+    signals: equipment ? signals : [],
+    duts: generic ? (roles[kind] || roles.Equipment).map(role => ({ role, members: logicMembers.filter(member => member.role === role) })) : duts,
+    modbus_template: modbusTemplate }
+  const loadExcelDraft = (draft: ExcelDraft) => {
+    setSignals(draft.signals)
+    if (generic) setLogicMembers(draft.duts.flatMap(dut => dut.members.map(member => ({ ...member, role: dut.role } as GenericMember))))
+    else setDuts(draft.duts as Dut[])
+    setModbusTemplate(draft.modbus_template)
+    setPreview(null); setReviewed(false); setError('')
+  }
   const variableInput = useMemo(() => ({ signals, members: generic ? logicMembers : [] }), [signals, generic, logicMembers])
   const [variableResult, setVariableResult] = useState<{ input: typeof variableInput; duts?: Dut[]; error?: string }>()
   const liveResult = variableResult?.input === variableInput ? variableResult : undefined
@@ -150,6 +164,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     setCustomCode('')
   }
   const changeKind = (next: string) => {
+    setExcelUndo(null); setExcelNotice('')
     setModbusTemplate([])
     setKind(next)
     resetBlocks(next)
@@ -172,6 +187,7 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
   }
   const source = generic ? `generic:${generic.id}` : copyFrom ? `type:${copyFrom}` : ''
   const selectSource = (value: string) => {
+    setExcelUndo(null); setExcelNotice('')
     setModbusTemplate([])
     const template = value.startsWith('generic:')
       ? genericTemplates.find(item => item.id === value.slice('generic:'.length)) : undefined
@@ -224,9 +240,13 @@ export default function V2TypeWizard({ project, csrf, onCreated, onCancel, onCha
     setStep(current => Math.min(reviewStep, current + 1))
   }
   return <section className="type-wizard" aria-label="Créer un type">
-    <header className="tw-header"><div><span className="tw-eyebrow">TYPE CREATION</span><h2>Créer un type</h2><p>Définis les variables et la logique de l’équipement.</p></div><div className="tw-header-actions"><button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>← Retour</button><button type="button" className="tw-secondary" disabled={busy} onClick={onCancel}>Annuler la création</button></div></header>
+    <header className="tw-header"><div><span className="tw-eyebrow">TYPE CREATION</span><h2>Créer un type</h2><p>Définis les variables et la logique de l’équipement.</p></div><div className="tw-header-actions">
+      <TypeDraftExcel draft={excelDraft} csrf={csrf} busy={busy} onBusy={setBusy} onError={setError}
+        onImport={(draft, summary) => { setExcelUndo(excelDraft); loadExcelDraft(draft); setExcelNotice(`${summary.signals} signaux, ${summary.members} membres DUT et ${summary.mappings} mappings importés. Tu peux les modifier avant de créer le type.`) }}/>
+      <button type="button" className="tw-secondary" disabled={busy} onClick={step === 0 ? onCancel : () => { setStep(s => Math.max(0, s - 1)); setError('') }}>← Retour</button><button type="button" className="tw-secondary" disabled={busy} onClick={onCancel}>Annuler la création</button></div></header>
     <nav className="tw-steps" aria-label="Creation steps">{steps.map((stepName, i) => <button type="button" key={stepName} className={i === step ? 'current' : i < step ? 'complete' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => { if (i <= step) setStep(i) }}><span>{i + 1}</span>{stepName}</button>)}</nav>
     <div className="tw-content">
+      {excelNotice && <div className="tw-excel-notice" role="status"><span>{excelNotice}</span>{excelUndo && <button type="button" disabled={busy} onClick={() => { loadExcelDraft(excelUndo); setExcelUndo(null); setExcelNotice('Import annulé. La saisie précédente est restaurée.') }}>Annuler l’import</button>}</div>}
       {step === 0 && <WorkspacePanel id="wizard-identity" title="Identité du type"><div className="tw-fields">
         <label>Nom du type<input autoFocus value={name} onChange={e => { setName(e.target.value); setPreview(null); setReviewed(false) }} placeholder="e.g. PumpUnit" aria-invalid={Boolean(name && !validIdentity)}/>{name && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && <small>Use an IEC identifier: letters, numbers, underscores; start with a letter or underscore.</small>}{duplicate && <small className="tw-error-text">A type with this name already exists.</small>}</label>
         <label>Kind<select value={kind} onChange={e => changeKind(e.target.value)}><option>Equipment</option><option>Functional unit (UPI)</option></select></label>
