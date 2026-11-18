@@ -213,3 +213,17 @@ def test_custom_code_reference_blocks_instance_deletion_atomically(workspace):
     after = client.get('/api/v2/project').json()
     assert after['revision'] == before['revision']
     assert after['instances'] == before['instances'] and after['tcp_points'] == before['tcp_points']
+
+
+@pytest.mark.parametrize('name', ['UPI_LOCAL_FUXA', 'UPI_LOCAL_HMI', 'UPI_LOCAL_WEBVISU'])
+def test_upi_deletion_keeps_exchange_function_parameters(name):
+    from backend.v2_instance_deletion import delete_instance
+    from backend.v2_workspace import _compatibility_errors
+
+    state = copy.deepcopy(load_pack())
+    before = set(_compatibility_errors(state))
+    functions = copy.deepcopy(state['exchange_functions'])
+    delete_instance(state, next(instance for instance in state['instances'] if instance['name'] == name))
+    assert state['exchange_functions'] == functions
+    assert not any(name in {call.get('instance_a_id'), call.get('instance_b_id')} for call in state['exchange_calls'])
+    assert not set(_compatibility_errors(state)) - before

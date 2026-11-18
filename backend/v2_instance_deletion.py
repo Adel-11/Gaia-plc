@@ -138,18 +138,23 @@ def _check_surviving_code(state, name, iomap, modbus):
     mappings = {("GVL_IOMAP", key.casefold()) for key in iomap} | {("GVL_MODBUS", key.casefold()) for key in modbus}
     removed_globals = {"GVL_IOMAP": iomap, "GVL_MODBUS": {key.casefold() for key in modbus}}
     for label, obj in build_program(state).items():
+        parameters = {variable.get("name", "").casefold() for variable in obj["element"].xpath(
+            './p:interface/p:inputVars/p:variable | ./p:interface/p:outputVars/p:variable | ./p:interface/p:inOutVars/p:variable',
+            namespaces={"p": NS[1:-1]})}
         # Documentation is descriptive. Only the effective source/declaration can block deletion.
         source = "\n".join(obj["element"].xpath(
             './/*[local-name()="ST" or local-name()="InterfaceAsPlainText"]/*[local-name()="xhtml"]/text()'))
         source += "\n" + "\n".join(obj["element"].xpath('.//*[local-name()="simpleValue"]/@value'))
-        if symbols & _identifiers(source):
+        if (symbols - parameters) & _identifiers(source):
             raise ValueError(f"{label} référence encore {name} dans du ST personnalisé. Retire cette référence avant de supprimer l’instance.")
         code = _st_code(source)
+        if re.search(r"\bGVL_(?:COM|IO|PA|EXC)\s*\.\s*(?:" + "|".join(map(re.escape, symbols)) + r")\b", code, re.I):
+            raise ValueError(f"{label} référence encore {name} dans du ST personnalisé. Retire cette référence avant de supprimer l’instance.")
         for gvl, variable in mappings:
             if re.search(r"\b" + re.escape(gvl) + r"\s*\.\s*" + re.escape(variable) + r"\b", code, re.I):
                 raise ValueError(f"{label} utilise encore {gvl}.{variable} dans du ST personnalisé.")
         for variable in obj["element"].iter(NS + "variable"):
-            if variable.get("name", "").casefold() in symbols:
+            if variable.get("name", "").casefold() in symbols - parameters:
                 raise ValueError(f"{label} déclare encore une variable de {name} dans du ST personnalisé.")
             if variable.get("name", "").casefold() in removed_globals.get(label, set()):
                 raise ValueError(f"{label} déclare encore {variable.get('name')} dans du ST personnalisé.")
