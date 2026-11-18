@@ -9,3 +9,5 @@
 .tw-generated-table { min-width: 360px; }
 .tw-generated-members { margin: 0 0 12px; }
 .tw-generated-members p { margin: 0 0 6px; color: var(--tw-muted); }
+
+.tw-excel-stepbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 0 14px;margin-bottom:16px;border-bottom:1px solid var(--gaia-line,#e0d8c5)}.tw-excel-stepbar strong,.tw-excel-stepbar small{display:block}.tw-excel-stepbar strong{font-size:16px;color:var(--gaia-ink,#282c25)}.tw-excel-stepbar small{margin-top:3px;color:var(--gaia-muted,#626557);font-size:13px}.tw-excel-warnings{margin:0 0 16px;padding:10px 14px;border:1px solid var(--gaia-line,#e0d8c5);border-radius:10px;background:var(--gaia-paper,#fffdf7)}.tw-excel-warnings summary{cursor:pointer;font-weight:600}.tw-excel-warnings p{color:var(--gaia-muted,#626557);font-size:14px}.tw-excel-warnings ul{max-height:230px;overflow:auto;padding-left:22px;line-height:1.7}@media(max-width:600px){.tw-excel-stepbar{align-items:flex-start}.tw-excel-stepbar small{max-width:26ch}}

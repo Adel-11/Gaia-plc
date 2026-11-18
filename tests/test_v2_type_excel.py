@@ -68,6 +68,15 @@ def test_excel_roundtrip_fills_a_real_type_preview_without_persisting(tmp_path, 
         members = result['draft']['duts'][0]['members']
         assert members[0]['default_value'] == 'FALSE' and members[1]['default_value'] == '0'
         assert result['draft']['modbus_template'][1]['order'] == 'MSW_FIRST'
+        scoped = draft.model_copy(update={'scope': 'signals'})
+        template = client.post('/api/v2/types/draft/excel?empty=true', headers=headers, json=scoped.model_dump())
+        assert template.status_code == 200 and '_signals.xlsx' in template.headers['content-disposition']
+        step_result = client.post('/api/v2/types/draft/excel/import', headers=headers,
+                                  files={'file': ('signals.xlsx', template.content)}, data={'current': scoped.model_dump_json()})
+        assert step_result.status_code == 200, step_result.text
+        assert step_result.json()['draft']['signals'] == []
+        assert step_result.json()['draft']['duts'] == draft.duts
+        assert step_result.json()['draft']['modbus_template'] == draft.modbus_template
         preview = client.post('/api/v2/types/preview', headers=headers, json={
             'revision': before['revision'], 'name': draft.name, 'kind': draft.kind,
             'signals': result['draft']['signals'], 'duts': result['draft']['duts'],
@@ -184,3 +193,57 @@ def test_all_documented_examples_can_be_imported_together(state):
     assert imported['summary']['signals'] == 12
     assert imported['summary']['mappings'] == 8
     assert imported['summary']['members'] > 25
+
+
+@pytest.mark.parametrize('scope,prefix', [('signals', 'SIGNALS_'), ('duts', 'DUT_'), ('modbus', 'MODBUS_')])
+def test_step_templates_only_include_the_step_and_document_every_column(state, scope, prefix):
+    draft = filled_draft().model_copy(update={'scope': scope})
+    wb = openpyxl.load_workbook(io.BytesIO(export_draft(state, draft, empty=True)))
+    data_sheets = [sheet for sheet in wb if sheet.title not in {'TYPE', '_Choices', 'GUIDE', 'EXAMPLES'}]
+    assert data_sheets and all(sheet.title.startswith(prefix) for sheet in data_sheets)
+    assert wb['TYPE'].sheet_state == 'hidden'
+    visible = [sheet.title for sheet in wb if sheet.sheet_state == 'visible']
+    assert visible[-2:] == ['EXAMPLES', 'GUIDE']
+    guide = list(wb['GUIDE'].iter_rows(min_row=2, values_only=True))
+    for sheet in data_sheets:
+        assert not any(any(value is not None for value in row) for row in sheet.iter_rows(min_row=2, values_only=True))
+        for cell in sheet[1]:
+            if cell.value:
+                assert any(sheet.title in str(row[0]) and row[1] == cell.value and row[2] and row[3] and row[4] for row in guide)
+    if scope == 'modbus':
+        assert [cell.value for cell in wb['MODBUS_TCP'][1]] == ['Table', 'COM member', 'Direction', 'Word order']
+        choices = list(wb['_Choices'].iter_rows(values_only=True))
+        column = choices[0].index('COM_Members')
+        assert 'TCP_OUTPUT_COMMAND' in [row[column] for row in choices[1:]]
+
+
+@pytest.mark.parametrize('scope,changed', [('signals', 'signals'), ('duts', 'duts'), ('modbus', 'modbus_template')])
+def test_step_import_preserves_every_other_step_even_from_legacy_full_file(state, scope, changed):
+    current = filled_draft().model_copy(update={'scope': scope})
+    empty_full = export_draft(state, Draft(name=current.name))
+    result = import_draft(empty_full, state, current)['draft']
+    for field in ('signals', 'duts', 'modbus_template'):
+        if field != changed:
+            assert result[field] == getattr(current, field)
+    if changed == 'duts':
+        assert not any(dut['members'] for dut in result[changed])
+    else:
+        assert result[changed] == []
+    source = export_draft(state, Draft(scope='signals'))
+    if scope != 'signals':
+        with pytest.raises(ValueError, match='étape Signaux'):
+            import_draft(source, state, current)
+
+
+def test_signal_labels_are_normalized_visibly_and_collisions_are_atomic(state):
+    current = Draft(scope='signals')
+    wb = openpyxl.load_workbook(io.BytesIO(export_draft(state, current)))
+    wb['SIGNALS_TCP'].append(['L1-L2 Voltage', 'input', 'analog', 'REAL', 'V'])
+    result = import_draft(workbook_bytes(wb), state, current)
+    signal = result['draft']['signals'][0]
+    assert signal['name'] == 'L1_L2_Voltage' and signal['comment'] == 'L1-L2 Voltage'
+    assert len(result['warnings']) == 1 and 'L1_L2_Voltage' in result['warnings'][0]
+    wb['SIGNALS_TCP'].append(['L1 L2 Voltage', 'input', 'analog', 'REAL', 'V'])
+    with pytest.raises(ValueError, match='en double'):
+        import_draft(workbook_bytes(wb), state, current)
+    assert current.signals == []

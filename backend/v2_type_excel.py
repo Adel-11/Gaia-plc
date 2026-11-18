@@ -5,7 +5,9 @@ import copy
 import io
 import json
 import re
+import unicodedata
 import zipfile
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import Depends, File, Form, HTTPException, UploadFile
@@ -29,6 +31,7 @@ MAX_BYTES = 8 * 1024 * 1024
 SECTIONS = ["INPUT (field to plc)", "OUTPUT (plc to field)", "STATE", "PARAMETERS", "INTERNAL"]
 PREFIXES = ["INPUT", "OUTPUT", "STATE", "CMD", "SPARE", "COM", "HMI"]
 FB_TYPES = ["TON", "TOF", "TP", "R_TRIG", "F_TRIG", "CTU", "CTD", "CTUD", "DUT_Union_Real_Word"]
+SCOPE_LABELS = {"all": "Variables du type", "signals": "Signaux", "duts": "Blocs / DUT", "modbus": "Modbus"}
 # field, visible heading, explanation, choice list
 MEMBER_COLUMNS = [
     ("prefix", "Prefix", "Optional prefix. The generated member name is Prefix_Name.", "Prefixes"),
@@ -41,7 +44,7 @@ MEMBER_COLUMNS = [
     ("id", "ID", "Keep this identity when renaming an inherited member. Leave blank for a new member.", None),
 ]
 SIGNAL_COLUMNS = [
-    ("name", "Name", "Signal name. Creates the associated IO/COM, INT and (for inputs) EXC members.", None),
+    ("name", "Name", "Signal name or label. Spaces, accents and punctuation are converted to an IEC identifier on import; the original label is retained as a comment.", None),
     ("direction", "Direction", "input = field to PLC. output = PLC to field.", "Directions"),
     ("kind", "Signal kind", "digital requires BOOL. analog uses the supported numeric types.", "Signal_Kinds"),
     ("iec_type", "IEC type", "Choose a type compatible with the signal kind and protocol.", "Signal_Types"),
@@ -65,7 +68,13 @@ MAPPING_COLUMNS = [
 ]
 
 
+def _mapping_columns(protocol):
+    return MAPPING_COLUMNS if protocol == "rtu" else [column for column in MAPPING_COLUMNS
+                                                      if column[0] in {"table", "member", "inbound", "order"}]
+
+
 class Draft(BaseModel):
+    scope: Literal["all", "signals", "duts", "modbus"] = "all"
     name: str = Field(default="", max_length=128)
     kind: str = "Equipment"
     generic_template_id: str | None = None
@@ -120,6 +129,8 @@ def _sheet(wb, name, columns, rows, *, transport=None):
         ws.column_dimensions[letter].width = 39 if title in {"Comment", "IO or COM name", "COM member", "Comment group"} else 25
         if title == "ID":
             ws.column_dimensions[letter].hidden = True
+        if name == "MODBUS_RTU" and columns[col - 1][0] in {"bank", "bank_type", "function", "channel"}:
+            ws.column_dimensions[letter].hidden = not any(row.get(columns[col - 1][0]) not in (None, "") for row in rows)
         if choice:
             if choice == "Signal_Types":
                 family = "Signal_IO" if transport == "io" else "Signal_Modbus"
@@ -140,6 +151,7 @@ def _sheet(wb, name, columns, rows, *, transport=None):
         for col, (field, _, _, _) in enumerate(columns, 1):
             _cell(ws.cell(rownum, col), row.get(field))
     for row in ws.iter_rows(min_row=2, max_row=max(16, len(rows) + 1), max_col=len(columns)):
+        ws.row_dimensions[row[0].row].height = 34
         for cell in row:
             cell.font = Font(name="Calibri", size=12, color="263F32")
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -156,41 +168,109 @@ def _split_member(member, prefixes):
     return {**member, "prefix": prefix, "name": name[len(prefix) + 1:] if prefix else name}
 
 
-def export_draft(state, draft):
+def _selected_sheets(draft):
+    signals = {"SIGNALS_IO", "SIGNALS_TCP", "SIGNALS_RTU"}
+    duts = {"DUT_" + role for role in ROLES[draft.kind]}
+    modbus = {"MODBUS_TCP", "MODBUS_RTU"}
+    if draft.scope == "signals" and draft.kind != "Equipment":
+        raise ValueError("L’étape Signaux est réservée aux équipements.")
+    return {"signals": signals, "duts": duts, "modbus": modbus,
+            "all": (signals if draft.kind == "Equipment" else set()) | duts | modbus}[draft.scope]
+
+
+def _guide(wb, draft, selected):
+    columns = [("sheet", "Sheet", "Worksheet to fill.", None), ("column", "Column", "Column to fill.", None),
+               ("purpose", "Function and purpose", "How this field is used.", None),
+               ("rules", "Rules", "Accepted values and validation rules.", None),
+               ("example", "Example", "Fictitious value, for illustration only.", None)]
+    rows = [
+        {"sheet": SCOPE_LABELS[draft.scope], "column": "Utilisation", "purpose": "Remplis les feuilles de saisie de ce fichier, puis importe-le depuis le menu Excel de cette même étape.",
+         "rules": "L’import remplit les formulaires modifiables. GUIDE, EXAMPLES et TYPE ne créent aucune variable. Le code ST et les autres étapes sont conservés."},
+        {"column": "Remplacement", "purpose": "Une feuille présente remplace sa partie de la saisie. Une feuille vide la vide. Une feuille absente laisse cette partie inchangée.",
+         "rules": "Vérifie les données à l’écran avant de créer le type. Annuler l’import restaure la saisie précédente de cette étape."},
+        {"column": "Exemples", "purpose": "EXAMPLES contient des variables factices. Copie uniquement les lignes voulues sous les en-têtes de la feuille de saisie correspondante.",
+         "rules": "Les exemples ne sont jamais importés automatiquement. En Modbus, remplace les membres COM factices par ceux que tu as déclarés aux étapes précédentes."},
+        {"column": "Héritage", "purpose": "Les colonnes ID masquées permettent de renommer une variable héritée en conservant son identité.",
+         "rules": "Conserve les ID existants. Pour ajouter une variable, laisse ID vide. Sélectionne le même objet générique dans l’assistant."},
+    ]
+    rules = {
+        "prefix": ("Facultatif. Choisir un préfixe ou en saisir un valide. Le séparateur _ est ajouté automatiquement.", "INPUT + PRESSURE → INPUT_PRESSURE"),
+        "name": ("Obligatoire. Lettres, chiffres et _. Ne commence pas par un chiffre. Nom unique dans son DUT, sans mot réservé IEC.", "PRESSURE"),
+        "iec_type": ("Obligatoire. Utilise la liste compatible avec le contexte. Un DUT connu, ARRAY[0..9] OF WORD et STRING(80) peuvent être saisis dans les DUT.", "REAL / BOOL / TON / ARRAY[0..9] OF WORD"),
+        "section": ("Facultatif. Regroupe les déclarations sous un commentaire dans le DUT. Ce n’est pas une section VAR_INPUT ou VAR_OUTPUT.", "INPUT (field to plc)"),
+        "default_value": ("Facultatif. Littéral ST compatible avec le type ; ne pas saisir de formule Excel. Zéro et FALSE sont conservés.", "0 / FALSE / T#5s / 'Pump'"),
+        "unit": ("Facultatif. Unité affichée en documentation ; ne convertit pas la mesure.", "V / A / Hz / bar"),
+        "comment": ("Facultatif. Texte de documentation repris avec la variable.", "Tension entre les phases L1 et L2"),
+        "id": ("Identifiant technique masqué. Conserver pour un renommage ; laisser vide pour une nouvelle variable.", "Ne pas modifier un ID existant"),
+        "direction": ("Obligatoire : input = terrain vers PLC ; output = PLC vers terrain. Indépendant du rôle client/serveur Modbus.", "input"),
+        "kind": ("Obligatoire : digital impose BOOL ; analog propose les types numériques acceptés pour le protocole.", "analog / digital"),
+        "io_name": ("Facultatif. Identifiant IEC strict, avec _ et sans espaces ni tirets. Vide = nom généré avec INPUT_/OUTPUT_ et le protocole pour COM.", "TCP_INPUT_L1_L2_VOLTAGE"),
+        "internal_name": ("Facultatif. Identifiant IEC strict. Vide = nom du signal. Crée le membre correspondant du DUT INT.", "L1_L2_VOLTAGE"),
+        "exchange_name": ("Facultatif, seulement pour une entrée. Identifiant IEC strict. Vide = OUTPUT_ suivi du nom du signal.", "OUTPUT_L1_L2_VOLTAGE"),
+        "table": ("Obligatoire. coils/discrete_inputs pour BOOL ; input_registers/holding_registers pour les mots. Les tables en lecture seule imposent le sens.", "input_registers"),
+        "member": ("Obligatoire. Membre COM déjà déclaré, sans COM. devant. Un REAL issu d’un signal Modbus est une union : utiliser .Real_value.", "TCP_INPUT_VOLTAGE.Real_value"),
+        "inbound": ("Obligatoire. inbound = client TCP ou équipement RTU vers PLC ; outbound = PLC vers client/équipement. TCP : DI/IR outbound. RTU : DI/IR inbound.", "inbound / outbound"),
+        "register": ("RTU : obligatoire, entier de 0 à 65535, base zéro, décimal ou hexadécimal 0x. Pas de chevauchement ; un REAL occupe deux registres. TCP : laisser vide.", "20 / 0x0014"),
+        "order": ("LSW_FIRST = mot faible en premier ; MSW_FIRST = mot fort en premier. Pour les formats de 32 bits, dont REAL, concerne les deux registres.", "MSW_FIRST"),
+        "bank": ("Option avancée RTU, normalement vide. Pour conserver un tableau PLC existant, préciser un élément et aussi son type dans PLC bank type.", "Device_Registers[0]"),
+        "bank_type": ("Seulement si PLC bank est renseigné. Tableau commençant à 0, de WORD, BOOL ou BYTE ; taille compatible avec l’index et le format.", "ARRAY[0..9] OF WORD"),
+        "function": ("Option avancée d’un canal RTU existant. Laisser vide pour une nouvelle configuration.", "3"),
+        "channel": ("Libellé facultatif d’un canal RTU existant. Laisser vide pour une nouvelle configuration.", "Read_measurements"),
+    }
+    families = [("SIGNALS_", SIGNAL_COLUMNS), ("DUT_", MEMBER_COLUMNS), ("MODBUS_", MAPPING_COLUMNS)]
+    for prefix, fields in families:
+        sheets = sorted(name for name in selected if name.startswith(prefix))
+        if not sheets:
+            continue
+        for field, title, description, _ in fields:
+            field_sheets = [name for name in sheets if not name.startswith("MODBUS_") or
+                            field in {column[0] for column in _mapping_columns(name[7:].lower())}]
+            if not field_sheets:
+                continue
+            rule, example = rules[field]
+            if prefix == "SIGNALS_" and field == "name":
+                rule = "Obligatoire. Un libellé comme L1-L2 Voltage est accepté : espaces, tirets et accents sont convertis en nom IEC. La conversion est affichée à l’import et le libellé est conservé en commentaire. Deux noms convertis identiques sont refusés."
+                example = "L1-L2 Voltage → L1_L2_Voltage"
+            if prefix == "SIGNALS_" and field == "iec_type":
+                rule = "digital : BOOL. analog IO : BYTE, WORD, DWORD, INT, UINT, DINT, UDINT, REAL, LREAL. analog TCP/RTU : WORD, INT, UINT, REAL. Un REAL Modbus crée un membre COM union avec .Real_value."
+            rows.append({"sheet": ", ".join(field_sheets), "column": title, "purpose": description,
+                         "rules": rule, "example": example})
+    guide = _sheet(wb, "GUIDE", columns, rows)
+    for letter, width in zip("ABCDE", (28, 24, 58, 85, 43)):
+        guide.column_dimensions[letter].width = width
+    for index in range(2, len(rows) + 2):
+        guide.row_dimensions[index].height = 84
+
+
+def export_draft(state, draft, *, empty=False):
     if draft.kind not in ROLES:
         raise ValueError("Catégorie de type inconnue.")
     wb = Workbook()
     wb.remove(wb.active)
     choices = _choices(state, draft)
-    guide = _sheet(wb, "GUIDE", [("topic", "Sujet", "", None), ("text", "Mode d’emploi", "", None)], [
-        {"topic": "Un fichier par type", "text": "Remplis les feuilles de variables puis importe le classeur dans Créer un type > Excel. Les données restent modifiables avant la création."},
-        {"topic": "Signaux", "text": "SIGNALS_IO, SIGNALS_TCP et SIGNALS_RTU créent les membres IO/COM, INT et EXC associés. Ne recopie pas ces membres dans les feuilles DUT : celles-ci contiennent les variables supplémentaires."},
-        {"topic": "Mapping Modbus", "text": "MODBUS_TCP et MODBUS_RTU sont des modèles génériques : COM member désigne une variable COM existante. Les adresses TCP et les connexions réelles se configurent sur les instances."},
-        {"topic": "Remplacement", "text": "Chaque feuille présente remplace sa partie du formulaire. Une feuille vide la vide. Une feuille supprimée laisse cette partie inchangée. EXAMPLES et GUIDE ne sont jamais importées. Le code ST et les dossiers sont conservés."},
-        {"topic": "Héritage", "text": "Conserve les colonnes ID masquées lors du renommage de variables héritées. Importe dans l’assistant avec le même objet générique sélectionné. Pour une nouvelle variable, laisse ID vide."},
-        {"topic": "Listes", "text": "Utilise les listes déroulantes. Pour les types complexes, tu peux saisir ARRAY[0..9] OF WORD, STRING(80) ou un DUT du projet. L’import contrôle les types et les doublons."},
-        {"topic": "Aide", "text": "Survole les en-têtes pour les explications en anglais. EXAMPLES couvre les rôles DUT, les types IEC, les signaux IO/TCP/RTU, les tables et les ordres de mots."},
-    ])
-    guide.column_dimensions["A"].width = 26
-    guide.column_dimensions["B"].width = 110
-    for i in range(2, 9):
-        guide.row_dimensions[i].height = 58
+    selected = _selected_sheets(draft)
+    _guide(wb, draft, selected)
     _sheet(wb, "TYPE", [("key", "Field", "Context only; select identity and inheritance in the browser.", None), ("value", "Value", "Context only.", None)], [
         {"key": "format", "value": FORMAT}, {"key": "name", "value": draft.name},
         {"key": "kind", "value": draft.kind}, {"key": "generic_template_id", "value": draft.generic_template_id or ""},
+        {"key": "scope", "value": draft.scope},
     ])
     for protocol in ("io", "tcp", "rtu"):
-        if draft.kind == "Equipment":
+        if "SIGNALS_" + protocol.upper() in selected:
             _sheet(wb, "SIGNALS_" + protocol.upper(), SIGNAL_COLUMNS,
-                   [row for row in draft.signals if row.get("transport", "io") == protocol], transport=protocol)
+                   [] if empty else [row for row in draft.signals if row.get("transport", "io") == protocol], transport=protocol)
     for role in ROLES[draft.kind]:
+        if "DUT_" + role not in selected:
+            continue
         members = next((dut.get("members", []) for dut in draft.duts if dut.get("role") == role), [])
-        _sheet(wb, "DUT_" + role, MEMBER_COLUMNS, [_split_member(row, choices["Prefixes"]) for row in members])
+        _sheet(wb, "DUT_" + role, MEMBER_COLUMNS, [] if empty else [_split_member(row, choices["Prefixes"]) for row in members])
     for protocol in ("tcp", "rtu"):
-        _sheet(wb, "MODBUS_" + protocol.upper(), MAPPING_COLUMNS,
-               [{**row, "inbound": "inbound" if row.get("inbound") else "outbound"}
+        if "MODBUS_" + protocol.upper() not in selected:
+            continue
+        _sheet(wb, "MODBUS_" + protocol.upper(), _mapping_columns(protocol),
+               [] if empty else [{**row, "inbound": "inbound" if row.get("inbound") else "outbound"}
                 for row in draft.modbus_template if row.get("protocol") == protocol])
-    _examples(wb, choices)
+    _examples(wb, choices, selected)
     lists = wb.create_sheet("_Choices")
     for col, (name, values) in enumerate(choices.items(), 1):
         lists.cell(1, col, name)
@@ -199,21 +279,29 @@ def export_draft(state, draft):
         letter = get_column_letter(col)
         wb.defined_names.add(DefinedName(name, attr_text=f"'_Choices'!${letter}$2:${letter}${max(2, len(values) + 1)}"))
     lists.sheet_state = "hidden"
-    wb.active = wb.sheetnames.index("SIGNALS_IO" if draft.kind == "Equipment" else "DUT_COM")
+    wb["TYPE"].sheet_state = "hidden"
+    order = [name for name in wb.sheetnames if name in selected] + ["EXAMPLES", "GUIDE", "TYPE", "_Choices"]
+    for index, name in enumerate(order):
+        wb.move_sheet(name, offset=index - wb.sheetnames.index(name))
+    wb.active = next(index for index, name in enumerate(wb.sheetnames) if name in selected)
     output = io.BytesIO()
     wb.save(output)
     wb.close()
     return output.getvalue()
 
 
-def _examples(wb, choices):
+def _examples(wb, choices, selected):
     ws = wb.create_sheet("EXAMPLES")
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = "C4AB73"
     ws.append(["Exemples uniquement. Copie les lignes utiles vers la feuille indiquée. Cette feuille n’est jamais importée."])
+    ws.merge_cells("A1:J1")
     def section(title, columns, rows):
+        if title not in selected and not (title.startswith("DUT members:") and "DUT_INT" in selected):
+            return
         ws.append([])
         ws.append([title])
+        ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=len(columns))
         ws.append([col[1] for col in columns])
         for row in rows:
             ws.append([row.get(col[0]) for col in columns])
@@ -250,12 +338,13 @@ def _examples(wb, choices):
             rows.append({"table": table, "member": member, "inbound": "inbound" if inbound else "outbound",
                          "register": ("0x0006" if i == 3 else i * 2) if protocol == "rtu" else None,
                          "order": "LSW_FIRST" if i % 2 == 0 else "MSW_FIRST"})
-        section("MODBUS_" + protocol.upper(), MAPPING_COLUMNS, rows)
+        section("MODBUS_" + protocol.upper(), _mapping_columns(protocol), rows)
     ws.freeze_panes = "B2"
     for col in range(1, 11):
         ws.column_dimensions[get_column_letter(col)].width = 28
     ws.column_dimensions["F"].width = 60
     for row in ws:
+        ws.row_dimensions[row[0].row].height = 34
         for cell in row:
             cell.font = Font(name="Calibri", size=12, color="263F32")
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -313,6 +402,21 @@ def _message(error):
     return str(error)
 
 
+def _normalize_signal_name(row, location, warnings):
+    original = row.get("name", "")
+    if not original or _identifier(original):
+        return
+    ascii_name = unicodedata.normalize("NFKD", original).encode("ascii", "ignore").decode()
+    name = re.sub(r"[^A-Za-z0-9_]+", "_", ascii_name).strip("_")
+    if not name:
+        raise ValueError(f"{location} : indique un nom contenant des lettres ou des chiffres.")
+    if not _identifier(name):
+        name = "SIGNAL_" + name
+    row["name"] = name
+    row["comment"] = row.get("comment") or original
+    warnings.append(f"{location} : « {original} » → « {name} ».")
+
+
 def _combined_type(state, draft):
     declarations, _, _ = _declared(Variables(signals=draft.signals), state)
     result = copy.deepcopy(draft.duts)
@@ -347,19 +451,27 @@ def _import_workbook(wb, state, current):
     draft = current.model_copy(deep=True)
     if draft.kind not in ROLES:
         raise ValueError("Catégorie de type inconnue.")
+    selected = _selected_sheets(draft)
     if "TYPE" in wb.sheetnames:
-        meta = dict(wb["TYPE"].iter_rows(min_row=2, max_row=5, max_col=2, values_only=True))
+        meta = dict(wb["TYPE"].iter_rows(min_row=2, max_row=6, max_col=2, values_only=True))
         if meta.get("format") != FORMAT:
             raise ValueError("Format de classeur inconnu. Télécharge le modèle depuis le menu Excel de création de type.")
         if meta.get("kind") and meta["kind"] != draft.kind:
             raise ValueError(f"Ce classeur concerne {meta['kind']}. Choisis d’abord cette catégorie dans l’assistant.")
         if meta.get("generic_template_id") and meta["generic_template_id"] != draft.generic_template_id:
             raise ValueError("Choisis le même objet générique que celui du classeur avant de l’importer.")
+        file_scope = meta.get("scope") or "all"
+        if file_scope not in SCOPE_LABELS:
+            raise ValueError("Étape Excel inconnue. Télécharge le modèle de l’étape courante.")
+        if draft.scope != "all" and file_scope not in {"all", draft.scope}:
+            raise ValueError(f"Ce classeur concerne l’étape {SCOPE_LABELS[file_scope]}. Ouvre le menu Excel de cette étape pour l’importer.")
     known_types = {dut["name"] for typ in state.get("types", []) for dut in typ.get("duts", [])}
     known_types.update(f"DUT_{role}_{draft.name}" for role in ROLES[draft.kind] if _identifier(draft.name))
-    replaced = []
+    replaced, warnings = [], []
     for protocol in ("io", "tcp", "rtu"):
         sheet = "SIGNALS_" + protocol.upper()
+        if sheet not in selected:
+            continue
         rows = _rows(wb, sheet, SIGNAL_COLUMNS, 100)
         if rows is None:
             continue
@@ -370,6 +482,7 @@ def _import_workbook(wb, state, current):
             location = f"{sheet} ligne {row.pop('_row')}"
             try:
                 row = {key: _text(value) for key, value in row.items()}
+                _normalize_signal_name(row, location, warnings)
                 row["id"] = row.get("id") or str(uuid4())
                 row["transport"] = protocol
                 row["iec_type"] = row.get("iec_type", "").upper()
@@ -382,6 +495,8 @@ def _import_workbook(wb, state, current):
     by_role = {dut["role"]: dut for dut in draft.duts}
     for role in ("PA", "COM", "EXC", "IO", "INT"):
         sheet = "DUT_" + role
+        if sheet not in selected:
+            continue
         rows = _rows(wb, sheet, MEMBER_COLUMNS, 1000)
         if rows is None:
             continue
@@ -404,7 +519,8 @@ def _import_workbook(wb, state, current):
             parsed.append(row)
         by_role[role] = {"role": role, "members": parsed}
         replaced.append(sheet)
-    draft.duts = [by_role.get(role, {"role": role, "members": []}) for role in ROLES[draft.kind]]
+    if draft.scope in {"all", "duts"}:
+        draft.duts = [by_role.get(role, {"role": role, "members": []}) for role in ROLES[draft.kind]]
     if len(draft.signals) > 100:
         raise ValueError("Maximum 100 signaux au total.")
     typ = _combined_type(state, draft)
@@ -421,6 +537,8 @@ def _import_workbook(wb, state, current):
             raise ValueError(f"DUT_{dut['role']} : nom en double, éventuellement déjà déclaré dans SIGNALS. Garde une seule déclaration par variable.")
     for protocol in ("tcp", "rtu"):
         sheet = "MODBUS_" + protocol.upper()
+        if sheet not in selected:
+            continue
         rows = _rows(wb, sheet, MAPPING_COLUMNS, 1000)
         if rows is None:
             continue
@@ -447,32 +565,34 @@ def _import_workbook(wb, state, current):
         draft.modbus_template = [row for row in draft.modbus_template if row.get("protocol") != protocol] + parsed
         replaced.append(sheet)
     if not replaced:
-        raise ValueError("Aucune feuille de variables reconnue. Télécharge le modèle depuis le menu Excel de création de type.")
+        raise ValueError(f"Aucune feuille de variables reconnue pour l’étape {SCOPE_LABELS[draft.scope]}. Télécharge le modèle de cette étape.")
     if len(draft.modbus_template) > 1000:
         raise ValueError("Maximum 1 000 lignes de mappage Modbus au total.")
-    try:
-        validate_rows(state, typ, [Mapping.model_validate(row) for row in draft.modbus_template])
-    except ValueError as exc:
-        raise ValueError(f"MODBUS_TCP / MODBUS_RTU : {exc}") from exc
+    if draft.scope in {"all", "modbus"}:
+        try:
+            validate_rows(state, typ, [Mapping.model_validate(row) for row in draft.modbus_template])
+        except ValueError as exc:
+            raise ValueError(f"MODBUS_TCP / MODBUS_RTU : {exc}") from exc
     if draft.generic_template_id and sum(len(dut["members"]) for dut in draft.duts) > 150:
         raise ValueError("Maximum 150 variables supplémentaires pour un objet hérité.")
-    return {"draft": draft.model_dump(), "sheets": replaced,
+    return {"draft": draft.model_dump(), "sheets": replaced, "warnings": warnings,
             "summary": {"signals": len(draft.signals), "members": sum(len(dut["members"]) for dut in draft.duts),
                         "mappings": len(draft.modbus_template)}}
 
 
 def register_type_excel_routes(app, get_session, current_user, csrf):
     @app.post("/api/v2/types/draft/excel")
-    def download(draft: Draft, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+    def download(draft: Draft, empty: bool = False, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
         state = store.load_project(session)
         if state is None:
             raise HTTPException(503, "Projet indisponible.")
         try:
-            data = export_draft(state, draft)
+            data = export_draft(state, draft, empty=empty)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         name = re.sub(r"[^A-Za-z0-9_-]", "_", draft.name) or "TEMPLATE"
-        return Response(data, media_type=MIME, headers={"Content-Disposition": f'attachment; filename="TYPE_{name}_variables.xlsx"', "Cache-Control": "no-store"})
+        suffix = "variables" if draft.scope == "all" else draft.scope
+        return Response(data, media_type=MIME, headers={"Content-Disposition": f'attachment; filename="TYPE_{name}_{suffix}.xlsx"', "Cache-Control": "no-store"})
 
     @app.post("/api/v2/types/draft/excel/import")
     def upload(file: UploadFile = File(...), current: str = Form(...),
