@@ -124,7 +124,7 @@ def test_instance_preview_apply_stale_token_and_delete_releases_rows(tmp_path, m
         stale=client.post("/api/v2/instances/preview",headers=headers,json={"revision":project["revision"],"action":"delete","instance_id":"DIP1500_2"})
         assert stale.status_code==409
         delete=client.post("/api/v2/instances/preview",headers=headers,json={"revision":current["revision"],"action":"delete","instance_id":"DIP1500_2"})
-        assert delete.status_code==200 and any("release" in c for c in delete.json()["changes"])
+        assert delete.status_code==200 and any("Libérer" in c for c in delete.json()["changes"])
         saved=client.post("/api/v2/instances/apply",headers=headers,json={"token":delete.json()["token"]})
         assert saved.status_code==200
         final=client.get("/api/v2/project").json()

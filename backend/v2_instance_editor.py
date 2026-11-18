@@ -362,26 +362,8 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
                 inst["comment"] = body.comment.strip()
                 changes.append(f"Mettre à jour le commentaire de {_name(inst)}")
             elif body.action == "delete":
-                name = _name(inst)
-                from backend.v2_program_membership import freeze_membership
-                freeze_membership(state)
-                impact = {k: sum(1 for r in state.get(k, []) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) == name) for k in ("pa_values","io_channels","tcp_points","rtu_channels")}
-                state["instances"] = [i for i in state["instances"] if _name(i) != name]
-                for key in impact:
-                    if key=="io_channels":
-                        for row in state.get(key,[]):
-                            if str(row.get("instance_id",row.get("Instance","")))==name:
-                                prior=row.pop("_assignment_prior_status",None)
-                                for field in ("Instance","instance_id","GVL_IO member","member_name"):
-                                    row[field]=None
-                                if prior is not None: row["Status"]=prior
-                    else: state[key] = [r for r in state.get(key,[]) if str(r.get("instance_id",r.get("instance",r.get("Instance","")))) != name]
-                state["rtu_slaves"] = [r for r in state.get("rtu_slaves",[]) if str(r.get("instance_id",r.get("Instance",""))) != name]
-                _clear_virtual_io_for_instance(state, name)
-                _remove_program_membership(state, name)
-                state["exchange_calls"] = [r for r in state.get("exchange_calls",[]) if name not in {str(r.get("instance_a_id") or r.get("Instance A")),str(r.get("instance_b_id") or r.get("Instance B"))}]
-                state.get("exchange_layout", {}).get("nodes", {}).pop(name, None)
-                changes.append(f"Delete {name}; release {impact['tcp_points']} TCP points, {impact['rtu_channels']} RTU channels, {impact['io_channels']} I/O assignments, and {impact['pa_values']} PA values")
+                from backend.v2_instance_deletion import delete_instance
+                changes.extend(delete_instance(state, inst))
             elif body.action == "pa":
                 existing_rows=[x for x in state.get("pa_values",[]) if str(x.get("instance_id",x.get("instance",x.get("Instance"))))==_name(inst)]
                 saved_by_member={str(x.get("Member",x.get("member_name"))):x for x in existing_rows}
@@ -491,6 +473,11 @@ def register_instance_editor_routes(app, get_session, current_user, csrf):
         if errors: return {"token":None,"errors":errors,"warnings":warnings,"changes":changes}
         if body.action != "create":
             _sync_workbooks(state)
+        if body.action == "delete":
+            from backend.v2_workspace import _compatibility_errors
+            added_errors = set(_compatibility_errors(state)) - set(_compatibility_errors(current))
+            if added_errors:
+                return {"token": None, "errors": sorted(added_errors), "warnings": warnings, "changes": changes}
         if body.action != "create":
             from backend.v2_engine import validate_project
             baseline_errors=set(validate_project(current).get("errors",[]))

@@ -125,6 +125,8 @@ def test_existing_pack_type_reports_instances_then_exchange_signatures():
 
 
 def test_delete_linked_instance_releases_rows_and_legacy_exchange_calls(workspace):
+    from backend.v2_addressing import free_addresses
+
     app, client, headers = workspace
     with app.state.session_factory() as session:
         state = store.load_project(session)
@@ -133,6 +135,8 @@ def test_delete_linked_instance_releases_rows_and_legacy_exchange_calls(workspac
         store.save_project(session, state, 'delete-author', state['revision'])
         session.commit()
     before = client.get('/api/v2/project').json()
+    released_point = next(row for row in before['tcp_points'] if row.get('Instance') == 'DIP1500_1')
+    assert free_addresses(before, released_point['Client'], released_point['table'], 1) != [released_point['address']]
     review = client.post('/api/v2/instances/preview', headers=headers, json={
         'revision': before['revision'], 'action': 'delete', 'instance_id': 'DIP1500_1'}).json()
     assert review['token'], review
@@ -144,3 +148,68 @@ def test_delete_linked_instance_releases_rows_and_legacy_exchange_calls(workspac
     for key in ('tcp_points', 'rtu_channels', 'rtu_slaves', 'pa_values'):
         assert not any((r.get('instance_id') or r.get('instance') or r.get('Instance')) == 'DIP1500_1' for r in state[key])
     assert not any('DIP1500_1' in {r.get('instance_a_id'), r.get('instance_b_id'), r.get('Instance A'), r.get('Instance B')} for r in state['exchange_calls'])
+    objects = plc.build_program(state)
+    modbus = objects['GVL_MODBUS']['element']
+    assert not modbus.xpath("./p:variable[starts-with(@name,'DIP1500_')]", namespaces={'p': plc.PLC})
+    assert 'DIP1500_1' not in {row['name'] for row in state['instances']}
+    assert free_addresses(state, released_point['Client'], released_point['table'], 1) == [released_point['address']]
+
+
+def test_instance_deletion_cleans_iomap_rack_and_export(workspace):
+    from backend.v2_io_copies import assign_copy, remove_copy, variable_rows
+    from backend.v2_io_hardware import STATE_KEY
+    from backend.v2_type_deletion import code_identifiers
+    from tests.test_v2_io_hardware import RACK
+
+    app, client, headers = workspace
+    with app.state.session_factory() as session:
+        state = store.load_project(session)
+        for _, row, key in list(variable_rows(state)):
+            if row.get('GVL_IO member') == 'GVL_IO.IO_DOSENSOR_1.INPUT_SIGNAL':
+                remove_copy(state, key)
+        assign_copy(state, {'name': 'QA_SENSOR_ANALOG', 'iec_type': 'DWORD', 'direction': 'input'},
+                    'DOSENSOR_1', 'INPUT_SIGNAL', 'input')
+        state[STATE_KEY] = {'filename': 'rack.xml', 'application': 'Application', 'xml': RACK.decode()}
+        store.save_project(session, state, 'delete-author', state['revision'])
+        session.commit()
+    before = client.get('/api/v2/project').json()
+    deleted_iomap = {str(row.get('GVL_IOMAP variable')).split('.')[-1].casefold()
+                     for key in ('io_channels', 'virtual_io') for row in before.get(key, [])
+                     if (row.get('Instance') or row.get('instance_id')) == 'DOSENSOR_1'}
+    review = client.post('/api/v2/instances/preview', headers=headers, json={
+        'revision': before['revision'], 'action': 'delete', 'instance_id': 'DOSENSOR_1'}).json()
+    assert review.get('token'), review
+    # Preview does not mutate the live project.
+    assert any(row['name'] == 'DOSENSOR_1' for row in client.get('/api/v2/project').json()['instances'])
+    assert client.post('/api/v2/instances/apply', headers=headers, json={'token': review['token']}).status_code == 200
+    with app.state.session_factory() as session:
+        state = store.load_project(session)
+    assert state['types'] == before['types']
+    assert not any(row.get('Instance') == 'DOSENSOR_1' for row in state['virtual_io'])
+    assert 'Application.GVL_IOMAP.IOMAP_DI_FAULT_DOSENSOR_1' not in state[STATE_KEY]['xml']
+    assert all('DOSENSOR_1' not in members for members in state['program_membership'].values())
+    objects = plc.build_program(state)
+    for name, obj in objects.items():
+        source = '\n'.join(obj['element'].xpath(
+            './/*[local-name()="ST" or local-name()="InterfaceAsPlainText"]/*[local-name()="xhtml"]/text()'))
+        assert not {'com_dosensor_1', 'io_dosensor_1', 'pa_dosensor_1', 'exc_dosensor_1', 'fb_dosensor_1'} & code_identifiers(source), name
+    gvl = objects['GVL_IOMAP']['element']
+    assert not deleted_iomap & {row.get('name').casefold() for row in gvl.findall(plc.NS + 'variable')}
+    export = client.post('/api/v2/plc/preview', headers=headers, json={'mode': 'full'}).json()
+    assert export.get('token') and not export['errors'], export
+
+
+def test_custom_code_reference_blocks_instance_deletion_atomically(workspace):
+    app, client, headers = workspace
+    with app.state.session_factory() as session:
+        state = store.load_project(session)
+        state.setdefault('generated_custom_code', {})['PLC_PRG'] = 'GVL_COM.COM_DIP1500_1.HMI_INPUT_LOCAL_REQUEST := TRUE;'
+        store.save_project(session, state, 'delete-author', state['revision'])
+        session.commit()
+    before = client.get('/api/v2/project').json()
+    review = client.post('/api/v2/instances/preview', headers=headers, json={
+        'revision': before['revision'], 'action': 'delete', 'instance_id': 'DIP1500_1'}).json()
+    assert not review['token'] and any('PLC_PRG' in message for message in review['errors'])
+    after = client.get('/api/v2/project').json()
+    assert after['revision'] == before['revision']
+    assert after['instances'] == before['instances'] and after['tcp_points'] == before['tcp_points']

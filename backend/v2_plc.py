@@ -406,6 +406,12 @@ def _generated_objects(objs, state, sources):
     equips.sort(key=lambda pair: (str(pair[1].get("folder", "")), str(pair[0].get("name", ""))))
     upis.sort(key=lambda pair: (str(pair[1].get("folder", "")), str(pair[0].get("name", ""))))
     valid_instances={str(i.get("name") or i.get("id")) for i,_ in equips+upis}
+    removed_modbus = {name.casefold() for name in state.get("removed_modbus_variables", [])}
+    modbus = objs.get("GVL_MODBUS", {}).get("element")
+    if modbus is not None:
+        for variable in list(modbus.findall(NS + "variable")):
+            if variable.get("name", "").casefold() in removed_modbus:
+                modbus.remove(variable)
     instance_name_by_id={str(i.get("id")):str(i.get("name") or i.get("id")) for i,_ in equips+upis}
     def included(block, identifier):
         value=str(identifier or "")
