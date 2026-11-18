@@ -165,3 +165,22 @@ def test_inherited_member_renaming_keeps_processing_links(state):
         {**member, 'role': dut['role']} for dut in result['duts'] for member in dut['members']])
     _, body = materialize(state, inheritance)
     assert 'INTERN.LOCAL_MODE' in body and 'INTERN.MODE_LOCAL' not in body
+
+
+def test_all_documented_examples_can_be_imported_together(state):
+    draft = Draft(name='QA_ALL_EXAMPLES')
+    wb = openpyxl.load_workbook(io.BytesIO(export_draft(state, draft)))
+    target = None
+    for values in wb['EXAMPLES'].iter_rows(values_only=True):
+        if all(value is None for value in values):
+            target = None
+        elif values[0] in wb.sheetnames:
+            target = values[0]
+        elif str(values[0]).startswith('DUT members:'):
+            target = 'DUT_INT'
+        elif target and values[0] not in {'Name', 'Prefix', 'Table'}:
+            wb[target].append(values)
+    imported = import_draft(workbook_bytes(wb), state, draft)
+    assert imported['summary']['signals'] == 12
+    assert imported['summary']['mappings'] == 8
+    assert imported['summary']['members'] > 25

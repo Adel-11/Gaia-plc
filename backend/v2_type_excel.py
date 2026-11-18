@@ -218,13 +218,16 @@ def _examples(wb, choices):
         for row in rows:
             ws.append([row.get(col[0]) for col in columns])
     for protocol in ("io", "tcp", "rtu"):
-        rows = [{"name": f"{kind.upper()}_{direction.upper()}", "direction": direction, "kind": kind,
+        rows = [{"name": f"{kind.upper()}_{direction.upper()}_{protocol.upper()}", "direction": direction, "kind": kind,
                  "iec_type": "BOOL" if kind == "digital" else "DWORD" if protocol == "io" else "REAL",
                  "comment": "Optional explicit member names; otherwise leave the name override columns blank."}
                 for direction in ("input", "output") for kind in ("analog", "digital")]
+        if protocol == "io":
+            rows[0].update(io_name="INPUT_PRESSURE_RAW", internal_name="PRESSURE_RAW",
+                           exchange_name="OUTPUT_PRESSURE_RAW", unit="counts")
         section("SIGNALS_" + protocol.upper(), SIGNAL_COLUMNS, rows)
     for role in ("PA", "COM", "EXC", "IO", "INT"):
-        section("DUT_" + role, MEMBER_COLUMNS, [{"prefix": "INPUT" if role == "IO" else "", "name": "MY_VARIABLE",
+        section("DUT_" + role, MEMBER_COLUMNS, [{"prefix": "INPUT" if role == "IO" else "", "name": "MY_VARIABLE_" + role,
                 "iec_type": "REAL", "section": "PARAMETERS" if role == "PA" else "INTERNAL", "default_value": "0.0", "unit": "bar"}])
     section("DUT members: all scalar types and common complex declarations", MEMBER_COLUMNS,
             [{"name": "VALUE_" + kind, "iec_type": kind, "comment": "Choose the appropriate DUT role."} for kind in sorted(IEC_SCALARS)] + [
@@ -236,11 +239,18 @@ def _examples(wb, choices):
                 {"name": "DELAY", "iec_type": "TIME", "default_value": "T#5s"},
             ])
     for protocol in ("tcp", "rtu"):
-        section("MODBUS_" + protocol.upper(), MAPPING_COLUMNS, [
-            {"table": table, "member": "HMI_COMMAND" if table in {"coils", "discrete_inputs"} else "MEASURE",
-             "inbound": "inbound" if protocol == "rtu" or table == "coils" else "outbound",
-             "register": i * 2 if protocol == "rtu" else None, "order": "LSW_FIRST" if i % 2 == 0 else "MSW_FIRST"}
-            for i, table in enumerate(choices["Tables"])])
+        rows = []
+        for i, table in enumerate(choices["Tables"]):
+            inbound = (table in {"coils", "holding_registers"}) if protocol == "tcp" else (table in {"discrete_inputs", "input_registers"})
+            direction = "INPUT" if inbound else "OUTPUT"
+            kind = "DIGITAL" if table in {"coils", "discrete_inputs"} else "ANALOG"
+            member = f"{protocol.upper()}_{direction}_{kind}_{direction}_{protocol.upper()}"
+            if kind == "ANALOG":
+                member += ".Real_value"
+            rows.append({"table": table, "member": member, "inbound": "inbound" if inbound else "outbound",
+                         "register": ("0x0006" if i == 3 else i * 2) if protocol == "rtu" else None,
+                         "order": "LSW_FIRST" if i % 2 == 0 else "MSW_FIRST"})
+        section("MODBUS_" + protocol.upper(), MAPPING_COLUMNS, rows)
     ws.freeze_panes = "B2"
     for col in range(1, 11):
         ws.column_dimensions[get_column_letter(col)].width = 28
