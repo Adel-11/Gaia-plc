@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import VariableOptions, { variableFamily } from './VariableOptions'
 import './fb-mapping-editor.css'
 
 export type FbMapping = { id?: string; section: 'inputs' | 'outputs'; source: string; destination: string }
 export type VariableOption = { path: string; iec_type: string }
-type Props = { section: FbMapping['section']; mappings: FbMapping[]; variables: VariableOption[]; preserved: string; readOnly?: boolean; onChange: (mappings: FbMapping[]) => void }
+type Props = { section: FbMapping['section']; mappings: FbMapping[]; variables: VariableOption[]; preserved: string; readOnly?: boolean; csrf: string; name?: string; onChange: (mappings: FbMapping[]) => void }
 const norm = (value: string) => value.replace(/\s+/g, '').toUpperCase()
 const isExpression = (source: string) => /[()]|\b(?:AND|OR)\b/i.test(source)
 
@@ -37,9 +37,59 @@ function BooleanSource({ value, variables, onChange }: { value: string; variable
   </div>
 }
 
-export default function FbMappingEditor({ section, mappings, variables, preserved, readOnly, onChange }: Props) {
+export default function FbMappingEditor({ section, mappings, variables, preserved, readOnly, csrf, name = 'FB', onChange }: Props) {
   const [query, setQuery] = useState('')
   const [editingExpression, setEditingExpression] = useState<string | number | null>(null)
+  const excelInput = useRef<HTMLInputElement>(null)
+  const [excelBusy, setExcelBusy] = useState(false)
+  const [excelError, setExcelError] = useState('')
+  const [excelNotice, setExcelNotice] = useState('')
+  const [excelUndo, setExcelUndo] = useState<FbMapping[] | null>(null)
+  const excelContextId = useRef(0)
+  useEffect(() => {
+    excelContextId.current += 1
+    setExcelUndo(null); setExcelNotice(''); setExcelError(''); setExcelBusy(false)
+    return () => { excelContextId.current += 1 }
+  }, [name, section])
+  const excelContext = { name, section, mappings, variables }
+  const checked = async (response: Response) => {
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(typeof data.detail === 'string' ? data.detail : 'Impossible de traiter ce classeur.')
+    }
+    return response
+  }
+  const exportExcel = async (empty: boolean) => {
+    setExcelBusy(true); setExcelError('')
+    try {
+      const response = await checked(await fetch(`/api/v2/fb-mappings/excel${empty ? '?empty=true' : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(excelContext),
+      }))
+      const url = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = url; link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || `FB_${section}.xlsx`
+      link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (cause) { setExcelError(cause instanceof Error ? cause.message : 'Export Excel impossible.') }
+    finally { setExcelBusy(false) }
+  }
+  const importExcel = async (file: File) => {
+    if (readOnly) return
+    if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 8 * 1024 * 1024) { setExcelError('Choisis un fichier .xlsx de moins de 8 Mo.'); return }
+    const form = new FormData()
+    const contextId = excelContextId.current
+    form.append('file', file); form.append('current', JSON.stringify(excelContext))
+    setExcelBusy(true); setExcelError('')
+    try {
+      const response = await checked(await fetch('/api/v2/fb-mappings/excel/import', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: form }))
+      const result = await response.json()
+      if (contextId !== excelContextId.current) return
+      setExcelUndo(mappings.filter(mapping => mapping.section === section))
+      onChange([...mappings.filter(mapping => mapping.section !== section), ...result.mappings])
+      setQuery(''); setEditingExpression(null)
+      setExcelNotice(`${result.count} mapping(s) importé(s). Enregistre le FB pour appliquer les modifications.`)
+    } catch (cause) { if (contextId === excelContextId.current) setExcelError(cause instanceof Error ? cause.message : 'Import Excel impossible.') }
+    finally { if (contextId === excelContextId.current) setExcelBusy(false) }
+  }
   const rows = mappings.filter(mapping => mapping.section === section)
   const visible = rows.filter(mapping => `${mapping.source} ${mapping.destination}`.toLowerCase().includes(query.toLowerCase()))
   const external = variables.filter(variable => /^(PA|COM|HMI|EXC|IO)\./.test(variable.path))
@@ -64,8 +114,20 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
   return <section className="fb-map-section" aria-label={`${section} mappings`}>
     <header><div><h4>{section === 'inputs' ? 'Sources des entrées' : 'Sources des sorties'}</h4>
       <p>{section === 'inputs' ? 'PA, COM terrain, HMI, EXC et IO vers INTERN.' : 'INTERN vers COM, HMI, EXC et IO.'}</p></div>
-      {!readOnly && <button type="button" onClick={add} disabled={!sourceOptions.length || !destinationOptions.length}>＋ Ajouter un mapping</button>}
+      <div className="fb-map-actions">
+        <input hidden type="file" accept=".xlsx" ref={excelInput} aria-label={`Importer le mapping ${section} depuis Excel`}
+          onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importExcel(file) }}/>
+        <select className="fb-map-excel" aria-label={`Excel des ${section === 'inputs' ? 'entrées' : 'sorties'}`} value="" disabled={excelBusy}
+          onChange={event => { if (event.target.value === 'import') excelInput.current?.click(); else void exportExcel(event.target.value === 'template') }}>
+          <option value="">{excelBusy ? 'Patiente…' : 'Excel'}</option><option value="template">Télécharger le modèle</option><option value="export">Exporter ce mapping</option><option value="import" disabled={readOnly}>Importer ce mapping</option>
+        </select>
+        {!readOnly && <button type="button" onClick={add} disabled={!sourceOptions.length || !destinationOptions.length}>＋ Ajouter un mapping</button>}
+      </div>
     </header>
+    {excelError && <p className="fb-map-excel-error" role="alert">{excelError}</p>}
+    {excelNotice && <div className="fb-map-excel-notice" role="status"><span>{excelNotice}</span>{excelUndo && !readOnly && <button type="button" disabled={excelBusy} onClick={() => {
+      onChange([...mappings.filter(mapping => mapping.section !== section), ...excelUndo]); setExcelUndo(null); setExcelNotice('Import annulé. Le mapping précédent est restauré.'); setExcelError('')
+    }}>Annuler l’import</button>}</div>}
     <input aria-label={`Rechercher dans les mappings ${section}`} value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher une variable" className="fb-map-search"/>
     {preserved && <details className="fb-preserved"><summary>ST manuel</summary><pre>{preserved}</pre></details>}
     {visible.length ? <div className="fb-map-table-wrap"><table className="fb-map-table"><thead><tr><th>Source</th><th></th><th>Destination</th>{!readOnly && <th/>}</tr></thead><tbody>

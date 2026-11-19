@@ -59,6 +59,8 @@ def register_v2_routes(app, get_session, current_user, csrf):
     register_type_creation_routes(app, get_session, current_user, csrf)
     from backend.v2_type_excel import register_type_excel_routes
     register_type_excel_routes(app, get_session, current_user, csrf)
+    from backend.v2_fb_excel import register_fb_excel_routes
+    register_fb_excel_routes(app, current_user, csrf)
     from backend.v2_type_deletion import register_type_deletion_routes
     register_type_deletion_routes(app, get_session, current_user, csrf)
     register_instance_editor_routes(app, get_session, current_user, csrf)

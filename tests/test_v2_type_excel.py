@@ -199,7 +199,7 @@ def test_all_documented_examples_can_be_imported_together(state):
 def test_step_templates_only_include_the_step_and_document_every_column(state, scope, prefix):
     draft = filled_draft().model_copy(update={'scope': scope})
     wb = openpyxl.load_workbook(io.BytesIO(export_draft(state, draft, empty=True)))
-    data_sheets = [sheet for sheet in wb if sheet.title not in {'TYPE', '_Choices', 'GUIDE', 'EXAMPLES'}]
+    data_sheets = [sheet for sheet in wb if sheet.title not in {'TYPE', '_Choices', 'GUIDE', 'EXAMPLES', 'VARIABLES'}]
     assert data_sheets and all(sheet.title.startswith(prefix) for sheet in data_sheets)
     assert wb['TYPE'].sheet_state == 'hidden'
     visible = [sheet.title for sheet in wb if sheet.sheet_state == 'visible']

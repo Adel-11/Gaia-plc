@@ -1,10 +1,9 @@
 """Download the official Excel templates for the active PLC profile."""
-from functools import lru_cache
 import io
 import zipfile
 
 from fastapi import Depends, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 from backend import v2_engine as engine
 from backend import v2_store as store
@@ -21,12 +20,22 @@ TEMPLATES = {
 }
 
 
-@lru_cache(maxsize=len(TEMPLATES))
-def _hmi_template(path):
-    workbook = clean_template(engine._read_wb(path.read_bytes(), data_only=False))
+def _template_bytes(path, state):
+    from backend.v2_excel_plain import plain_xlsx
+    from backend.v2_excel_variables import project_variables
+    workbook = engine._read_wb(path.read_bytes(), data_only=False)
+    if is_hmi(state):
+        clean_template(workbook)
+    if path.name == 'TEMPLATE_TYPE.xlsx' and 'DUT_HMI' not in workbook.sheetnames:
+        from copy import deepcopy
+        hmi = workbook.copy_worksheet(workbook['DUT_COM'])
+        hmi.title = 'DUT_HMI'
+        hmi.data_validations = deepcopy(workbook['DUT_COM'].data_validations)
+    project_variables(workbook, state or {}, path.name)
     stream = io.BytesIO()
     workbook.save(stream)
-    return stream.getvalue()
+    workbook.close()
+    return plain_xlsx(stream.getvalue())
 
 
 def register_template_routes(app, get_session, current_user):
@@ -45,12 +54,12 @@ def register_template_routes(app, get_session, current_user):
 
     @app.get("/api/v2/templates.zip")
     def download_templates(session=Depends(get_session), user=Depends(current_user)):
-        panelview = is_hmi(store.load_project(session))
+        state = store.load_project(session)
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
             for name in TEMPLATES:
                 path = template_path(name)
-                archive.writestr(name, _hmi_template(path) if panelview else path.read_bytes())
+                archive.writestr(name, _template_bytes(path, state))
         return Response(stream.getvalue(), media_type="application/zip", headers={
             "Content-Disposition": 'attachment; filename="gaia-excel-templates.zip"',
             "Cache-Control": "no-store",
@@ -60,10 +69,5 @@ def register_template_routes(app, get_session, current_user):
     def download_template(filename: str, session=Depends(get_session), user=Depends(current_user)):
         path = template_path(filename)
         mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        if is_hmi(store.load_project(session)):
-            return Response(_hmi_template(path), media_type=mime, headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Cache-Control": "no-store",
-            })
-        return FileResponse(path, filename=filename, media_type=mime,
-                            headers={"Cache-Control": "no-store"})
+        return Response(_template_bytes(path, store.load_project(session)), media_type=mime, headers={
+            "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"})

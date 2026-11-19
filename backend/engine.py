@@ -610,7 +610,8 @@ def export_excel(state: dict) -> bytes:
     packed = json.dumps(state, ensure_ascii=False, default=str)
     for row, offset in enumerate(range(0, len(packed), 30000), start=1):
         meta.cell(row, 1, packed[offset:offset + 30000])
-    output = io.BytesIO(); wb.save(output); return output.getvalue()
+    from backend.v2_excel_plain import plain_xlsx
+    output = io.BytesIO(); wb.save(output); return plain_xlsx(output.getvalue())
 
 
 def _add_table(ws, name: str, columns: int, last_row: int):

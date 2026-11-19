@@ -65,6 +65,9 @@ def workbook_to_data(data: bytes, filename: str) -> dict:
         sst = ["".join(t.text or "" for t in item.iter(f"{main_ns}t")) for item in ss_root.findall(f"{main_ns}si")]
     sheets = []
     for sheet_el in workbook_root.findall(f"{main_ns}sheets/{main_ns}sheet"):
+        if sheet_el.attrib['name'] == 'VARIABLES':
+            # Generated reference catalogue; never project input data.
+            continue
         target = rels[sheet_el.attrib[f"{{http://schemas.openxmlformats.org/officeDocument/2006/relationships}}id"]]
         part = target.lstrip("/") if target.startswith("/") else str(Path("xl") / target)
         # Targets in Excel files are relative to xl/. Normalize ../ where present.
@@ -923,11 +926,12 @@ def export_workbook(state: dict, filename: str) -> bytes:
     for source_name in sheets:
         if source_name in wb.sheetnames or source_name in {"README", "LISTS"}:
             continue
-        if prototype is None:
+        origin = prototype or (wb['DUT_COM'] if source_name.startswith('DUT_') and 'DUT_COM' in wb.sheetnames else None)
+        if origin is None:
             continue
-        new_ws = wb.copy_worksheet(prototype)
+        new_ws = wb.copy_worksheet(origin)
         new_ws.title = source_name
-        new_ws.data_validations = copy.deepcopy(prototype.data_validations)
+        new_ws.data_validations = copy.deepcopy(origin.data_validations)
     if prototype_name:
         for ws in list(wb.worksheets):
             if ws.title == prototype_name and prototype_name not in sheets:
@@ -996,8 +1000,11 @@ def export_workbook(state: dict, filename: str) -> bytes:
             for c, value in enumerate(row, 1):
                 if c <= len(headers) and headers[c - 1] is not None:
                     ws.cell(r, target_columns[str(headers[c - 1])]).value = value
+    from backend.v2_excel_variables import project_variables
+    from backend.v2_excel_plain import plain_xlsx
+    project_variables(wb, state, filename)
     output = io.BytesIO(); wb.save(output)
-    return output.getvalue()
+    return plain_xlsx(output.getvalue())
 
 
 def export_fuxa(state: dict) -> bytes:

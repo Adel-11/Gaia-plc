@@ -4,6 +4,7 @@
 .fb-map-search{width:min(100%,420px);padding:10px;margin:10px 0;border:1px solid #c7d4dd;border-radius:5px;font-size:16px}
 
 .fb-map-section { --map-line: var(--gaia-line, #ded5df); border-color: var(--map-line); }
+.fb-map-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fb-map-actions .fb-map-excel{min-width:95px;max-width:240px;padding:7px 12px;border:1px solid var(--gaia-line,#ded5c5);border-radius:10px;background:var(--gaia-paper,#fffdf7);color:var(--gaia-ink,#282c25);cursor:pointer;font:inherit}.fb-map-actions .fb-map-excel:hover{background:var(--gaia-rail,#f0e8d7)}.fb-map-excel-error{margin:10px 12px;padding:10px;border:1px solid #e2b9ad;border-radius:8px;color:#8f3429;white-space:pre-wrap}.fb-map-excel-notice{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 12px;padding:10px;border:1px solid var(--gaia-line,#ded5c5);border-radius:8px}.fb-map-excel-notice button{padding:6px 10px;border:1px solid var(--gaia-line,#ded5c5);border-radius:8px;background:var(--gaia-paper,#fffdf7);cursor:pointer;color:inherit}
 .fb-map-section > header { flex-wrap: wrap; }
 .fb-map-section > header h4 { font-size: 14px; letter-spacing: 0; }
 .fb-map-search { width: min(calc(100% - 24px), 400px); margin: 10px 12px; }

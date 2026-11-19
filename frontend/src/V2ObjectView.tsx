@@ -262,7 +262,7 @@ END_VAR`
     const generated = renderMappingSection(data?.fb?.flow, mappings, section)
     const manual = section in manualSections ? manualSections[section] : originalManual?.[section]
     return <div className="ov-fb-mapping-pair">
-      {fbPanel(surface, `${section}:mapping`, `Mapping des ${title}`, <FbMappingEditor section={section} mappings={mappings} variables={variables.filter(variable => !/^ARRAY\s*\[|^DUT_/i.test(variable.iec_type) || mappings.some(row => row.source === variable.path || row.destination === variable.path))} preserved=""
+      {fbPanel(surface, `${section}:mapping`, `Mapping des ${title}`, <FbMappingEditor csrf={csrf} name={data?.fb?.name || objectId} section={section} mappings={mappings} variables={variables.filter(variable => !/^ARRAY\s*\[|^DUT_/i.test(variable.iec_type) || mappings.some(row => row.source === variable.path || row.destination === variable.path))} preserved=""
         readOnly={kind === 'instance' || manual != null}
         onChange={next => { setMappings(next); setError(''); invalidate() }}/>)}
       {fbPanel(surface, `${section}:st`, `ST des ${title}`, <>

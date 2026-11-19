@@ -1,6 +1,7 @@
-"""Official template downloads preserve every workbook feature and project revision."""
+"""Template downloads keep content and typed choices with plain, copyable mappings."""
 import io
 import zipfile
+import openpyxl
 
 from fastapi.testclient import TestClient
 
@@ -9,7 +10,7 @@ from backend.v2_templates import TEMPLATES
 from backend.v2_engine import DEFAULT_PACK
 
 
-def test_template_downloads_are_authenticated_unmodified_and_read_only(tmp_path, monkeypatch):
+def test_template_downloads_are_authenticated_plain_and_read_only(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("ADMIN_USERNAME", "templates-admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "template-test-password")
@@ -25,11 +26,23 @@ def test_template_downloads_are_authenticated_unmodified_and_read_only(tmp_path,
         with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
             assert set(archive.namelist()) == set(TEMPLATES)
             for name in TEMPLATES:
-                expected = (DEFAULT_PACK / "02_excel" / "templates" / name).read_bytes()
+                expected = openpyxl.load_workbook(DEFAULT_PACK / "02_excel" / "templates" / name)
                 individual = client.get(f"/api/v2/templates/{name}")
                 assert individual.status_code == 200
                 assert name in individual.headers["content-disposition"]
-                assert individual.content == archive.read(name) == expected
+                downloaded = openpyxl.load_workbook(io.BytesIO(individual.content))
+                zipped = openpyxl.load_workbook(io.BytesIO(archive.read(name)))
+                assert 'VARIABLES' in downloaded.sheetnames
+                assert downloaded.sheetnames == zipped.sheetnames
+                for original in expected:
+                    actual = downloaded[original.title]
+                    assert [row for row in original.values if any(value is not None for value in row)] == [row for row in actual.values if any(value is not None for value in row)]
+                    assert list(actual.values) == list(zipped[actual.title].values)
+                    assert len(actual.data_validations.dataValidation) == len(original.data_validations.dataValidation)
+                    assert not actual.conditional_formatting
+                    assert all(cell.fill.patternType is None for row in actual.iter_rows(min_row=2) for cell in row)
+                if name == 'TEMPLATE_TYPE.xlsx':
+                    assert downloaded['DUT_HMI'].data_validations.dataValidation
         assert client.get("/api/v2/templates/TYPE_DIP1500.xlsx").status_code == 404
         assert client.get("/api/v2/templates/..%5C..%5Calembic.ini").status_code == 404
         after = client.get("/api/v2/project").json()

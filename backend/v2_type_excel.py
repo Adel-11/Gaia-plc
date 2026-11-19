@@ -135,16 +135,13 @@ def _sheet(wb, name, columns, rows, *, transport=None):
             ws.column_dimensions[letter].hidden = True
         if name == "MODBUS_RTU" and columns[col - 1][0] in {"bank", "bank_type", "function", "channel"}:
             ws.column_dimensions[letter].hidden = not any(row.get(columns[col - 1][0]) not in (None, "") for row in rows)
-        if choice:
+        if choice and choice != 'COM_Members':
             if choice == "Signal_Types":
                 family = "Signal_IO" if transport == "io" else "Signal_Modbus"
                 formula = f'IF($C2="digital",Signal_Digital,{family})'
-            elif choice == 'COM_Members':
-                domain_col = get_column_letter(next(i for i, field in enumerate(columns, 1) if field[0] == 'role'))
-                formula = f'IF(${domain_col}2="HMI",HMI_Members,COM_Members)'
             else:
                 formula = choice
-            custom = choice in {"IEC_Types", "Sections", "Prefixes", "COM_Members"}
+            custom = choice in {"IEC_Types", "Sections", "Prefixes"}
             validation = DataValidation(type="list", formula1=formula, allow_blank=True,
                                         errorStyle="warning" if custom else "stop", showErrorMessage=True,
                                         showInputMessage=True, showDropDown=False)
@@ -157,13 +154,11 @@ def _sheet(wb, name, columns, rows, *, transport=None):
     for rownum, row in enumerate(rows, 2):
         for col, (field, _, _, _) in enumerate(columns, 1):
             _cell(ws.cell(rownum, col), row.get(field))
-    for row in ws.iter_rows(min_row=2, max_row=max(16, len(rows) + 1), max_col=len(columns)):
+    for row in ws.iter_rows(min_row=2, max_row=len(rows) + 1, max_col=len(columns)):
         ws.row_dimensions[row[0].row].height = 34
         for cell in row:
-            cell.font = Font(name="Calibri", size=12, color="263F32")
+            cell.font = Font(name="Calibri", size=11, color="000000")
             cell.alignment = Alignment(vertical="top", wrap_text=True)
-            if cell.row % 2 == 0:
-                cell.fill = PatternFill("solid", fgColor="F4F2E9")
     ws.row_dimensions[1].height = 30
     ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{max(2, len(rows) + 1)}"
     return ws
@@ -192,7 +187,7 @@ def _guide(wb, draft, selected):
                ("example", "Example", "Fictitious value, for illustration only.", None)]
     rows = [
         {"sheet": SCOPE_LABELS[draft.scope], "column": "Utilisation", "purpose": "Remplis les feuilles de saisie de ce fichier, puis importe-le depuis le menu Excel de cette même étape.",
-         "rules": "L’import remplit les formulaires modifiables. GUIDE, EXAMPLES et TYPE ne créent aucune variable. Le code ST et les autres étapes sont conservés."},
+         "rules": "L’import remplit les formulaires modifiables. GUIDE, EXAMPLES, VARIABLES et TYPE ne créent aucune variable. Le code ST et les autres étapes sont conservés."},
         {"column": "Remplacement", "purpose": "Une feuille présente remplace sa partie de la saisie. Une feuille vide la vide. Une feuille absente laisse cette partie inchangée.",
          "rules": "Vérifie les données à l’écran avant de créer le type. Annuler l’import restaure la saisie précédente de cette étape."},
         {"column": "Exemples", "purpose": "EXAMPLES contient des variables factices. Copie uniquement les lignes voulues sous les en-têtes de la feuille de saisie correspondante.",
@@ -215,7 +210,7 @@ def _guide(wb, draft, selected):
         "internal_name": ("Facultatif. Identifiant IEC strict. Vide = nom du signal. Crée le membre correspondant du DUT INT.", "L1_L2_VOLTAGE"),
         "exchange_name": ("Facultatif, seulement pour une entrée. Identifiant IEC strict. Vide = OUTPUT_ suivi du nom du signal.", "OUTPUT_L1_L2_VOLTAGE"),
         "table": ("Obligatoire. coils/discrete_inputs pour BOOL ; input_registers/holding_registers pour les mots. Les tables en lecture seule imposent le sens.", "input_registers"),
-        "member": ("Obligatoire. Membre déjà déclaré dans le DUT sélectionné par Domain, sans COM. ou HMI. devant. Un REAL issu d’un signal Modbus est une union : utiliser .Real_value.", "TCP_INPUT_VOLTAGE.Real_value"),
+        "member": ("Obligatoire. Copier la colonne Member de VARIABLES avec le Domain correspondant, sans COM. ou HMI. devant. Aucune liste de variables n’est imposée. Un REAL issu d’un signal Modbus utilise .Real_value.", "TCP_INPUT_VOLTAGE.Real_value"),
         "inbound": ("Obligatoire. inbound = client TCP ou équipement RTU vers PLC ; outbound = PLC vers client/équipement. TCP : DI/IR outbound. RTU : DI/IR inbound.", "inbound / outbound"),
         "register": ("RTU : obligatoire, entier de 0 à 65535, base zéro, décimal ou hexadécimal 0x. Pas de chevauchement ; un REAL occupe deux registres. TCP : laisser vide.", "20 / 0x0014"),
         "order": ("LSW_FIRST = mot faible en premier ; MSW_FIRST = mot fort en premier. Pour les formats de 32 bits, dont REAL, concerne les deux registres.", "MSW_FIRST"),
@@ -279,6 +274,20 @@ def export_draft(state, draft, *, empty=False):
                [] if empty else [{**row, "inbound": "inbound" if row.get("inbound") else "outbound"}
                 for row in draft.modbus_template if row.get("protocol") == protocol])
     _examples(wb, choices, selected)
+    if any(name.startswith('MODBUS_') for name in selected):
+        from backend.v2_modbus_templates import _members
+        try:
+            combined = _combined_type(state, draft)
+        except (ValueError, ValidationError):
+            # A template can be downloaded while another wizard field is incomplete.
+            combined = {'name': draft.name, 'duts': draft.duts}
+        _sheet(wb, 'VARIABLES', [
+            ('member', 'Member', 'Copy this value into the mapping Member column.', None),
+            ('role', 'Domain', 'Copy the matching COM or HMI domain.', None),
+            ('iec_type', 'IEC type', 'Type used to select a compatible Modbus table.', None),
+            ('path', 'FB path', 'Qualified path within the FB.', None),
+        ], [{'member': member, 'role': role, 'iec_type': kind, 'path': role + '.' + member}
+            for role in ('COM', 'HMI') for member, kind in _members(combined, state, role).items()])
     lists = wb.create_sheet("_Choices")
     for col, (name, values) in enumerate(choices.items(), 1):
         lists.cell(1, col, name)
@@ -288,14 +297,15 @@ def export_draft(state, draft, *, empty=False):
         wb.defined_names.add(DefinedName(name, attr_text=f"'_Choices'!${letter}$2:${letter}${max(2, len(values) + 1)}"))
     lists.sheet_state = "hidden"
     wb["TYPE"].sheet_state = "hidden"
-    order = [name for name in wb.sheetnames if name in selected] + ["EXAMPLES", "GUIDE", "TYPE", "_Choices"]
+    order = [name for name in wb.sheetnames if name in selected] + (['VARIABLES'] if 'VARIABLES' in wb.sheetnames else []) + ["EXAMPLES", "GUIDE", "TYPE", "_Choices"]
     for index, name in enumerate(order):
         wb.move_sheet(name, offset=index - wb.sheetnames.index(name))
     wb.active = next(index for index, name in enumerate(wb.sheetnames) if name in selected)
     output = io.BytesIO()
     wb.save(output)
     wb.close()
-    return output.getvalue()
+    from backend.v2_excel_plain import plain_xlsx
+    return plain_xlsx(output.getvalue())
 
 
 def _examples(wb, choices, selected):
@@ -361,19 +371,21 @@ def _examples(wb, choices, selected):
             ws.row_dimensions[row[0].row].height = 36
 
 
-def _rows(wb, name, columns, limit):
+def _rows(wb, name, columns, limit, *, required=None, max_cell_length=1000):
     if name not in wb.sheetnames:
         return None
     ws = wb[name]
-    if (ws.max_row or 0) > 1500 or (ws.max_column or 0) > 40:
-        raise ValueError(f"{name} : feuille trop grande (1 000 lignes maximum).")
+    max_rows = max(1500, limit + 1)
+    if (ws.max_row or 0) > max_rows or (ws.max_column or 0) > 40:
+        raise ValueError(f"{name} : feuille trop grande ({limit} lignes maximum).")
     header = [str(cell.value or "").strip() for cell in next(ws.iter_rows(min_row=1, max_row=1), [])]
     if name.startswith('MODBUS_'):
         header = ['Member' if item == 'COM member' else item for item in header]
     expected = {col[1]: col[0] for col in columns}
     if len([item for item in header if item]) != len({item for item in header if item}):
         raise ValueError(f"{name} : en-tête en double.")
-    required = {"Name", "IEC type"} if name.startswith(("DUT_", "SIGNALS_")) else {"Table", "Member", "Direction"}
+    if required is None:
+        required = {"Name", "IEC type"} if name.startswith(("DUT_", "SIGNALS_")) else {"Table", "Member", "Direction"}
     if not required.issubset(header):
         raise ValueError(f"{name} : en-têtes manquants : {', '.join(sorted(required - set(header)))}.")
     unknown = set(header) - set(expected) - {""}
@@ -381,15 +393,15 @@ def _rows(wb, name, columns, limit):
         raise ValueError(f"{name} : en-têtes inconnus : {', '.join(sorted(unknown))}.")
     rows = []
     for rownum, cells in enumerate(ws.iter_rows(min_row=2), 2):
-        if rownum > 1500:
-            raise ValueError(f"{name} : feuille trop grande (1 000 lignes maximum).")
+        if rownum > max_rows:
+            raise ValueError(f"{name} : feuille trop grande ({limit} lignes maximum).")
         if all(cell.value in (None, "") for cell in cells):
             continue
         row = {}
         for col, cell in zip(header, cells):
             if cell.data_type == "f":
                 raise ValueError(f"{name}!{cell.coordinate} : saisis une valeur, pas une formule Excel.")
-            if cell.value is not None and len(str(cell.value)) > 1000:
+            if cell.value is not None and len(str(cell.value)) > max_cell_length:
                 raise ValueError(f"{name}!{cell.coordinate} : valeur trop longue.")
             if col in expected:
                 row[expected[col]] = cell.value if cell.value is not None else ""
@@ -439,18 +451,20 @@ def _combined_type(state, draft):
     return {"name": draft.name, "duts": result}
 
 
-def import_draft(data, state, current):
+def read_workbook(data):
     if len(data) > MAX_BYTES:
         raise ValueError("Le classeur dépasse 8 Mo.")
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             if len(archive.infolist()) > 500 or sum(info.file_size for info in archive.infolist()) > 24 * 1024 * 1024:
                 raise ValueError("Classeur trop volumineux une fois décompressé.")
-        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)
+        return load_workbook(io.BytesIO(data), read_only=True, data_only=False, keep_links=False)
     except ValueError:
         raise
     except Exception as exc:
         raise ValueError("Fichier Excel .xlsx invalide ou illisible.") from exc
+def import_draft(data, state, current):
+    wb = read_workbook(data)
     try:
         return _import_workbook(wb, state, current)
     finally:

@@ -97,4 +97,5 @@ def export_panelview(state, controller="PLC-1"):
         for entry in template.infolist():
             content = etree.tostring(root, encoding="utf-8", xml_declaration=True) if entry.filename == SHEET else template.read(entry)
             workbook.writestr(entry, content)
-    return output.getvalue()
+    from backend.v2_excel_plain import plain_xlsx
+    return plain_xlsx(output.getvalue())

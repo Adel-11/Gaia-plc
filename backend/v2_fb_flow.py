@@ -171,6 +171,40 @@ def variable_options(typ, state):
     return options
 
 
+def validate_mappings(mappings, allowed, saved=()):
+    errors = []
+    ids = set(); destinations = set()
+    for mapping in mappings:
+        if not isinstance(mapping,dict): errors.append('Invalid mapping row'); continue
+        section, src, dst = mapping.get('section'), mapping.get('source',''), mapping.get('destination','')
+        if section not in {'inputs','outputs'}: errors.append('Mapping section must be inputs or outputs'); continue
+        try:
+            paths = source_paths(src)
+        except ValueError as exc:
+            errors.append(f'{dst or section} : {exc}')
+            continue
+        if not isinstance(dst, str) or dst not in allowed or any(path not in allowed for path in paths):
+            errors.append(f'Unknown mapping variable: {src} → {dst}')
+            continue
+        aggregate = any(allowed[path].startswith(("ARRAY[", "DUT_")) for path in [dst, *paths])
+        if aggregate and (mapping.get("id"), src, dst) not in saved:
+            errors.append(f"{dst} : choisis une variable unitaire ou un élément du tableau.")
+            continue
+        expression = len(paths) > 1 or src.strip() != paths[0]
+        if expression and (allowed[dst] != 'BOOL' or any(allowed[path] != 'BOOL' for path in paths)):
+            errors.append(f'{dst} : les expressions AND / OR exigent des variables et une destination BOOL.')
+        elif not expression and allowed[paths[0]] != allowed[dst]:
+            errors.append(f'Incompatible mapping types: {src} ({allowed[paths[0]]}) → {dst} ({allowed[dst]})')
+        if section == 'inputs' and (any(path.split('.')[0] not in {'PA','COM','HMI','EXC','IO'} for path in paths) or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/HMI/EXC/IO to INTERN')
+        if section == 'outputs' and (any(not path.startswith('INTERN.') for path in paths) or dst.split('.')[0] not in {'COM','HMI','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/HMI/EXC/IO')
+        key = (section,dst)
+        if key in destinations: errors.append(f'Duplicate mapping destination: {dst}')
+        destinations.add(key)
+        if mapping.get('id') in ids: errors.append('Duplicate mapping identifier')
+        if mapping.get('id'): ids.add(mapping['id'])
+    return errors
+
+
 def update_flow(typ, state, mappings=None, processing_code=None):
     fb = typ.setdefault('fb',{}); old = ensure_flow(fb); proposed = copy.deepcopy(old)
     errors = []
@@ -178,35 +212,7 @@ def update_flow(typ, state, mappings=None, processing_code=None):
     if mappings is not None:
         allowed = {o['path']: re.sub(r'\s+','',str(o['iec_type'])).upper() for o in variable_options(typ,state)}
         saved = {(row["id"], row["source"], row["destination"]) for row in flow_view(fb)["mappings"]}
-        ids = set(); destinations = set()
-        for mapping in mappings:
-            if not isinstance(mapping,dict): errors.append('Invalid mapping row'); continue
-            section, src, dst = mapping.get('section'), mapping.get('source',''), mapping.get('destination','')
-            if section not in {'inputs','outputs'}: errors.append('Mapping section must be inputs or outputs'); continue
-            try:
-                paths = source_paths(src)
-            except ValueError as exc:
-                errors.append(f'{dst or section} : {exc}')
-                continue
-            if not isinstance(dst, str) or dst not in allowed or any(path not in allowed for path in paths):
-                errors.append(f'Unknown mapping variable: {src} → {dst}')
-                continue
-            aggregate = any(allowed[path].startswith(("ARRAY[", "DUT_")) for path in [dst, *paths])
-            if aggregate and (mapping.get("id"), src, dst) not in saved:
-                errors.append(f"{dst} : choisis une variable unitaire ou un élément du tableau.")
-                continue
-            expression = len(paths) > 1 or src.strip() != paths[0]
-            if expression and (allowed[dst] != 'BOOL' or any(allowed[path] != 'BOOL' for path in paths)):
-                errors.append(f'{dst} : les expressions AND / OR exigent des variables et une destination BOOL.')
-            elif not expression and allowed[paths[0]] != allowed[dst]:
-                errors.append(f'Incompatible mapping types: {src} ({allowed[paths[0]]}) → {dst} ({allowed[dst]})')
-            if section == 'inputs' and (any(path.split('.')[0] not in {'PA','COM','HMI','EXC','IO'} for path in paths) or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/HMI/EXC/IO to INTERN')
-            if section == 'outputs' and (any(not path.startswith('INTERN.') for path in paths) or dst.split('.')[0] not in {'COM','HMI','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/HMI/EXC/IO')
-            key = (section,dst)
-            if key in destinations: errors.append(f'Duplicate mapping destination: {dst}')
-            destinations.add(key)
-            if mapping.get('id') in ids: errors.append('Duplicate mapping identifier')
-            if mapping.get('id'): ids.add(mapping['id'])
+        errors.extend(validate_mappings(mappings, allowed, saved))
         if errors: return errors
         for section in ('inputs','outputs'):
             key = section[:-1]+'_segments'; pending = [dict(m) for m in mappings if m.get('section')==section]; segments = []
