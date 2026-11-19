@@ -85,6 +85,26 @@ def test_both_mapping_domains_share_free_addresses_and_templates_are_separate(or
                      'Client': 'HMI', 'Modbus address': field[0]['address'], 'Direction': 'Client to PLC'}}])
 
 
+def test_plain_real_pairs_migrate_to_hmi_without_changing_their_registers(original):
+    from backend.v2_addressing import free_addresses
+    from backend.v2_instance_editor import _tcp_variable
+    state = deepcopy(original)
+    typ = next(t for t in state['types'] if t['name'] == 'ADM100W')
+    next(d for d in typ['duts'] if d['role'] == 'COM')['members'].append({'name': 'OUTPUT_Value', 'iec_type': 'REAL'})
+    typ['fb']['body'] += '\nCOM.OUTPUT_Value := 0.0;\n'
+    addresses = free_addresses(state, 'HMI', 'input_registers', 2)
+    for number, word in zip(addresses, ('LSW', 'MSW')):
+        state['tcp_points'].append({'id': 'qa-real-' + word, 'Client': 'HMI', 'Instance': 'ADM100W_1',
+            'GVL_COM variable': 'GVL_COM.COM_ADM100W_1.OUTPUT_Value', 'member_name': 'OUTPUT_Value',
+            'Name': 'Output value', 'Type': 'REAL', 'Word': word, 'table': 'input_registers',
+            'Direction': 'PLC to Client', 'address': number, 'Modbus address': number,
+            'GVL_MODBUS variable': _tcp_variable('input_registers', number)})
+    before = set(_compatibility_errors(state))
+    migrate_state(state)
+    assert not set(_compatibility_errors(state)) - before
+    assert [p['address'] for p in state['tcp_points'] if p['id'].startswith('qa-real')] == addresses
+
+
 def test_instance_deletion_removes_hmi_globals_and_copies(original):
     from backend.v2_instance_deletion import delete_instance
     state = deepcopy(original)

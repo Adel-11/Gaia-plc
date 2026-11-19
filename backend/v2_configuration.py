@@ -353,10 +353,11 @@ def validate_configuration(state):
                 types_by_instance[name] = {item["path"].casefold(): item["iec_type"].upper()
                                            for item in members_for(state, instances[name])} if name in instances else {}
             target = row["GVL_COM variable"]
-            leaf = "com." + target.split(".", 2)[-1].casefold()
+            from backend.v2_hmi_domain import domain
+            leaf = domain(row).lower() + "." + target.split(".", 2)[-1].casefold()
             dtype = str(row.get("Type") or row.get("data_type")).upper()
             if types_by_instance[name].get(leaf) != dtype:
-                errors.append(f"La paire Modbus {target} exige un membre COM de type {dtype}.")
+                errors.append(f"La paire Modbus {target} exige un membre {domain(row)} de type {dtype}.")
     return {"errors":list(dict.fromkeys(errors)),"warnings":warnings}
 
 
