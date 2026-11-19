@@ -48,7 +48,7 @@ def test_new_equipment_is_reviewed_then_applied_and_excel_roundtrips(tmp_path, m
         assert client.post("/api/v2/types/apply", headers=headers, json={"token": result["token"]}).status_code == 404
         project = client.get("/api/v2/project").json()
         created = next(t for t in project["types"] if t["name"] == "NEW_PUMP")
-        assert {d["role"] for d in created["duts"]} == {"PA", "COM", "EXC", "IO", "INT"}
+        assert {d["role"] for d in created["duts"]} == {"PA", "COM", "HMI", "EXC", "IO", "INT"}
         assert created["fb"]["body"].startswith("// INPUTS") and "INTERN.ACTIVE := TRUE" in created["fb"]["body"]
         assert created["templates"] == {}
         assert created.get("supervision", []) == []

@@ -3,6 +3,7 @@ import ModalFullscreen from './ModalFullscreen'
 import './modbus-wiring.css'
 
 export type TemplateRow = {
+  role?: 'COM' | 'HMI'
   protocol: 'tcp' | 'rtu'; table: string; member: string; inbound: boolean; register?: number | null
   order: string; bank?: string | null; bank_type?: string | null; function?: string | null; channel?: string | null
 }
@@ -17,21 +18,24 @@ export function TemplateRows({rows, variables, onChange, disabled}: {
   rows: TemplateRow[]; variables: Variable[]; onChange: (rows: TemplateRow[]) => void; disabled?: boolean
 }) {
   const [protocol, setProtocol] = useState<TemplateRow['protocol']>('tcp')
-  const members = Object.fromEntries(variables.filter(v => v.path.startsWith('COM.') && v.path !== 'COM.SPARE')
+  const [role, setRole] = useState<'COM' | 'HMI'>('COM')
+  const members = Object.fromEntries(variables.filter(v => v.path.startsWith(role + '.') && v.path !== role + '.SPARE')
     .map(v => [v.path.slice(4), v.iec_type.toUpperCase()]))
   const update = (index: number, patch: Partial<TemplateRow>) => onChange(rows.map((row, i) => i === index ? {...row, ...patch} : row))
-  const add = () => onChange([...rows, {protocol, table: 'coils', member: '', inbound: protocol === 'tcp', order: 'LSW_FIRST'}])
+  const add = () => onChange([...rows, {role, protocol, table: 'coils', member: '', inbound: protocol === 'tcp', order: 'LSW_FIRST'}])
   const addButton = <button type="button" className="button secondary" disabled={disabled} onClick={add}>＋ Ajouter une ligne {protocol.toUpperCase()}</button>
   return <fieldset className="modbus-template-rows" disabled={disabled}>
+    <div className="tw-role-tabs"><button type="button" className={role === 'COM' ? 'selected' : ''} aria-pressed={role === 'COM'} onClick={() => setRole('COM')}>COM · terrain</button><button type="button" className={role === 'HMI' ? 'selected' : ''} aria-pressed={role === 'HMI'} onClick={() => setRole('HMI')}>HMI · supervision</button></div>
+    <p>{role === 'COM' ? 'Variables acquises ou envoyées aux équipements de terrain.' : 'Variables échangées avec les IHM et les SCADA.'} Les adresses restent partagées entre les deux usages.</p>
     <p>En TCP, les adresses sont attribuées à l’instance. En RTU, saisis les registres indiqués par le fabricant.</p>
     <div className="modbus-wiring-controls"><label>Protocole<select value={protocol} onChange={e => setProtocol(e.target.value as TemplateRow['protocol'])}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>{addButton}</div>
-    <div className="v2-table-scroll"><table className="v2-table"><thead><tr><th>Table</th><th>Variable COM</th><th>Sens</th>{protocol === 'rtu' && <th>Registre RTU</th>}<th>Ordre des mots</th><th>Actions</th></tr></thead>
-      <tbody>{rows.map((row, index) => row.protocol === protocol && <tr key={index}>
+    <div className="v2-table-scroll"><table className="v2-table"><thead><tr><th>Table</th><th>Variable {role}</th><th>Sens</th>{protocol === 'rtu' && <th>Registre RTU</th>}<th>Ordre des mots</th><th>Actions</th></tr></thead>
+      <tbody>{rows.map((row, index) => row.protocol === protocol && (row.role || 'COM') === role && <tr key={index}>
         <td><select aria-label="Table Modbus" value={row.table} onChange={e => {
           const table = e.target.value
           update(index, {table, member: '', bank: null, bank_type: null, function: null, channel: null, inbound: readonly(table) ? protocol === 'rtu' : row.inbound})
         }}>{Object.entries(tables).map(([id, title]) => <option key={id} value={id}>{title}</option>)}</select></td>
-        <td><select aria-label="Variable COM" value={row.member} onChange={e => update(index, {member: e.target.value, bank: null, bank_type: null, function: null, channel: null})}>
+        <td><select aria-label={`Variable ${role}`} value={row.member} onChange={e => update(index, {member: e.target.value, bank: null, bank_type: null, function: null, channel: null})}>
           <option value="">Choisir…</option>
           {Object.entries(members).filter(([name, type]) => name === row.member || (bit(row.table) ? type === 'BOOL' : words.has(type)))
             .map(([name,type]) => <option key={name} value={name}>{name} · {type}</option>)}
@@ -52,7 +56,7 @@ export default function ModbusTemplate({id, name, csrf, onClose, onSaved}: {
   id: string; name: string; csrf: string; onClose: () => void; onSaved: () => void
 }) {
   const path = `/api/v2/types/${encodeURIComponent(id)}/modbus-template`
-  const [data, setData] = useState<{revision: number; members: Record<string, string>; rows: TemplateRow[]}>()
+  const [data, setData] = useState<{revision: number; members: Record<string, string>; hmi_members?: Record<string, string>; rows: TemplateRow[]}>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   async function request(body?: object) {
@@ -77,7 +81,7 @@ export default function ModbusTemplate({id, name, csrf, onClose, onSaved}: {
     <ModalFullscreen onClose={onClose} disabled={busy}/>
     <header><h3 id="modbus-template-title">Modèle Modbus · {name}</h3></header>
     <div className="modbus-wiring-scroll">
-      {data ? <TemplateRows rows={data.rows} variables={Object.entries(data.members).map(([key, type]) => ({path: 'COM.' + key, iec_type: type}))}
+      {data ? <TemplateRows rows={data.rows} variables={[...Object.entries(data.members).map(([key, type]) => ({path: 'COM.' + key, iec_type: type})), ...Object.entries(data.hmi_members || {}).map(([key,type]) => ({path: 'HMI.' + key, iec_type: type}))]}
         disabled={busy} onChange={rows => setData({...data, rows})}/> : !error && <p>Chargement…</p>}
       {error && <p role="alert" className="comm-alert">{error}</p>}
     </div>

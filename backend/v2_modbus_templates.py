@@ -15,6 +15,7 @@ BITS = {"coils", "discrete_inputs"}
 
 
 class Mapping(BaseModel):
+    role: str = 'COM'
     protocol: str
     table: str
     member: str
@@ -32,19 +33,21 @@ def _address(value):
     return int(raw, 16) if raw.lower().startswith("0x") else int(raw)
 
 
-def _members(typ, state):
+def _members(typ, state, role='COM'):
     options = variable_options(typ, state)
     members = {row["path"][4:]: str(row["iec_type"]).upper() for row in options
-               if row["path"].startswith("COM.") and not row["path"].endswith(".SPARE")}
+               if row["path"].startswith(role + '.') and not row["path"].endswith(".SPARE")}
     members.update({f"{path}.{bit}": "BOOL" for path, dtype in list(members.items())
                     if dtype == "BYTE" and path.endswith("]") for bit in range(8)})
     return members
 
 
 def validate_rows(state, typ, rows):
-    members = _members(typ, state)
     signals, occupied = set(), set()
     for row in rows:
+        if row.role not in {'COM', 'HMI'}:
+            raise ValueError('Choisis le domaine COM terrain ou HMI supervision.')
+        members = _members(typ, state, row.role)
         dtype = members.get(row.member)
         if dtype not in WORD_TYPES | DOUBLE_WORD_TYPES | {"BOOL"}:
             raise ValueError(f"Choisis une variable COM compatible : {row.member or 'variable vide'}.")
@@ -54,7 +57,7 @@ def validate_rows(state, typ, rows):
             raise ValueError(f"{row.member} : cette table est en lecture seule côté client.")
         if row.order not in WORD_ORDERS:
             raise ValueError(f"Ordre des mots invalide pour {row.member}.")
-        key = (row.protocol, row.table, row.member, row.inbound)
+        key = (row.role, row.protocol, row.table, row.member, row.inbound)
         if key in signals:
             raise ValueError(f"{row.member} apparaît deux fois dans le même mappage.")
         signals.add(key)
@@ -91,6 +94,9 @@ def _from_points(typ, state, protocol, points):
             register_types = {node.get("name"): _type_text(node.find(NS + "type/*")) for node in gvl.findall(NS + "variable")}
     rows = {}
     for point in points:
+        from backend.v2_hmi_domain import domain
+        role = domain(point)
+        members = _members(typ, state, role)
         path = str(point.get("GVL_COM variable") or "").split(".", 2)
         if len(path) != 3:
             continue
@@ -114,11 +120,11 @@ def _from_points(typ, state, protocol, points):
                 if reference and reference.startswith(typ["name"] + "_"):
                     bank = reference[len(typ["name"]) + 1:] + bracket + index
                     bank_type = register_types[reference]
-        key = (table, member, inbound)
+        key = (role, table, member, inbound)
         order = "MSW_FIRST" if point.get("Word") == "MSW" else "LSW_FIRST"
         if key not in rows or (number is not None and number < rows[key][0]):
             rows[key] = (number if number is not None else 65536, Mapping(
-                protocol=protocol, table=table, member=member, inbound=inbound, register=number if protocol == "rtu" else None,
+                role=role, protocol=protocol, table=table, member=member, inbound=inbound, register=number if protocol == "rtu" else None,
                 order=order, bank=bank, bank_type=bank_type, function=point.get("Function"), channel=point.get("CODESYS channel")))
     return [row for _, row in rows.values()]
 
@@ -148,7 +154,7 @@ def rows_for(state, typ):
     return seed_rows(state, typ)
 
 
-def apply_template(state, instance_id, protocol, client=None, line=None, address=None, include=False):
+def apply_template(state, instance_id, protocol, client=None, line=None, address=None, include=False, role='COM'):
     from backend.v2_capacity import tcp_capacity
     from backend.v2_configuration import apply_changes
     from backend.v2_instance_editor import _tcp_variable
@@ -159,7 +165,7 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
     if not typ or protocol not in {"tcp", "rtu"}:
         raise ValueError("Choisis une instance et un protocole Modbus.")
     name = inst.get("name") or inst["id"]
-    rows = validate_rows(state, typ, [row for row in rows_for(state, typ) if row.protocol == protocol])
+    rows = validate_rows(state, typ, [row for row in rows_for(state, typ) if row.protocol == protocol and row.role == role])
     if not rows:
         raise ValueError("Aucun modèle pour ce protocole. Configure-le dans Types.")
     tcp = protocol == "tcp"
@@ -187,7 +193,7 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
         else:
             summary = [f"Esclave {name} · {slave.get('Line')} · adresse {slave.get('Slave address')}"]
     added = []
-    members = _members(typ, state)
+    members = _members(typ, state, role)
     for row in rows:
         table = row.table if tcp else TABLES[row.table]
         direction = ("Client to PLC" if row.inbound else "PLC to Client") if tcp else ("Equipment to PLC" if row.inbound else "PLC to Equipment")
@@ -195,7 +201,7 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
         wide = dtype in DOUBLE_WORD_TYPES
         width = 2 if wide else 1
         union = row.member.endswith(".Real_value") and members.get(row.member.removesuffix(".Real_value") + ".Word_value[0]") == "WORD"
-        root = "GVL_COM.COM_" + name + "."
+        root = f"GVL_{role}.{role}_" + name + "."
         member = root + row.member
         union_base = member.removesuffix(".Real_value")
         matching = [p for p in points if (p.get("Instance") or p.get("instance_id")) == name and
@@ -236,7 +242,7 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
                      "instance_id": name, "Name": f"{name}.{row.member}", "Direction": direction,
                      "direction": direction, "Type": dtype, "data_type": dtype, "table": table,
                      "member_name": row.member.split(".")[0].split("[")[0], "Word": word, "word": word,
-                     "address": number, field: number, "GVL_COM variable": path}
+                     "address": number, field: number, "GVL_COM variable": path, 'role': role}
             if tcp:
                 point.update(Client=client, client_id=client, sheet=table.upper(),
                              **{"Client address": client_address_for(table, number, client),

@@ -29,7 +29,7 @@ async function api(path: string, csrf: string, body?: object) {
 }
 
 export default function InstanceMapping({ role, instance, csrf, onClose, onSaved, templateOnly, onOpenCode }: {
-  role: 'IO' | 'COM'; instance: string; csrf: string; onClose: () => void; onSaved: () => void
+  role: 'IO' | 'COM' | 'HMI'; instance: string; csrf: string; onClose: () => void; onSaved: () => void
   templateOnly?: boolean
   onOpenCode?: (block: string) => void
 }) {
@@ -64,7 +64,7 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
     }
     finally { setBusy(false) }
   }
-  if (config && role === 'COM') {
+  if (config && (role === 'COM' || role === 'HMI')) {
     const templateLines = config.rtu_lines.map(row => {
       const id = row.Line || row.id
       const occupied = config.rtu_slaves.filter(slave => slave.Line === id).map(slave => Number(slave['Slave address']))
@@ -75,10 +75,10 @@ export default function InstanceMapping({ role, instance, csrf, onClose, onSaved
         wordOrder: row['Word order (32-bit)'] || row.word_order }))
       : config.rtu_slaves.map(row => ({ id: row.Instance || row.instance_id || row.id, label: row.Instance || row.instance_id || row.id,
         wordOrder: row['32-bit word order'] || row.word_order }))
-    return <ModbusWiring key={mode} mode={mode} switchMode={setMode} revision={config.revision} instances={instances}
+    return <ModbusWiring key={mode} role={role} mode={mode} switchMode={setMode} revision={config.revision} instances={instances}
       peers={peers} points={mode === 'tcp' ? config.tcp_points : config.rtu_channels} capacity={config.tcp_capacity}
       templateOnly={templateOnly} templateLines={templateLines}
-      members={key => config.options.communication_members[instances.find(row => row.key === key)?.name || key] || []}
+      members={key => (config.options.communication_members[instances.find(row => row.key === key)?.name || key] || []).filter(member => member.path.startsWith(role + '.'))}
       request={(path, body) => api('/configuration' + path, csrf, body)}
       onSaved={fresh => { setConfig(fresh as Configuration); onSaved() }} onClose={onClose}/>
   }

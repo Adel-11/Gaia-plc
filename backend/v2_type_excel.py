@@ -57,7 +57,7 @@ SIGNAL_COLUMNS = [
 ]
 MAPPING_COLUMNS = [
     ("table", "Table", "Modbus address table. Addresses in read-only tables have a fixed direction.", "Tables"),
-    ("member", "COM member", "COM member path without COM. A union REAL uses Member.Real_value.", "COM_Members"),
+    ("member", "Member", "Member of the selected COM or HMI domain, without its prefix. A union REAL uses Member.Real_value.", "COM_Members"),
     ("inbound", "Direction", "inbound = client/equipment to PLC. outbound = PLC to client/equipment.", "Mapping_Directions"),
     ("register", "RTU register", "Manufacturer register, zero based, decimal or 0x hexadecimal. TCP addresses are assigned on instances.", None),
     ("order", "Word order", "LSW_FIRST = low word first. MSW_FIRST = high word first. REAL and 32-bit formats use two registers.", "Word_Orders"),
@@ -65,12 +65,13 @@ MAPPING_COLUMNS = [
     ("bank_type", "PLC bank type", "Only when preserving an existing RTU bank, e.g. ARRAY[0..9] OF WORD.", None),
     ("function", "Function", "Optional existing RTU function code. Usually leave blank.", None),
     ("channel", "Channel", "Optional existing RTU channel label. Usually leave blank.", None),
+    ("role", "Domain", "COM = field equipment. HMI = supervision. Both use the same Modbus address pool.", "Domains"),
 ]
 
 
 def _mapping_columns(protocol):
     return MAPPING_COLUMNS if protocol == "rtu" else [column for column in MAPPING_COLUMNS
-                                                      if column[0] in {"table", "member", "inbound", "order"}]
+                                                      if column[0] in {"table", "member", "inbound", "order", "role"}]
 
 
 class Draft(BaseModel):
@@ -79,7 +80,7 @@ class Draft(BaseModel):
     kind: str = "Equipment"
     generic_template_id: str | None = None
     signals: list[dict] = Field(default_factory=list, max_length=100)
-    duts: list[dict] = Field(default_factory=list, max_length=5)
+    duts: list[dict] = Field(default_factory=list, max_length=6)
     modbus_template: list[dict] = Field(default_factory=list, max_length=1000)
 
 
@@ -93,8 +94,10 @@ def _choices(state, draft):
         types += [f"DUT_{role}_{draft.name}" for role in ROLES.get(draft.kind, ROLES["Equipment"])]
     try:
         members = list(_members(_combined_type(state, draft), state))
+        hmi_members = list(_members(_combined_type(state, draft), state, 'HMI'))
     except (ValueError, ValidationError, KeyError):
         members = [str(m.get("name", "")) for dut in draft.duts if dut.get("role") == "COM" for m in dut.get("members", []) if m.get("name")]
+        hmi_members = [str(m.get('name', '')) for dut in draft.duts if dut.get('role') == 'HMI' for m in dut.get('members', []) if m.get('name')]
     return {
         "IEC_Types": list(dict.fromkeys(types)), "Signal_IO": sorted(ANALOG_TYPES),
         "Signal_Modbus": sorted(MODBUS_TYPES), "Signal_Digital": ["BOOL"],
@@ -104,6 +107,7 @@ def _choices(state, draft):
         "Tables": ["coils", "discrete_inputs", "input_registers", "holding_registers"],
         "Mapping_Directions": ["inbound", "outbound"], "Word_Orders": ["LSW_FIRST", "MSW_FIRST"],
         "COM_Members": members or [""],
+        "HMI_Members": hmi_members or [''], "Domains": ['COM', 'HMI'],
     }
 
 
@@ -135,6 +139,9 @@ def _sheet(wb, name, columns, rows, *, transport=None):
             if choice == "Signal_Types":
                 family = "Signal_IO" if transport == "io" else "Signal_Modbus"
                 formula = f'IF($C2="digital",Signal_Digital,{family})'
+            elif choice == 'COM_Members':
+                domain_col = get_column_letter(next(i for i, field in enumerate(columns, 1) if field[0] == 'role'))
+                formula = f'IF(${domain_col}2="HMI",HMI_Members,COM_Members)'
             else:
                 formula = choice
             custom = choice in {"IEC_Types", "Sections", "Prefixes", "COM_Members"}
@@ -208,7 +215,7 @@ def _guide(wb, draft, selected):
         "internal_name": ("Facultatif. Identifiant IEC strict. Vide = nom du signal. Crée le membre correspondant du DUT INT.", "L1_L2_VOLTAGE"),
         "exchange_name": ("Facultatif, seulement pour une entrée. Identifiant IEC strict. Vide = OUTPUT_ suivi du nom du signal.", "OUTPUT_L1_L2_VOLTAGE"),
         "table": ("Obligatoire. coils/discrete_inputs pour BOOL ; input_registers/holding_registers pour les mots. Les tables en lecture seule imposent le sens.", "input_registers"),
-        "member": ("Obligatoire. Membre COM déjà déclaré, sans COM. devant. Un REAL issu d’un signal Modbus est une union : utiliser .Real_value.", "TCP_INPUT_VOLTAGE.Real_value"),
+        "member": ("Obligatoire. Membre déjà déclaré dans le DUT sélectionné par Domain, sans COM. ou HMI. devant. Un REAL issu d’un signal Modbus est une union : utiliser .Real_value.", "TCP_INPUT_VOLTAGE.Real_value"),
         "inbound": ("Obligatoire. inbound = client TCP ou équipement RTU vers PLC ; outbound = PLC vers client/équipement. TCP : DI/IR outbound. RTU : DI/IR inbound.", "inbound / outbound"),
         "register": ("RTU : obligatoire, entier de 0 à 65535, base zéro, décimal ou hexadécimal 0x. Pas de chevauchement ; un REAL occupe deux registres. TCP : laisser vide.", "20 / 0x0014"),
         "order": ("LSW_FIRST = mot faible en premier ; MSW_FIRST = mot fort en premier. Pour les formats de 32 bits, dont REAL, concerne les deux registres.", "MSW_FIRST"),
@@ -216,6 +223,7 @@ def _guide(wb, draft, selected):
         "bank_type": ("Seulement si PLC bank est renseigné. Tableau commençant à 0, de WORD, BOOL ou BYTE ; taille compatible avec l’index et le format.", "ARRAY[0..9] OF WORD"),
         "function": ("Option avancée d’un canal RTU existant. Laisser vide pour une nouvelle configuration.", "3"),
         "channel": ("Libellé facultatif d’un canal RTU existant. Laisser vide pour une nouvelle configuration.", "Read_measurements"),
+        "role": ("COM pour les équipements de terrain, HMI pour les IHM / SCADA. Choisir ensuite un membre de ce DUT. Les plages d’adresses sont communes.", "COM / HMI"),
     }
     families = [("SIGNALS_", SIGNAL_COLUMNS), ("DUT_", MEMBER_COLUMNS), ("MODBUS_", MAPPING_COLUMNS)]
     for prefix, fields in families:
@@ -314,7 +322,7 @@ def _examples(wb, choices, selected):
             rows[0].update(io_name="INPUT_PRESSURE_RAW", internal_name="PRESSURE_RAW",
                            exchange_name="OUTPUT_PRESSURE_RAW", unit="counts")
         section("SIGNALS_" + protocol.upper(), SIGNAL_COLUMNS, rows)
-    for role in ("PA", "COM", "EXC", "IO", "INT"):
+    for role in ("PA", "COM", "HMI", "EXC", "IO", "INT"):
         section("DUT_" + role, MEMBER_COLUMNS, [{"prefix": "INPUT" if role == "IO" else "", "name": "MY_VARIABLE_" + role,
                 "iec_type": "REAL", "section": "PARAMETERS" if role == "PA" else "INTERNAL", "default_value": "0.0", "unit": "bar"}])
     section("DUT members: all scalar types and common complex declarations", MEMBER_COLUMNS,
@@ -337,7 +345,7 @@ def _examples(wb, choices, selected):
                 member += ".Real_value"
             rows.append({"table": table, "member": member, "inbound": "inbound" if inbound else "outbound",
                          "register": ("0x0006" if i == 3 else i * 2) if protocol == "rtu" else None,
-                         "order": "LSW_FIRST" if i % 2 == 0 else "MSW_FIRST"})
+                         "order": "LSW_FIRST" if i % 2 == 0 else "MSW_FIRST", 'role': 'COM'})
         section("MODBUS_" + protocol.upper(), _mapping_columns(protocol), rows)
     ws.freeze_panes = "B2"
     for col in range(1, 11):
@@ -360,10 +368,12 @@ def _rows(wb, name, columns, limit):
     if (ws.max_row or 0) > 1500 or (ws.max_column or 0) > 40:
         raise ValueError(f"{name} : feuille trop grande (1 000 lignes maximum).")
     header = [str(cell.value or "").strip() for cell in next(ws.iter_rows(min_row=1, max_row=1), [])]
+    if name.startswith('MODBUS_'):
+        header = ['Member' if item == 'COM member' else item for item in header]
     expected = {col[1]: col[0] for col in columns}
     if len([item for item in header if item]) != len({item for item in header if item}):
         raise ValueError(f"{name} : en-tête en double.")
-    required = {"Name", "IEC type"} if name.startswith(("DUT_", "SIGNALS_")) else {"Table", "COM member", "Direction"}
+    required = {"Name", "IEC type"} if name.startswith(("DUT_", "SIGNALS_")) else {"Table", "Member", "Direction"}
     if not required.issubset(header):
         raise ValueError(f"{name} : en-têtes manquants : {', '.join(sorted(required - set(header)))}.")
     unknown = set(header) - set(expected) - {""}
@@ -493,7 +503,7 @@ def _import_workbook(wb, state, current):
         draft.signals = [signal for signal in draft.signals if signal.get("transport", "io") != protocol] + parsed
         replaced.append(sheet)
     by_role = {dut["role"]: dut for dut in draft.duts}
-    for role in ("PA", "COM", "EXC", "IO", "INT"):
+    for role in ("PA", "COM", "HMI", "EXC", "IO", "INT"):
         sheet = "DUT_" + role
         if sheet not in selected:
             continue
@@ -558,6 +568,7 @@ def _import_workbook(wb, state, current):
                 for field in ("bank", "bank_type", "function", "channel"):
                     row[field] = _text(row.get(field)) or None
                 row["protocol"] = protocol
+                row['role'] = _text(row.get('role')) or 'COM'
                 row["order"] = row.get("order") or "LSW_FIRST"
                 parsed.append(Mapping.model_validate(row).model_dump(by_alias=True))
             except (ValueError, ValidationError) as exc:

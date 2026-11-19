@@ -165,7 +165,7 @@ def test_inherited_member_renaming_keeps_processing_links(state):
     template = next(template for template in STARTERS if template['id'] == 'hmi-local')
     draft = Draft(name='QA_HMI_EXCEL', generic_template_id=template['id'], duts=[
         {'role': role, 'members': [member for member in template['members'] if member['role'] == role]}
-        for role in ('PA', 'COM', 'EXC', 'IO', 'INT')])
+        for role in ('PA', 'COM', 'HMI', 'EXC', 'IO', 'INT')])
     wb = openpyxl.load_workbook(io.BytesIO(export_draft(state, draft)))
     # MODE_LOCAL has no prefix and keeps its hidden source identity.
     wb['DUT_INT']['B2'] = 'LOCAL_MODE'
@@ -211,7 +211,7 @@ def test_step_templates_only_include_the_step_and_document_every_column(state, s
             if cell.value:
                 assert any(sheet.title in str(row[0]) and row[1] == cell.value and row[2] and row[3] and row[4] for row in guide)
     if scope == 'modbus':
-        assert [cell.value for cell in wb['MODBUS_TCP'][1]] == ['Table', 'COM member', 'Direction', 'Word order']
+        assert [cell.value for cell in wb['MODBUS_TCP'][1]] == ['Table', 'Member', 'Direction', 'Word order', 'Domain']
         choices = list(wb['_Choices'].iter_rows(values_only=True))
         column = choices[0].index('COM_Members')
         assert 'TCP_OUTPUT_COMMAND' in [row[column] for row in choices[1:]]

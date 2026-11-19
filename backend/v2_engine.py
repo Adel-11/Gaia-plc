@@ -131,7 +131,7 @@ def _member_from_var(value: Any) -> str | None:
     if value in (None, ""):
         return None
     parts = str(value).split(".")
-    if len(parts) >= 3 and parts[0] in {"GVL_COM", "GVL_IO"}:
+    if len(parts) >= 3 and parts[0] in {"GVL_COM", "GVL_HMI", "GVL_IO"}:
         value = parts[2]
     else:
         value = parts[-1]
@@ -144,7 +144,7 @@ def _normalize_type(book: dict) -> dict:
     metadata = {str(r.get("Key")): r.get("Value") for r in pairs if r.get("Key")}
     name = metadata.get("Object type") or Path(book["filename"]).stem.removeprefix("TYPE_")
     duts = []
-    for dut_name in ("DUT_COM", "DUT_EXC", "DUT_INT", "DUT_IO", "DUT_PA"):
+    for dut_name in ("DUT_COM", "DUT_HMI", "DUT_EXC", "DUT_INT", "DUT_IO", "DUT_PA"):
         if dut_name not in sheets or metadata.get(dut_name) in (None, ""):
             continue
         members, section = [], ""
@@ -289,7 +289,7 @@ def _instances(state: dict, snapshot: Any = None) -> list[dict]:
             root = __import__("xml.etree.ElementTree", fromlist=["ElementTree"]).fromstring(xml)
             for node in root.iter():
                 name = node.attrib.get("name", "")
-                match = re.fullmatch(r"(?:COM|EXC|IO|PA)_([A-Za-z_][A-Za-z0-9_]*?)(?:_\d+)?", name)
+                match = re.fullmatch(r"(?:COM|HMI|EXC|IO|PA)_([A-Za-z_][A-Za-z0-9_]*?)(?:_\d+)?", name)
                 if not match:
                     continue
                 candidate = match.group(1)
@@ -638,7 +638,7 @@ def _validate(state: dict, filename: str) -> dict:
             inst = instances.get(str(inst)) if inst else None
             if member_name and inst:
                 typ = types.get(str(inst.get("type_id")))
-                com = next((d for d in typ.get("duts", []) if d.get("role") == "COM"), None) if typ else None
+                com = next((d for d in typ.get("duts", []) if d.get("role") == ("HMI" if str(row.get("GVL_COM variable", "")).startswith("GVL_HMI.") else "COM")), None) if typ else None
                 if com and member_name not in {str(m.get("name")) for m in com.get("members", [])}:
                     errors.append(f"TCP point member is missing from DUT_COM: {inst.get('name')}.{member_name}")
     if filename in ("MODBUS_RTU.xlsx", ""):
@@ -672,7 +672,7 @@ def _validate(state: dict, filename: str) -> dict:
                 errors.append(f"RTU channel instance missing from SLAVES: {channel.get('instance')}")
             inst = instances.get(str(channel.get("instance")))
             typ = types.get(str(inst.get("type_id"))) if inst else None
-            com = next((d for d in typ.get("duts", []) if d.get("role") == "COM"), None) if typ else None
+            com = next((d for d in typ.get("duts", []) if d.get("role") == ("HMI" if str(channel.get("GVL_COM variable", "")).startswith("GVL_HMI.") else "COM")), None) if typ else None
             member_name = channel.get("member_name")
             if com and member_name and member_name not in {str(m.get("name")) for m in com.get("members", [])}:
                 errors.append(f"RTU channel member is missing from DUT_COM: {channel.get('instance')}.{member_name}")

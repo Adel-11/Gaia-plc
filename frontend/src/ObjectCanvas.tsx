@@ -15,7 +15,7 @@ export default function ObjectCanvas({ duts, fbName, active, onSelect, objectKey
   const [view, setView] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
   const left = duts.filter(d => (d.role || '').toUpperCase() !== 'INT' && d.name.toUpperCase() !== 'INT')
     .sort((a, b) => {
-      const order = ['PA', 'COM', 'EXC', 'IO']
+      const order = ['PA', 'COM', 'HMI', 'EXC', 'IO']
       const ai = order.indexOf((a.role || '').toUpperCase()), bi = order.indexOf((b.role || '').toUpperCase())
       return (ai < 0 ? 4 : ai) - (bi < 0 ? 4 : bi)
     })

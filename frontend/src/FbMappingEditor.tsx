@@ -42,7 +42,7 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
   const [editingExpression, setEditingExpression] = useState<string | number | null>(null)
   const rows = mappings.filter(mapping => mapping.section === section)
   const visible = rows.filter(mapping => `${mapping.source} ${mapping.destination}`.toLowerCase().includes(query.toLowerCase()))
-  const external = variables.filter(variable => /^(PA|COM|EXC|IO)\./.test(variable.path))
+  const external = variables.filter(variable => /^(PA|COM|HMI|EXC|IO)\./.test(variable.path))
   const internal = variables.filter(variable => variable.path.startsWith('INTERN.'))
   const sourceOptions = section === 'inputs' ? external : internal
   const destinationOptions = section === 'inputs' ? internal : external.filter(variable => !variable.path.startsWith('PA.'))
@@ -63,7 +63,7 @@ export default function FbMappingEditor({ section, mappings, variables, preserve
   }
   return <section className="fb-map-section" aria-label={`${section} mappings`}>
     <header><div><h4>{section === 'inputs' ? 'Sources des entrées' : 'Sources des sorties'}</h4>
-      <p>{section === 'inputs' ? 'PA, COM, EXC et IO vers INTERN.' : 'INTERN vers COM, EXC et IO.'}</p></div>
+      <p>{section === 'inputs' ? 'PA, COM terrain, HMI, EXC et IO vers INTERN.' : 'INTERN vers COM, HMI, EXC et IO.'}</p></div>
       {!readOnly && <button type="button" onClick={add} disabled={!sourceOptions.length || !destinationOptions.length}>＋ Ajouter un mapping</button>}
     </header>
     <input aria-label={`Rechercher dans les mappings ${section}`} value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher une variable" className="fb-map-search"/>

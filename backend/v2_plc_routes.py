@@ -70,7 +70,7 @@ def _instance_export_names(state, objects):
     from backend import v2_plc_validation
     from backend.v2_program_membership import freeze_membership
     types = {str(t.get('id')): t for t in state.get('types', [])}
-    names = {n for n in ('GVL_COM', 'GVL_EXC', 'GVL_IO', 'GVL_PA') if n in objects}
+    names = {n for n in ('GVL_COM', 'GVL_HMI', 'GVL_EXC', 'GVL_IO', 'GVL_PA') if n in objects}
     membership = freeze_membership(state)
     if any(str(i.get('type_id')) in types and 'UPI' not in str(types[str(i.get('type_id'))].get('kind', '')).upper() for i in state.get('instances', [])) and 'GFB_INST' in objects: names.add('GFB_INST')
     if any(str(i.get('type_id')) in types and 'UPI' in str(types[str(i.get('type_id'))].get('kind', '')).upper() for i in state.get('instances', [])) and 'GFB_UPI' in objects: names.add('GFB_UPI')

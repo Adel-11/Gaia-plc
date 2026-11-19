@@ -121,7 +121,7 @@ def update_pair(state, collection, row, group, values):
 def members_for(state, instance):
     typ = next((t for t in state.get('types', []) if str(instance.get('type_id')) in {str(t.get('id')), str(t.get('name'))}), None)
     return [m for m in variable_options(typ or {}, state)
-            if m['path'].startswith('COM.') and m['iec_type'].upper() in WORD_TYPES | DOUBLE_WORD_TYPES | {'BOOL'}]
+            if m['path'].startswith(('COM.', 'HMI.')) and m['iec_type'].upper() in WORD_TYPES | DOUBLE_WORD_TYPES | {'BOOL'}]
 
 
 def create_point(state, collection, values):
@@ -129,8 +129,10 @@ def create_point(state, collection, values):
     if not instance:
         raise ValueError('Declare an instance before configuring a communication point.')
     name = str(instance.get('name') or instance['id'])
-    member = str(values.get('Member') or '').removeprefix('COM.')
-    selected = next((m for m in members_for(state, instance) if m['path'] == 'COM.' + member), None)
+    path = str(values.get('Member') or '')
+    role = 'HMI' if path.startswith('HMI.') or values.get('role') == 'HMI' else 'COM'
+    member = path.removeprefix(role + '.')
+    selected = next((m for m in members_for(state, instance) if m['path'] == role + '.' + member), None)
     if not selected:
         raise ValueError('Choisis une variable COM compatible de cette instance.')
     dtype = selected['iec_type'].upper()
@@ -149,7 +151,7 @@ def create_point(state, collection, values):
         raise ValueError('BOOL members need a bit table; integer members need a register table.')
     row = {'id': 'MANUAL_' + secrets.token_hex(8), 'Instance': name, 'instance_id': name, 'instance': name,
            'Name': f'{name}.{member}', 'Member': member, 'member_name': re.split(r'[.\[]', member)[0], 'member_path': member, 'Type': dtype, 'data_type': dtype,
-           'GVL_COM variable': f'GVL_COM.COM_{name}.{member}', 'manual_scalar': True}
+           'GVL_COM variable': f'GVL_{role}.{role}_{name}.{member}', 'role': role, 'manual_scalar': True}
     if collection == 'tcp_points':
         if table not in {'coils', 'discrete_inputs', 'input_registers', 'holding_registers'}:
             raise ValueError('Choose a TCP table.')

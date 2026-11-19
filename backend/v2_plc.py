@@ -111,7 +111,7 @@ def _new_fb(name, typ):
     interface=etree.SubElement(el,NS+"interface")
     ins=etree.SubElement(interface,NS+"inOutVars")
     upi="UPI" in str(typ.get("kind","")).upper()
-    for role in (["COM","EXC"] if upi else ["PA","COM","EXC","IO"]):
+    for role in (["COM","HMI","EXC"] if upi else ["PA","COM","HMI","EXC","IO"]):
         dut=next((d for d in typ.get("duts",[]) if d.get("role")==role),None)
         if dut is not None:
             v=etree.SubElement(ins,NS+"variable",name=role); etree.SubElement(v,NS+"type").append(etree.Element(NS+"derived",name=dut.get("name")))
@@ -357,7 +357,7 @@ def _mapped_name(value):
 def _instance_docs(objects, state):
     from backend.v2_gvl import prepend_documentation
     instances = {str(row.get("name") or row.get("id")).casefold(): row for row in state.get("instances", [])}
-    for role in ("COM", "IO", "EXC", "PA"):
+    for role in ("COM", "HMI", "IO", "EXC", "PA"):
         element = objects.get(f"GVL_{role}", {}).get("element")
         if element is None:
             continue
@@ -419,12 +419,15 @@ def _generated_objects(objs, state, sources):
         return name in set(membership.get(block, []))
     _ensure_mapped_declarations(objs,state,valid_instances)
     # Keep global variable names and declared types in sync with model instances.
-    for gvl, role in (("GVL_COM", "COM"), ("GVL_EXC", "EXC"), ("GVL_IO", "IO"), ("GVL_PA", "PA")):
+    if any(dut.get('role') == 'HMI' for typ in state.get('types', []) for dut in typ.get('duts', [])) and 'GVL_HMI' not in objs:
+        objs['GVL_HMI'] = {'name': 'GVL_HMI', 'kind': 'GVL', 'folder': objs.get('GVL_COM', {}).get('folder', 'GVL'),
+                           'element': etree.Element(NS + 'globalVars', name='GVL_HMI')}
+    for gvl, role in (("GVL_COM", "COM"), ("GVL_HMI", "HMI"), ("GVL_EXC", "EXC"), ("GVL_IO", "IO"), ("GVL_PA", "PA")):
         el = objs.get(gvl, {}).get("element")
         if el is None: continue
         original_names = {v.get("name") for v in el.findall(NS + "variable")}
         existing = {v.get("name") for v in el.findall(NS + "variable")}
-        pairs = upis + equips if role in ("COM", "EXC") else equips
+        pairs = upis + equips if role in ("COM", "HMI", "EXC") else equips
         wanted = {f"{role}_{str(i.get('name') or i.get('id'))}" for i, _ in pairs}
         for var in list(el.findall(NS + "variable")):
             if var.get("name", "").startswith(role + "_") and var.get("name") not in wanted:
@@ -477,7 +480,8 @@ def _generated_objects(objs, state, sources):
             nm = str(inst.get("name") or inst.get("id")); fb_name = typ.get("fb", {}).get("name", "")
             if nm not in membership["GFB_INST"]: continue
             # Equipment FB convention is FB_<instance>.
-            text += f"//--- {nm}\nFB_{nm}(\n\tPA  := GVL_PA.PA_{nm},\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm},\n\tIO  := GVL_IO.IO_{nm});\n\n"
+            hmi = f"\n\tHMI := GVL_HMI.HMI_{nm}," if any(d.get('role') == 'HMI' for d in typ.get('duts', [])) else ''
+            text += f"//--- {nm}\nFB_{nm}(\n\tPA  := GVL_PA.PA_{nm},\n\tCOM := GVL_COM.COM_{nm},{hmi}\n\tEXC := GVL_EXC.EXC_{nm},\n\tIO  := GVL_IO.IO_{nm});\n\n"
         _pou_text(objs["GFB_INST"], text, preserve_reference=True)
     if "GFB_UPI" in objs:
         text = "//==============================================================================\n// GFB_UPI\n// Calls selected functional units (UPI)\n//==============================================================================\n\n"
@@ -485,7 +489,8 @@ def _generated_objects(objs, state, sources):
         for inst, typ in upis:
             nm = str(inst.get("name") or inst.get("id")); fb_name = typ.get("fb", {}).get("name", "FB_" + nm)
             if nm not in membership["GFB_UPI"]: continue
-            text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
+            hmi = f"\n\tHMI := GVL_HMI.HMI_{nm}," if any(d.get('role') == 'HMI' for d in typ.get('duts', [])) else ''
+            text += f"//--- {nm}\n{fb_name}_1(\n\tCOM := GVL_COM.COM_{nm},{hmi}\n\tEXC := GVL_EXC.EXC_{nm});\n\n"
         _pou_text(objs["GFB_UPI"], text, preserve_reference=True)
     from backend.v2_gfc_mappings import connection_key, editable_rtu_banks, instance_name, is_dip1500, modbus_inbound, resolved_targets
     from backend.v2_io_copies import copy_block, variable_direction
@@ -661,6 +666,19 @@ def build_program(state, include_union: bool = False) -> dict:
             if body is not None: body.text=fn["body"]
         if name in objs: _append_custom(objs[name],code,name)
     _generated_objects(objs, state, src)
+    # Existing source FBs also acquire the new in-out parameter, without replacing their code.
+    for typ in state.get('types', []):
+        dut = next((d for d in typ.get('duts', []) if d.get('role') == 'HMI'), None)
+        obj = objs.get(typ.get('fb', {}).get('name'))
+        if dut and obj:
+            interface = obj['element'].find(NS + 'interface')
+            if interface is not None:
+                inout = interface.find(NS + 'inOutVars')
+                if inout is None:
+                    inout = etree.SubElement(interface, NS + 'inOutVars')
+                if not any(v.get('name') == 'HMI' for v in inout.findall(NS + 'variable')):
+                    variable = etree.SubElement(inout, NS + 'variable', name='HMI')
+                    etree.SubElement(variable, NS + 'type').append(etree.Element(NS + 'derived', name=dut['name']))
     # Generated sections remain owned by the model; authored additions survive regeneration.
     for name, code in (state.get("generated_custom_code") or {}).items():
         if name in {"GFC_COM_IN", "GFC_COM_OUT", "GFC_IO_IN", "GFC_IO_OUT", "GFC_EXC", "GFB_INST", "GFB_UPI", "PLC_PRG"} and name in objs:

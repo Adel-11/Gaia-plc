@@ -13,7 +13,7 @@ from backend.v2_generic_objects import Inheritance, Signal, Variables, _declared
 from backend.v2_modbus_templates import Mapping, validate_rows
 
 IEC_RESERVED = {"ACTION", "ARRAY", "AT", "BOOL", "CASE", "CONFIGURATION", "CONSTANT", "DATE", "DINT", "ELSE", "ELSIF", "END_ACTION", "END_CASE", "END_CONFIGURATION", "END_FOR", "END_FUNCTION", "END_FUNCTION_BLOCK", "END_IF", "END_PROGRAM", "END_REPEAT", "END_RESOURCE", "END_STRUCT", "END_TYPE", "END_VAR", "END_WHILE", "EXIT", "FALSE", "FOR", "FUNCTION", "FUNCTION_BLOCK", "IF", "INT", "LREAL", "PROGRAM", "REAL", "REPEAT", "RESOURCE", "RETURN", "STRING", "STRUCT", "TIME", "TRUE", "TYPE", "UDINT", "UINT", "VAR", "VAR_INPUT", "VAR_OUTPUT", "VAR_IN_OUT", "VAR_TEMP", "VAR_EXTERNAL", "WHILE", "WORD"}
-ROLES = {"Equipment": ["PA", "COM", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "EXC", "INT"]}
+ROLES = {"Equipment": ["PA", "COM", "HMI", "EXC", "IO", "INT"], "Functional unit (UPI)": ["COM", "HMI", "EXC", "INT"]}
 IEC_SCALARS = {"BOOL", "BYTE", "WORD", "DWORD", "LWORD", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "TIME", "DATE", "TIME_OF_DAY", "DATE_AND_TIME", "STRING", "WSTRING"}
 
 
@@ -112,6 +112,8 @@ def _book_for_type(engine, typ, filename):
                 ("Function block", typ["fb"]["name"])]
     for dut in typ["duts"]:
         metadata.append(("DUT_" + dut["role"], dut["name"]))
+        if "DUT_" + dut["role"] not in sm:
+            sh = copy.deepcopy(sm["DUT_COM"]); sh["name"] = "DUT_" + dut["role"]; book["sheets"].append(sh); sm[sh["name"]] = sh
         sh = sm["DUT_" + dut["role"]]
         ix = {str(h): i for i, h in enumerate(sh["headers"])}
         rows = []

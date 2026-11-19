@@ -117,7 +117,7 @@ def sync_fb(typ, edits, mappings=None, processing_code=None, prefix_code=None, s
 
 def _simple(value, delta, removed):
     if not isinstance(value, str) or not value: return value
-    return rewrite_st("ROOT." + value, {"root": delta, "root.com": delta}, removed).removeprefix("ROOT.")
+    return rewrite_st("ROOT." + value, {"root": delta, "root.com": delta, 'root.hmi': delta}, removed).removeprefix("ROOT.")
 
 
 def sync_consumers(state, typ, edits):
@@ -129,16 +129,17 @@ def sync_consumers(state, typ, edits):
     instances = [i for i in state.get("instances", []) if str(i.get("type_id")) in names]
     instances_by_alias = {str(i[k]): str(i.get("name") or i.get("id")) for i in instances for k in ("id", "name") if i.get(k)}
     roots = {f"gvl_{role.lower()}.{role.lower()}_{name.lower()}": delta
-             for role, delta in edits.items() if role in {"IO", "COM", "EXC", "PA"}
+             for role, delta in edits.items() if role in {"IO", "COM", "HMI", "EXC", "PA"}
              for name in set(instances_by_alias.values())}
     short_roots = {root.split(".", 1)[1]: delta for root, delta in roots.items()}
     errors, changes = [], []
     sync_sheets = False
-    if "COM" in edits and "modbus_template" in typ:
+    if ({'COM', 'HMI'} & edits.keys()) and "modbus_template" in typ:
         updated = []
         for row in typ["modbus_template"]:
             removed = set()
-            path = rewrite_st("COM." + row["member"], {"com": edits["COM"]}, removed)[4:]
+            role = row.get('role', 'COM')
+            path = rewrite_st(role + "." + row["member"], {role.lower(): edits.get(role, {})}, removed)[4:]
             if removed:
                 changes.append(f"Retirer {row['member']} du modèle Modbus.")
             else:
@@ -147,6 +148,8 @@ def sync_consumers(state, typ, edits):
     for collection, role, qualified, simple in (
         ("tcp_points", "COM", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member")),
         ("rtu_channels", "COM", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member", "DUT_COM member")),
+        ("tcp_points", "HMI", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member")),
+        ("rtu_channels", "HMI", ("GVL_COM variable",), ("Member", "member_path", "member_name", "member", "DUT_COM member")),
         ("io_channels", "IO", ("GVL_IO member",), ("member_name", "member_path")),
         ("virtual_io", "IO", ("GVL_IO member",), ("member_name", "member_path")),
         ("pa_values", "PA", ("GVL_PA variable",), ("Member", "member_name", "member")),
@@ -155,6 +158,11 @@ def sync_consumers(state, typ, edits):
         if not delta or not instances: continue
         keep = []
         for row in state.get(collection, []):
+            if role in {'COM', 'HMI'}:
+                from backend.v2_hmi_domain import domain
+                if domain(row) != role:
+                    keep.append(row)
+                    continue
             inst = next((str(row[key]) for key in ("instance_id", "Instance", "instance") if row.get(key)), "")
             removed = set()
             old = dict(row)

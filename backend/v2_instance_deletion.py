@@ -96,7 +96,7 @@ def delete_instance(state, instance):
 
 def _instance_symbols(name):
     return {f"{prefix}_{name}{suffix}".casefold()
-            for prefix, suffix in (("COM", ""), ("IO", ""), ("PA", ""), ("EXC", ""), ("FB", ""), ("FB", "_1"))}
+            for prefix, suffix in (("HMI", ""), ("COM", ""), ("IO", ""), ("PA", ""), ("EXC", ""), ("FB", ""), ("FB", "_1"))}
 
 
 def _identifiers(text):
@@ -148,7 +148,7 @@ def _check_surviving_code(state, name, iomap, modbus):
         if (symbols - parameters) & _identifiers(source):
             raise ValueError(f"{label} référence encore {name} dans du ST personnalisé. Retire cette référence avant de supprimer l’instance.")
         code = _st_code(source)
-        if re.search(r"\bGVL_(?:COM|IO|PA|EXC)\s*\.\s*(?:" + "|".join(map(re.escape, symbols)) + r")\b", code, re.I):
+        if re.search(r"\bGVL_(?:COM|HMI|IO|PA|EXC)\s*\.\s*(?:" + "|".join(map(re.escape, symbols)) + r")\b", code, re.I):
             raise ValueError(f"{label} référence encore {name} dans du ST personnalisé. Retire cette référence avant de supprimer l’instance.")
         for gvl, variable in mappings:
             if re.search(r"\b" + re.escape(gvl) + r"\s*\.\s*" + re.escape(variable) + r"\b", code, re.I):

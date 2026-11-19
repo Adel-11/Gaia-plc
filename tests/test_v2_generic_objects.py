@@ -62,7 +62,7 @@ def test_generic_models_stay_out_of_plc_until_used_and_rename_bound_references(t
         typ = created.json()["type"]
         io_dut = next(dut for dut in typ["duts"] if dut["role"] == "IO")
         assert [member["name"] for member in io_dut["members"]] == ["INPUT_NIVEAU", "INPUT_PRESSION", "INPUT_DIAG"]
-        assert {dut["role"] for dut in typ["duts"]} == {"PA", "COM", "EXC", "IO", "INT"}
+        assert {dut["role"] for dut in typ["duts"]} == {"PA", "COM", "HMI", "EXC", "IO", "INT"}
         assert all(any(member["name"] == name for member in dut["members"])
                    for role, name in (("COM", "HMI_OUTPUT_VALIDE"), ("EXC", "OUTPUT_PRET"), ("INT", "MEMOIRE"))
                    for dut in typ["duts"] if dut["role"] == role)

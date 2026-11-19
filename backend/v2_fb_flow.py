@@ -4,7 +4,7 @@ import copy
 import re
 import uuid
 
-PATH = r'(?:PA|COM|EXC|IO|INTERN)\.[A-Za-z_]\w*(?:\[-?\d+\])?(?:\.[A-Za-z_]\w*(?:\[-?\d+\])?)*'
+PATH = r'(?:PA|COM|HMI|EXC|IO|INTERN)\.[A-Za-z_]\w*(?:\[-?\d+\])?(?:\.[A-Za-z_]\w*(?:\[-?\d+\])?)*'
 ASSIGN = re.compile(rf'^(\s*)({PATH})\s*:=\s*({PATH})\s*;\s*(?://[^\r\n]*)?(?:\r?\n)?$')
 HEAD = lambda name: re.compile(r'^\s*//\s*(?:[123]\.\s*)?' + name + r'\s*\r?\n', re.M | re.I)
 BOOL_TOKEN = re.compile(rf'({PATH})|\b(AND|OR)\b|([()])', re.I)
@@ -52,7 +52,7 @@ def _segments(code, section):
         opening = re.match(r'^(IF|FOR|WHILE|CASE|REPEAT)\b', clean, re.I)
         closing = re.match(r'^(END_IF|END_FOR|END_WHILE|END_CASE|UNTIL)\b', clean, re.I)
         match = ASSIGN.fullmatch(line) if depth == 0 and not was_comment and not in_comment else None
-        direction = bool(match and ((section == 'inputs' and match[2].startswith('INTERN.') and not match[3].startswith('INTERN.')) or (section == 'outputs' and match[3].startswith('INTERN.') and match[2].split('.')[0] in {'COM','EXC','IO'})))
+        direction = bool(match and ((section == 'inputs' and match[2].startswith('INTERN.') and not match[3].startswith('INTERN.')) or (section == 'outputs' and match[3].startswith('INTERN.') and match[2].split('.')[0] in {'COM','HMI','EXC','IO'})))
         if direction:
             if preserved: result.append({'kind':'preserved', 'code':preserved}); preserved = ''
             result.append({'kind':'mapping', 'id':uuid.uuid5(uuid.NAMESPACE_URL, section + ':' + str(len(result)) + ':' + line).hex,
@@ -200,8 +200,8 @@ def update_flow(typ, state, mappings=None, processing_code=None):
                 errors.append(f'{dst} : les expressions AND / OR exigent des variables et une destination BOOL.')
             elif not expression and allowed[paths[0]] != allowed[dst]:
                 errors.append(f'Incompatible mapping types: {src} ({allowed[paths[0]]}) → {dst} ({allowed[dst]})')
-            if section == 'inputs' and (any(path.split('.')[0] not in {'PA','COM','EXC','IO'} for path in paths) or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/EXC/IO to INTERN')
-            if section == 'outputs' and (any(not path.startswith('INTERN.') for path in paths) or dst.split('.')[0] not in {'COM','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/EXC/IO')
+            if section == 'inputs' and (any(path.split('.')[0] not in {'PA','COM','HMI','EXC','IO'} for path in paths) or not dst.startswith('INTERN.')): errors.append('INPUTS must copy PA/COM/HMI/EXC/IO to INTERN')
+            if section == 'outputs' and (any(not path.startswith('INTERN.') for path in paths) or dst.split('.')[0] not in {'COM','HMI','EXC','IO'}): errors.append('OUTPUTS must copy INTERN to COM/HMI/EXC/IO')
             key = (section,dst)
             if key in destinations: errors.append(f'Duplicate mapping destination: {dst}')
             destinations.add(key)

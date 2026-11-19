@@ -144,7 +144,7 @@ def _focus_names(focus: str | None, state: dict, objects: dict[str, dict]) -> se
         iname = str(inst.get("name", ident))
         typ = next((t for t in state.get("types", []) if str(t.get("id")) == str(inst.get("type_id"))), {})
         is_upi = "upi" in str(typ.get("kind", "")).casefold()
-        names = {"GVL_COM", "GVL_EXC", "GFB_UPI" if is_upi else "GFB_INST"}
+        names = {"GVL_COM", "GVL_HMI", "GVL_EXC", "GFB_UPI" if is_upi else "GFB_INST"}
         if not is_upi: names.update({"GVL_IO", "GVL_PA"})
         if any(p.get("instance_id") == ident or p.get("Instance") == iname for p in state.get("tcp_points", [])) or any(c.get("instance_id") == ident for c in state.get("rtu_channels", [])):
             names.update({"GFC_COM_IN", "GFC_COM_OUT"})
@@ -546,7 +546,7 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
     # Check qualified paths in ST, after comments and literals were blanked.
     for pou in root.xpath("//*[local-name()='pou']"):
         body = _st_code(pou.xpath("string(./*[local-name()='body']/*[local-name()='ST']/*[local-name()='xhtml'])"))
-        for match in re.finditer(r"\b(GVL_[A-Za-z0-9_]+|EXC_[A-Za-z0-9_]+|COM|EXC|PA|IO|INTERN)((?:\.[A-Za-z0-9_]+(?:\[-?\d+\])?)+)", body):
+        for match in re.finditer(r"\b(GVL_[A-Za-z0-9_]+|EXC_[A-Za-z0-9_]+|COM|HMI|EXC|PA|IO|INTERN)((?:\.[A-Za-z0-9_]+(?:\[-?\d+\])?)+)", body):
             root_name = match.group(1)
             parts = match.group(2).lstrip(".").split(".")
             parts = [re.fullmatch(r"([A-Za-z0-9_]+)(?:\[(-?\d+)\])?", part).groups() for part in parts]

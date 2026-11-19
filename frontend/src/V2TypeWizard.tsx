@@ -13,28 +13,28 @@ type AnyRow = Record<string, any>
 type CatalogOptions = { sections: string[]; prefixes: string[]; revision?: number }
 type Preview = { token: string | null; errors?: string[]; warnings?: string[]; generated_st?: string }
 type Props = { project: any; csrf: string; onCreated: (typeId?: string) => void; onCancel: () => void; onChanged?: () => void; initialGenericId?: string }
-const roles: Record<string, string[]> = { Equipment: ['PA', 'COM', 'EXC', 'IO', 'INT'], 'Functional unit (UPI)': ['COM', 'EXC', 'INT'] }
+const roles: Record<string, string[]> = { Equipment: ['PA', 'COM', 'HMI', 'EXC', 'IO', 'INT'], 'Functional unit (UPI)': ['COM', 'HMI', 'EXC', 'INT'] }
 const IEC_TYPES = ['BOOL','BYTE','WORD','DWORD','LWORD','SINT','INT','DINT','LINT','USINT','UINT','UDINT','ULINT','REAL','LREAL','TIME','DATE','TOD','DT','STRING','WSTRING']
 const BASE_SECTIONS = ['INPUT (field to plc)', 'OUTPUT (plc to field)', 'STATE', 'PARAMETERS', 'INTERNAL']
 const BASE_PREFIXES = ['INPUT', 'OUTPUT', 'STATE', 'CMD', 'SPARE', 'COM', 'HMI']
 const blankMember = (): Member => ({ name: '', iec_type: 'BOOL', section: 'INTERNAL', default_value: '', unit: '', comment: '' })
 const blankDuts = (kind: string): Dut[] => (roles[kind] || roles.Equipment).map(role => ({ role, members: [{ ...blankMember(), name: 'SPARE' }] }))
 const panelViewMembers: Record<string, string[]> = {
-  COM: ['HMI_INPUT_LOCAL_REQUEST', 'HMI_INPUT_AUTO_REQUEST', 'HMI_OUTPUT_LOCAL_ACTIVE'],
+  HMI: ['HMI_INPUT_LOCAL_REQUEST', 'HMI_INPUT_AUTO_REQUEST', 'HMI_OUTPUT_LOCAL_ACTIVE'],
   EXC: ['UPI_INPUT_GLOBAL_LOCAL_HMI'],
   INT: ['HMI_LOCAL_REQUEST', 'HMI_AUTO_REQUEST', 'GLOBAL_LOCAL_HMI', 'LOCAL_HMI_INDIVIDUAL', 'LOCAL_HMI', 'AUTO'],
 }
 const panelViewCode = [
   '// Control mode requests from PanelView and the global HMI UPI',
-  'INTERN.HMI_LOCAL_REQUEST := COM.HMI_INPUT_LOCAL_REQUEST;',
-  'INTERN.HMI_AUTO_REQUEST := COM.HMI_INPUT_AUTO_REQUEST;',
+  'INTERN.HMI_LOCAL_REQUEST := HMI.HMI_INPUT_LOCAL_REQUEST;',
+  'INTERN.HMI_AUTO_REQUEST := HMI.HMI_INPUT_AUTO_REQUEST;',
   'INTERN.GLOBAL_LOCAL_HMI := EXC.UPI_INPUT_GLOBAL_LOCAL_HMI;',
   '',
   'IF INTERN.HMI_LOCAL_REQUEST THEN INTERN.LOCAL_HMI_INDIVIDUAL := TRUE; END_IF',
   'IF INTERN.HMI_AUTO_REQUEST THEN INTERN.LOCAL_HMI_INDIVIDUAL := FALSE; END_IF',
   'INTERN.LOCAL_HMI := INTERN.LOCAL_HMI_INDIVIDUAL OR INTERN.GLOBAL_LOCAL_HMI;',
   'INTERN.AUTO := NOT INTERN.LOCAL_HMI;',
-  'COM.HMI_OUTPUT_LOCAL_ACTIVE := INTERN.LOCAL_HMI;',
+  'HMI.HMI_OUTPUT_LOCAL_ACTIVE := INTERN.LOCAL_HMI;',
 ].join('\n')
 
 function startingBlocks(kind: string, panelView: boolean) {

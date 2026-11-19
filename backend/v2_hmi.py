@@ -35,6 +35,8 @@ def is_hmi(state):
 
 
 def member_error(state, role, name):
+    if state.get('separate_hmi') and role == 'COM' and str(name).upper().startswith(('HMI_', 'SCADA_', 'WEBVISU_')):
+        return f'{name}: déclare cette variable de supervision dans DUT_HMI, le DUT_COM est réservé au terrain.'
     if is_hmi(state) and role == "COM" and str(name).upper().startswith(("SCADA_", "WEBVISU_")):
         return f"{name}: use HMI_ for PanelView signals."
     return None

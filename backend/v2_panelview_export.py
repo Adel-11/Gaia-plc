@@ -35,12 +35,15 @@ def _tags(state, controller):
     signals = defaultdict(list)
     occupied = set()
     for point in state.get("tcp_points", []):
+        from backend.v2_hmi_domain import domain
+        if state.get('separate_hmi') and domain(point) != 'HMI':
+            continue
         if str(point.get("Client") or point.get("client_id") or "").casefold() != "hmi":
             continue
         table = str(point.get("table") or point.get("sheet") or "").casefold()
         raw = point.get("Modbus address", point.get("address"))
         path = str(point.get("GVL_COM variable") or "")
-        match = re.fullmatch(r"GVL_COM\.COM_(\w+)\.(.+)", path, re.I)
+        match = re.fullmatch(r"GVL_(?:COM|HMI)\.(?:COM|HMI)_(\w+)\.(.+)", path, re.I)
         kind = str(point.get("Type") or point.get("data_type") or "").upper()
         if not match or table not in ADDRESS_OFFSET or not re.fullmatch(r"\d+", str(raw)):
             raise ValueError(f"Point Modbus HMI incomplet : {path or point.get('Name') or raw}.")

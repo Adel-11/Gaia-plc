@@ -194,7 +194,7 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
     from backend.v2_st_overrides import discard_removed_overrides
     from backend.v2_gfc_mappings import reconcile_copy_choices
     discard_removed_overrides(current, state)
-    if not event or event["kind"] not in {"history_restore", "backup_import"}:
+    if not event or event["kind"] not in {"history_restore", "backup_import", "hmi_domain"}:
         reconcile_copy_choices(current, state)
     shared=_catalog(state);changed=catalog is not None and digest(shared)!=digest(json.loads(catalog.payload))
     affected=[]
@@ -212,6 +212,9 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
             if old is None or catalog_id(old) != library:
                 continue
             before=overlay(old,json.loads(catalog.payload));proposed=overlay(old,shared)
+            if event and event['kind'] == 'hmi_domain':
+                from backend.v2_hmi_domain import migrate_state
+                migrate_state(proposed)
             discard_removed_overrides(before, proposed)
             if sync_dut_refs:
                 from backend.v2_member_sync import member_deltas, sync_consumers
@@ -229,7 +232,8 @@ def save_workspace_project(session,state,username='admin',expected_revision=None
                 errors=[f"Type {i.get('type_id')} is still used by {i.get('name')}" for i in proposed.get('instances',[]) if str(i.get('type_id')) not in known]
             else:
                 baseline_errors=set(_compatibility_errors(before))
-                reconcile_copy_choices(before, proposed)
+                if not event or event['kind'] != 'hmi_domain':
+                    reconcile_copy_choices(before, proposed)
                 errors=[e for e in _compatibility_errors(proposed) if e not in baseline_errors]
             if errors:raise ValueError(f"Catalogue incompatible avec le projet {other.name} : {errors[0]}")
             affected.append((other.id,before,proposed))

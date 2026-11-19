@@ -92,7 +92,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
         if typ is None:
             raise HTTPException(404, "Type introuvable.")
         try:
-            return {"revision": state["revision"], "rows": [row.model_dump(by_alias=True) for row in rows_for(state, typ)], "members": _members(typ, state)}
+            return {"revision": state["revision"], "rows": [row.model_dump(by_alias=True) for row in rows_for(state, typ)], "members": _members(typ, state), 'hmi_members': _members(typ, state, 'HMI')}
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 

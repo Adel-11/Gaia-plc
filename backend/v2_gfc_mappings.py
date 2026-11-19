@@ -140,8 +140,8 @@ def review(state, block, included):
         if not item:
             continue
         options = variable_options(types.get(str(item.get("type_id")), {}), state)
-        paths = {f"GVL_{role}.{role}_{name}.{row['path'].split('.', 1)[1]}": str(row["iec_type"]).upper()
-                 for row in options if row["path"].startswith(role + ".") and str(row["iec_type"]).upper() in IEC_TYPES
+        paths = {f"GVL_{row['path'].split('.')[0]}.{row['path'].split('.')[0]}_{name}.{row['path'].split('.', 1)[1]}": str(row["iec_type"]).upper()
+                 for row in options if row["path"].split('.')[0] in ({'COM', 'HMI'} if role == 'COM' else {role}) and str(row["iec_type"]).upper() in IEC_TYPES
                  and not row["path"].endswith(".SPARE")}
         members[name] = paths
         groups[name] = {"instance": name, "members": [{"path": path, "type": kind} for path, kind in paths.items()], "rows": []}
@@ -160,7 +160,7 @@ def review(state, block, included):
         if not kind and role == "COM" and target.rsplit(".", 1)[-1].isdigit():
             kind = "BOOL"
         direction = "input" if inbound else "output"
-        choices = [path for path, candidate in members[name].items() if kind == candidate and
+        choices = [path for path, candidate in members[name].items() if path.split('.')[0] == target.split('.')[0] and kind == candidate and
                    _member_direction(path) in (None, direction)]
         if target not in choices:
             choices.insert(0, target)

@@ -9,6 +9,7 @@ type Link = { id: string; member: string; address: number; direction: string; ma
 type Change = { collection: string; op: 'create' | 'update' | 'delete'; id?: string; values?: Row }
 type Review = { token?: string; changes?: string[]; errors?: string[]; warnings?: string[]; manual_actions?: string[] }
 type Props = {
+  role?: 'COM' | 'HMI'
   mode: 'tcp' | 'rtu'; revision: number
   instances: { key: string; name: string; typeId?: string }[]; peers: { id: string; label: string; ranges?: Row; wordOrder?: string }[]
   points: Row[]; capacity: Row
@@ -33,11 +34,12 @@ const value = (row: Row, ...keys: string[]) => keys.map(key => row[key]).find(it
 const address = (row: Row) => Number(value(row, 'address', 'Modbus address', 'Equipment address'))
 const memberPath = (row: Row) => {
   const qualified = String(value(row, 'GVL_COM variable') || '')
-  const fromPlc = qualified.match(/^(?:GVL_COM\.)?COM_[^.]+\.(.+)$/i)?.[1]
-  return 'COM.' + (fromPlc || String(value(row, 'member_path', 'Member', 'member_name') || '').replace(/^COM\./i, ''))
+  const fromPlc = qualified.match(/^(?:GVL_(?:COM|HMI)\.)?(?:COM|HMI)_[^.]+\.(.+)$/i)?.[1]
+  const role = qualified.startsWith('GVL_HMI.') ? 'HMI' : 'COM'
+  return role + '.' + (fromPlc || String(value(row, 'member_path', 'Member', 'member_name') || '').replace(/^(COM|HMI)\./i, ''))
 }
 
-export default function ModbusWiring({ mode, revision, instances, peers, points, capacity, members, switchMode, templateOnly, templateLines = [], request, onSaved, onClose }: Props) {
+export default function ModbusWiring({ role = 'COM', mode, revision, instances, peers, points, capacity, members, switchMode, templateOnly, templateLines = [], request, onSaved, onClose }: Props) {
   const tcp = mode === 'tcp'
   const tables: Record<string, string> = tcp ? tcpTables : rtuTables
   const [instance, setInstance] = useState(instances[0]?.key || '')
@@ -72,7 +74,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const byInstance = (row: Row) => [instance, instanceName].includes(String(value(row, 'instance_id', 'Instance', 'instance') || ''))
   const byPeer = (row: Row) => tcp ? String(value(row, 'Client', 'client_id') || '') === client : byInstance(row)
   const tableRows = points.filter(row => inTable(row) && (tcp || byPeer(row)))
-  const scopedRows = tableRows.filter(row => byPeer(row) && byInstance(row) && Number.isFinite(address(row)))
+  const scopedRows = tableRows.filter(row => byPeer(row) && byInstance(row) && memberPath(row).startsWith(role + '.') && Number.isFinite(address(row)))
   const rawDirection = (row: Row) => String(value(row, 'Direction', 'direction') || '')
   const pairedMember = (row: Row) => memberPath(row).replace(/\.Word_value\[\d+\]$/i, '.Real_value')
   const pairWord = (row: Row) => /^(LSW|MSW)$/i.test(row.Word || '') &&
@@ -106,7 +108,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   const available = peer && Number.isInteger(offset) && offset >= min && offset <= max
     ? Array.from({ length: Math.min(PAGE, max - offset + 1) }, (_, i) => offset + i).filter(n => !occupied.has(n))
     : []
-  const choices = members(instance).filter(row => {
+  const choices = members(instance).filter(row => row.path.startsWith(role + '.')).filter(row => {
     const dtype = String(row.iec_type).toUpperCase()
     return bits.has(table) ? dtype === 'BOOL' : wordTypes.has(dtype) || wideTypes.has(dtype)
   })
@@ -170,7 +172,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
         ...Object.entries(orders).filter(([id]) => !deletions.includes(id)).map(([id, order]) =>
           ({ collection, id, op: 'update' as const, values: { 'Register word order': order } })),
         ...pending.map(link => ({ collection, op: 'create' as const, values: {
-          Instance: instance, Member: link.member.slice(4), Table: table, Direction: link.direction,
+          Instance: instance, Member: link.member, role, Table: table, Direction: link.direction,
           ...(link.wordOrder ? { 'Register word order': link.wordOrder } : {}),
           ...(tcp ? { Client: client, 'Modbus address': link.address } : { 'Equipment address': link.address, 'GVL_MODBUS variable': link.plcVariable }),
         } })),
@@ -197,7 +199,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
     setBusy(true); setError(''); setReview(null)
     try {
       setReview(await request('/preview', {revision, changes: [], modbus_template: {
-        instance_id: instance, protocol: mode, client: tcp ? client : undefined, line: selectedLine?.id,
+        instance_id: instance, protocol: mode, role, client: tcp ? client : undefined, line: selectedLine?.id,
         address: selectedSlave ? Number(selectedSlave) : undefined, include: includeGfc,
       }}))
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Impossible de préparer le modèle Modbus.') }
@@ -205,7 +207,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   }
   const close = () => { if (!dirty || window.confirm('Abandonner les modifications Modbus ?')) onClose() }
   const objectOnLeft = !actualDirection.endsWith(' to PLC')
-  const objectLabel = `COM · ${instanceName}`
+  const objectLabel = `${role} · ${instanceName}`
   const modbusLabel = `Modbus · ${tables[table]}`
   const updateOrder = (link: Link, order: WordOrder) => {
     setReview(null)
@@ -214,7 +216,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
   }
 
   return <div className="modbus-backdrop"><section className="modbus-wiring" role="dialog" aria-modal="true" aria-labelledby="modbus-wiring-title"><ModalFullscreen onClose={close} disabled={busy}/>
-    <header><div><h3 id="modbus-wiring-title">{templateOnly ? 'Appliquer le modèle Modbus' : `Mapping graphique Modbus ${mode.toUpperCase()}`}</h3><p>{templateOnly ? 'Choisis le protocole et vérifie les adresses proposées.' : 'Choisis une variable COM et une adresse libre, ou tire un lien entre les deux.'}</p></div></header>
+    <header><div><h3 id="modbus-wiring-title">{templateOnly ? 'Appliquer le modèle Modbus' : `Mapping ${role === "HMI" ? "HMI / SCADA" : "COM terrain"} · Modbus ${mode.toUpperCase()}`}</h3><p>{templateOnly ? 'Choisis le protocole et vérifie les adresses proposées.' : 'Choisis une variable du domaine et une adresse libre, ou tire un lien entre les deux.'}</p></div></header>
     <div className="modbus-wiring-scroll">
       <div className="modbus-wiring-controls" aria-label="Modèle Modbus du type">
         {switchMode && <label>Protocole<select value={mode} disabled={dirty || busy} onChange={event => switchMode(event.target.value as 'tcp' | 'rtu')}><option value="tcp">TCP</option><option value="rtu">RTU</option></select></label>}
@@ -243,7 +245,7 @@ export default function ModbusWiring({ mode, revision, instances, peers, points,
         <><div className="modbus-view-tools">
           <button type="button" className="comm-btn" aria-pressed={!showMapped} onClick={() => { setShowMapped(!showMapped); setArmed(null) }}>{showMapped ? 'Masquer les variables mappées' : 'Afficher les variables mappées'}</button>
           <button type="button" className="comm-btn" aria-pressed={alignByAddress} onClick={() => { setAlignByAddress(!alignByAddress); setArmed(null) }}>{alignByAddress ? 'Rétablir l’ordre des variables' : 'Aligner par adresse'}</button>
-        </div><p className="comm-help">Plage {min}–{max} · {available.length} adresses libres affichées{!choices.length && ' · Aucun membre COM compatible avec cette table'}</p>
+        </div><p className="comm-help">Plage {min}–{max} · {available.length} adresses libres affichées{!choices.length && ' · Aucun membre du domaine compatible avec cette table'}</p>
           <ExchangeWiring sources={objectOnLeft ? sources : destinations} destinations={objectOnLeft ? destinations : sources}
             sourceParameter={objectOnLeft ? objectLabel : modbusLabel} destinationParameter={objectOnLeft ? modbusLabel : objectLabel}
             mappings={links.flatMap(link => registers(link).map(n => {

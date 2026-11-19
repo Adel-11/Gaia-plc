@@ -22,7 +22,7 @@ export type GenericSignal = {
 }
 export type GenericMember = {
   id: string
-  role: 'PA' | 'COM' | 'EXC' | 'IO' | 'INT'
+  role: 'PA' | 'COM' | 'HMI' | 'EXC' | 'IO' | 'INT'
   name: string
   iec_type: string
   default_value?: string
@@ -55,7 +55,8 @@ const signalRole = (signal: GenericSignal) => signalTransport(signal) === 'io' ?
 const codeRole = (role: GenericMember['role']) => role === 'INT' ? 'INTERN' : role
 const memberRoles: { role: GenericMember['role']; label: string }[] = [
   { role: 'PA', label: 'Paramètres' },
-  { role: 'COM', label: 'Communication' },
+  { role: 'COM', label: 'Terrain Modbus' },
+  { role: 'HMI', label: 'IHM / SCADA' },
   { role: 'EXC', label: 'Échanges' },
   { role: 'IO', label: 'Entrées / sorties' },
   { role: 'INT', label: 'Variables internes' },

@@ -10,12 +10,12 @@ from pydantic import BaseModel, Field
 
 from backend import v2_store as store
 
-ROLES = ("PA", "COM", "EXC", "IO", "INT")
+ROLES = ("PA", "COM", "HMI", "EXC", "IO", "INT")
 ANALOG_TYPES = {"BYTE", "WORD", "DWORD", "INT", "UINT", "DINT", "UDINT", "REAL", "LREAL"}
 MODBUS_TYPES = {"WORD", "INT", "UINT", "REAL"}
 QUALIFIED = re.compile(
     r"//[^\r\n]*|\(\*.*?\*\)|'(?:\$[^\r\n]|''|[^'])*'|\"(?:\$[^\r\n]|\"\"|[^\"])*\""
-    r"|(?<![\w.])(PA|COM|EXC|IO|INTERN)\s*\.\s*([A-Za-z_]\w*)",
+    r"|(?<![\w.])(PA|COM|HMI|EXC|IO|INTERN)\s*\.\s*([A-Za-z_]\w*)",
     re.S | re.I,
 )
 
@@ -36,7 +36,7 @@ class Signal(BaseModel):
 
 class LogicMember(BaseModel):
     id: str = Field(min_length=1, max_length=64)
-    role: Literal["PA", "COM", "EXC", "IO", "INT"]
+    role: Literal["PA", "COM", "HMI", "EXC", "IO", "INT"]
     name: str = Field(min_length=1, max_length=80)
     iec_type: str = Field(min_length=1, max_length=128)
     default_value: str = Field(default="", max_length=500)
@@ -91,18 +91,18 @@ STARTERS = (
         "description": "Reçoit une demande de marche de l’IHM et l’autorise uniquement en mode local. Publie le mode et l’état de l’autorisation.",
         "signals": [],
         "members": [
-            {"id": "local-request", "role": "COM", "name": "HMI_INPUT_MODE_LOCAL", "iec_type": "BOOL"},
-            {"id": "start-request", "role": "COM", "name": "HMI_INPUT_MARCHE", "iec_type": "BOOL"},
-            {"id": "local-state", "role": "COM", "name": "HMI_OUTPUT_MODE_LOCAL", "iec_type": "BOOL"},
-            {"id": "start-state", "role": "COM", "name": "HMI_OUTPUT_MARCHE_AUTORISEE", "iec_type": "BOOL"},
+            {"id": "local-request", "role": "HMI", "name": "HMI_INPUT_MODE_LOCAL", "iec_type": "BOOL"},
+            {"id": "start-request", "role": "HMI", "name": "HMI_INPUT_MARCHE", "iec_type": "BOOL"},
+            {"id": "local-state", "role": "HMI", "name": "HMI_OUTPUT_MODE_LOCAL", "iec_type": "BOOL"},
+            {"id": "start-state", "role": "HMI", "name": "HMI_OUTPUT_MARCHE_AUTORISEE", "iec_type": "BOOL"},
             {"id": "local", "role": "INT", "name": "MODE_LOCAL", "iec_type": "BOOL"},
             {"id": "start", "role": "INT", "name": "MARCHE_AUTORISEE", "iec_type": "BOOL"},
         ],
         "processing": (
-            "INTERN.MODE_LOCAL := COM.HMI_INPUT_MODE_LOCAL;\n"
-            "INTERN.MARCHE_AUTORISEE := INTERN.MODE_LOCAL AND COM.HMI_INPUT_MARCHE;\n"
-            "COM.HMI_OUTPUT_MODE_LOCAL := INTERN.MODE_LOCAL;\n"
-            "COM.HMI_OUTPUT_MARCHE_AUTORISEE := INTERN.MARCHE_AUTORISEE;"
+            "INTERN.MODE_LOCAL := HMI.HMI_INPUT_MODE_LOCAL;\n"
+            "INTERN.MARCHE_AUTORISEE := INTERN.MODE_LOCAL AND HMI.HMI_INPUT_MARCHE;\n"
+            "HMI.HMI_OUTPUT_MODE_LOCAL := INTERN.MODE_LOCAL;\n"
+            "HMI.HMI_OUTPUT_MARCHE_AUTORISEE := INTERN.MARCHE_AUTORISEE;"
         ),
     },
 )

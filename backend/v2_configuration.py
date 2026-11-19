@@ -562,7 +562,7 @@ def register_configuration_routes(app,get_session,current_user,csrf):
                 params = body.modbus_template
                 protocol = params.get("protocol")
                 added, plan = apply_template(state, params.get("instance_id"), protocol, params.get("client"),
-                                             params.get("line"), params.get("address"), params.get("include") is True)
+                                             params.get("line"), params.get("address"), params.get("include") is True, params.get('role', 'COM'))
                 changes.extend([f"{len(added)} points ajoutés", *plan])
                 if params.get("include") is True:
                     changes.append("Inclure l’instance dans GFC_COM_IN et GFC_COM_OUT.")
