@@ -132,8 +132,6 @@ def register_plc_routes(app, get_session, current_user, csrf):
         source = v2_plc._source(state)
         templates = v2_plc._source_objects(source)
         defaults = v2_plc._folder_map(source)
-        snapshot = {o['name']: o.get('folder', '') for o in (state.get('snapshot') or {}).get('objects', []) if o.get('name')}
-        placements = state.get('object_folders') or {}
         fb_names = {t.get('fb', {}).get('name') for t in state.get('types', [])}
         dut_names = {d.get('name') for t in state.get('types', []) for d in t.get('duts', [])}
         fc_names = {f.get('name') or f.get('FC') for f in state.get('exchange_functions', [])}
@@ -144,13 +142,14 @@ def register_plc_routes(app, get_session, current_user, csrf):
                     kind = ('GFC' if name.startswith('GFC_') else 'GFB' if name.startswith('GFB_') else
                             'FNC' if name.startswith('FNC_') else 'EXCHANGE' if name.startswith('FC_EXC_') else
                             'FB' if name.startswith('FB_') else 'PROGRAM' if name == 'PLC_PRG' else 'POU')
-                objects[name] = {'name': name, 'kind': kind, 'folder': placements.get(name, snapshot.get(name, defaults.get(name, fallback)))}
+                objects[name] = {'name': name, 'kind': kind, 'folder': v2_plc.object_folder(state, name, defaults.get(name, fallback))}
         for name, element in templates.items():
             if name.startswith('DUT_') and name != 'DUT_Union_Real_Word' and name not in dut_names: continue
             if name.startswith('FB_') and name not in fb_names: continue
             if name.startswith('FC_EXC_') and name not in fc_names: continue
             local = v2_plc._local(element)
             add(name, 'DUT' if local == 'dataType' else 'GVL' if local == 'globalVars' else 'POU')
+        objects.update(v2_plc.generated_globals(state, objects))
         for typ in state.get('types', []):
             for dut in typ.get('duts', []): add(dut.get('name'), 'DUT', typ.get('folder', 'Function Blocs/FB'))
             add(typ.get('fb', {}).get('name'), 'POU', typ.get('folder', 'Function Blocs/FB'))

@@ -39,6 +39,24 @@ def _source_objects(root):
     return _objects(root)
 
 
+def object_folder(state, name, fallback=''):
+    """One placement rule for the tree, generated objects and XML exports."""
+    placements = state.get('object_folders') or {}
+    if name in placements:
+        return placements[name] or ''
+    snapshot = next((item for item in (state.get('snapshot') or {}).get('objects', []) if item.get('name') == name), None)
+    return (snapshot.get('folder') or '') if snapshot is not None else fallback
+
+
+def generated_globals(state, objects):
+    """Model-only GVLs must be present in both the tree and the program."""
+    result = {}
+    for name, role, companion in (('GVL_HMI', 'HMI', 'GVL_COM'),):
+        if name not in objects and any(dut.get('role') == role for typ in state.get('types', []) for dut in typ.get('duts', [])):
+            result[name] = {'name': name, 'kind': 'GVL', 'folder': object_folder(state, name, objects.get(companion, {}).get('folder', 'GVL'))}
+    return result
+
+
 def _stable_id(name, state):
     ids = (state.get("snapshot") or {}).get("object_ids", {})
     return ids.get(name) or str(uuid.uuid5(uuid.NAMESPACE_URL, "gaia-plc:" + name))
@@ -419,9 +437,8 @@ def _generated_objects(objs, state, sources):
         return name in set(membership.get(block, []))
     _ensure_mapped_declarations(objs,state,valid_instances)
     # Keep global variable names and declared types in sync with model instances.
-    if any(dut.get('role') == 'HMI' for typ in state.get('types', []) for dut in typ.get('duts', [])) and 'GVL_HMI' not in objs:
-        objs['GVL_HMI'] = {'name': 'GVL_HMI', 'kind': 'GVL', 'folder': objs.get('GVL_COM', {}).get('folder', 'GVL'),
-                           'element': etree.Element(NS + 'globalVars', name='GVL_HMI')}
+    for name, metadata in generated_globals(state, objs).items():
+        objs[name] = {**metadata, 'element': etree.Element(NS + 'globalVars', name=name)}
     for gvl, role in (("GVL_COM", "COM"), ("GVL_HMI", "HMI"), ("GVL_EXC", "EXC"), ("GVL_IO", "IO"), ("GVL_PA", "PA")):
         el = objs.get(gvl, {}).get("element")
         if el is None: continue
@@ -613,8 +630,6 @@ def build_program(state, include_union: bool = False) -> dict:
     model_pous={str(t.get("fb",{}).get("name")) for t in state.get("types",[]) if t.get("fb",{}).get("name")}
     model_duts={str(d.get("name")) for t in state.get("types",[]) for d in t.get("duts",[]) if d.get("name")}
     model_fcs={str(f.get("name") or f.get("FC")) for f in state.get("exchange_functions",[]) if f.get("name") or f.get("FC")}
-    snapshot_objects={o.get("name"):o for o in (state.get("snapshot") or {}).get("objects",[])}
-    snapshot_folders={name:o.get("folder") for name,o in snapshot_objects.items() if o.get("folder")}
     objs = {}
     for name, template in src.items():
         if name == "DUT_Union_Real_Word" and not include_union: continue
@@ -623,7 +638,7 @@ def build_program(state, include_union: bool = False) -> dict:
         if name.startswith("FC_EXC_") and name not in model_fcs: continue
         el = copy.deepcopy(template)
         kind = "DUT" if _local(el) == "dataType" else ("GVL" if _local(el) == "globalVars" else "POU")
-        folder = (state.get("object_folders") or {}).get(name, snapshot_folders.get(name) if name in snapshot_folders else folders.get(name, ""))
+        folder = object_folder(state, name, folders.get(name, ''))
         objs[name] = {"name": name, "kind": kind, "folder": folder, "element": el}
     # Rebuild DUT declarations from the current structured model, retaining source FB/FNC implementations.
     templates = {n: v["element"] for n, v in objs.items()}
@@ -632,15 +647,15 @@ def build_program(state, include_union: bool = False) -> dict:
         for dut in typ.get("duts", []):
             name = dut.get("name") or f"DUT_{dut.get('role')}_{type_name}"
             el = _build_dut(name, typ, dut.get("role"), state, templates.get(name))
-            folder = (state.get("object_folders") or {}).get(name, folders.get(name, typ.get("folder", "Function Blocs/FB")))
+            folder = object_folder(state, name, folders.get(name, typ.get("folder", "Function Blocs/FB")))
             objs[name] = {"name": name, "kind": "DUT", "folder": folder, "element": el}
         fbname=typ.get("fb",{}).get("name")
         if fbname and fbname not in objs:
-            objs[fbname]={"name":fbname,"kind":"POU","folder":(state.get("object_folders") or {}).get(fbname,typ.get("folder","Function Blocs/FB")),"element":_new_fb(fbname,typ)}
+            objs[fbname]={"name":fbname,"kind":"POU","folder":object_folder(state,fbname,typ.get("folder","Function Blocs/FB")),"element":_new_fb(fbname,typ)}
     for fn in state.get("exchange_functions",[]):
         name=str(fn.get("name") or fn.get("FC") or "")
         if name and name not in objs:
-            objs[name]={"name":name,"kind":"POU","folder":(state.get("object_folders") or {}).get(name,"Functions/FC_EXC"),"element":_new_exchange_function(fn,{str(t.get("name")):t for t in state.get("types",[])})}
+            objs[name]={"name":name,"kind":"POU","folder":object_folder(state,name,"Functions/FC_EXC"),"element":_new_exchange_function(fn,{str(t.get("name")):t for t in state.get("types",[])})}
     # The structured model owns authored ST; unchanged reference objects still retain their exact V7 source text.
     from backend.v2_fb_flow import convert_body, render_flow, repair_migrated_flow
     for typ in state.get("types", []):
@@ -782,8 +797,7 @@ def serialize_program(objects: dict, state: dict, selected_names: list[str], inc
         elif obj["kind"] == "GVL":
             data=etree.SubElement(add,NS+"data",name=GVL_DATA,handleUnknown="implementation")
             data.append(el)
-        snapshot_obj=next((o for o in (state.get("snapshot") or {}).get("objects",[]) if o.get("name")==name),None)
-        paths[name]=(state.get("object_folders") or {}).get(name, snapshot_obj.get("folder", "") if snapshot_obj is not None else obj.get("folder",""))
+        paths[name]=object_folder(state,name,obj.get('folder',''))
     psdata=etree.SubElement(add,NS+"data",name=STRUCT,handleUnknown="discard")
     ps=etree.SubElement(psdata,NS+"ProjectStructure")
     for name in selected_names:
