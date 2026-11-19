@@ -406,6 +406,8 @@ Each FB INPUTS/OUTPUTS mapping editor has an **Excel** menu: download an empty t
 
 PA values are configured using **Paramètres PA** on each instance. The Arborescence synthesis page opens objects in the corresponding type, instance or code editor. Exchanges uses a full workspace canvas with a floating instance menu and a large variable mapping dialog. Selected code has a scrollable detail panel; frame sizes remain local to each user and project.
 
+In **Arborescence**, each folder has pencil and trash actions. Renaming updates its descendants and object placements, including paths inherited from the CODESYS reference. Deleting removes only the folder: its objects and subfolders move up to its parent (or Application), after a confirmation showing the affected counts. Name collisions are rejected without merging folders. Block names, code, IDs and communication mappings stay unchanged, and the new layout is retained in subsequent XML exports and project history. Folder layouts belong to the active project.
+
 ### PanelView V8
 
 The PanelView profile uses the supplied CODESYS export in `reference-v2/v8/latest_codesys.xml`. The project model derives the DUT members and 143 TCP mappings from this file. The Excel exports and templates use the PanelView profile of the active project.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './plc-tree.css'
 import { usePanelScope } from './WorkspacePanel'
+import PanelIcon from './PanelIcon'
 
 export type PlcTreeObject = { name: string; kind: string; folder: string; type_id?: string; role?: string }
 type TreeData = { revision: number; folders: string[]; objects: PlcTreeObject[] }
@@ -16,6 +17,9 @@ export default function V2PlcTree({ projectKey, projectRevision, csrf, onOpen, o
   const [data, setData] = useState<TreeData | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({}), [newFolderParent, setNewFolderParent] = useState<string | null>(null), [folderName, setFolderName] = useState(''), [moveTarget, setMoveTarget] = useState<Record<string, string>>({})
   const panelScope = usePanelScope()
+  const [folderAction, setFolderAction] = useState<{kind:'rename'|'delete';path:string}|null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [folderNotice, setFolderNotice] = useState('')
   const dragged = useRef<{name:string;folder:boolean}|null>(null)
   const pointerDrag = useRef<{pointerId:number;name:string;folder:boolean;startX:number;startY:number;active:boolean}|null>(null)
   const [pointerGhost, setPointerGhost] = useState<{name:string;x:number;y:number}|null>(null)
@@ -82,10 +86,47 @@ export default function V2PlcTree({ projectKey, projectRevision, csrf, onOpen, o
   const submitFolder = async (event: React.FormEvent) => { event.preventDefault(); const path = [newFolderParent, folderName.trim()].filter(Boolean).join('/'); if (!folderName.trim() || !data || busy) return; setBusy(true); setError(''); try { await api('/plc/folders','POST',{ revision: data?.revision, path },csrf); setFolderName(''); setNewFolderParent(null); await refresh(); onChanged?.() } catch(e) { setError(e instanceof Error ? e.message : 'Création impossible') } finally { setBusy(false) } }
   const place = async (name: string, folder: string, isFolder = false, undo = false) => { if (!data || busy) return; const previous = isFolder ? name.split('/').slice(0,-1).join('/') : data.objects.find(o=>o.name===name)?.folder || ''; setBusy(true); setError(''); try { const result = isFolder ? await api<{ revision:number; folders:string[] }>('/plc/folders/move','POST',{revision:data?.revision,path:name,destination:folder},csrf) : await api<{revision:number}>('/plc/placement','POST',{revision:data?.revision,name,folder},csrf); await refresh(); onChanged?.(); setLastMove(undo ? null : {name:isFolder?[folder,name.split('/').pop()].filter(Boolean).join('/'):name,previous,label:name.split('/').pop()||name,folder:isFolder}); if (isFolder) setCollapsed(old => { const next: Record<string,boolean> = {}; const base = name.slice(name.lastIndexOf('/') + 1); for(const [key,value] of Object.entries(old)) { if(key === name || key.startsWith(`${name}/`)) { const suffix = key === name ? base : `${base}/${key.slice(name.length + 1)}`; next[[folder, suffix].filter(Boolean).join('/')]=value } else next[key]=value }; try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* Keep the tree usable when storage is unavailable. */ }; return next }); else setMoveTarget(old=>{const next={...old};delete next[name];return next}); void result } catch(e) { setMoveTarget(old=>{const next={...old};delete next[name];return next});setError(e instanceof Error ? e.message : 'Déplacement impossible') } finally { setBusy(false) } }
   const folderOptions = ['', ...(data?.folders || [])]
+  useEffect(() => { setFolderAction(null); setFolderNotice(''); setLastMove(null); setNewFolderParent(null); setMoveTarget({}) }, [projectKey])
+  const editFolder = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!data || !folderAction || busy) return
+    const {kind, path} = folderAction
+    setBusy(true); setError('')
+    try {
+      const result = await api<{revision:number;path:string}>(`/plc/folders/${kind}`, 'POST', {
+        revision:data.revision, path, ...(kind === 'rename' ? {name:renameValue.trim()} : {}),
+      }, csrf)
+      setCollapsed(previous => {
+        const next: Record<string,boolean> = {}
+        for (const [key, value] of Object.entries(previous)) {
+          if (kind === 'delete' && key === path) continue
+          const renamed = key === path ? result.path : key.startsWith(path + '/') ? [result.path, key.slice(path.length + 1)].filter(Boolean).join('/') : key
+          next[renamed] = value
+        }
+        try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* Preferences are optional. */ }
+        return next
+      })
+      setFolderAction(null); setNewFolderParent(null); setLastMove(null); setMoveTarget({})
+      setFolderNotice(kind === 'rename' ? `Dossier renommé : ${result.path}.` : `Dossier supprimé. Son contenu est conservé dans ${result.path || 'Application'}.`)
+      await refresh(); onChanged?.()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Modification du dossier impossible') }
+    finally { setBusy(false) }
+  }
+  const folderActionForm = (path: string) => folderAction?.path === path && <form className="plc-tree-folder-edit" aria-label={`${folderAction.kind === 'rename' ? 'Renommer' : 'Supprimer'} le dossier ${path}`} onSubmit={event => void editFolder(event)} onDragStart={event => event.stopPropagation()}>
+    {folderAction.kind === 'rename' ? <label>Nouveau nom<input autoFocus value={renameValue} maxLength={255} disabled={busy} onChange={event => setRenameValue(event.target.value)} aria-label={`Nouveau nom de ${path}`}/></label> : <div>
+      <strong>Supprimer uniquement le dossier « {path.split('/').pop()} » ?</strong>
+      <p>Son contenu sera conservé et remonté dans <b>{path.split('/').slice(0,-1).join('/') || 'Application'}</b>. Aucun bloc ne sera supprimé.</p>
+      <p>{data?.objects.filter(object => object.folder === path || object.folder.startsWith(path + '/')).length || 0} objet(s) et {data?.folders.filter(folder => folder.startsWith(path + '/')).length || 0} sous-dossier(s) concernés.</p>
+    </div>}
+    {error && <p className="plc-tree-error" role="alert">{error}</p>}
+    <div className="plc-tree-folder-edit-actions"><button type="submit" disabled={busy || folderAction.kind === 'rename' && (!renameValue.trim() || renameValue.trim() === path.split('/').pop())}>{busy ? 'Patiente…' : folderAction.kind === 'rename' ? 'Enregistrer le nom' : 'Supprimer le dossier'}</button><button type="button" disabled={busy} onClick={() => {setFolderAction(null);setError('')}}>Annuler</button></div>
+  </form>
   const renderFolder = (path: string, depth: number): React.ReactNode => <div className="plc-tree-folder" data-plc-folder={path} key={path}>
     <div className="plc-tree-row folder-row" data-plc-folder={path} data-plc-drop-active={pointerDropTarget===path} style={{'--tree-depth':depth,...(pointerDropTarget===path?{outline:'2px solid #51836e',backgroundColor:'#eff8f2'}:{})} as React.CSSProperties} draggable onDragStart={e=>startDrag(e,path,true)} onDragEnd={()=>{dragged.current=null}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>drop(e,path)}>
       <button className="plc-tree-toggle" aria-label={`${collapsed[path]?'Déplier':'Replier'} ${path}`} aria-expanded={!collapsed[path]} onClick={()=>toggle(path)}>{collapsed[path]?'▸':'▾'}</button><span className="plc-tree-drag-handle" aria-hidden="true" title={`Déplacer le dossier ${path}`} style={{touchAction:'none'}} onPointerDown={e=>pointerDown(e,path,true)} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={clearPointerDrag} onLostPointerCapture={clearPointerDrag}>⠿</span><span className="plc-tree-folder-icon" aria-hidden="true">▰</span><strong>{path.slice(path.lastIndexOf('/')+1)}</strong><label className="plc-tree-move"><span className="sr-only">Déplacer le dossier {path} vers</span><select aria-label={`Déplacer le dossier ${path} vers`} disabled={busy} value="__choose" onChange={e=>{if(e.target.value!=='__choose')void place(path,e.target.value==='__root'?'':e.target.value,true)}}><option value="__choose">Déplacer…</option>{folderOptions.filter(target=>target!==path&&!target.startsWith(`${path}/`)&&target!==(path.includes('/')?path.slice(0,path.lastIndexOf('/')):'')).map(target=><option key={target||'root'} value={target||'__root'}>{target||'Racine'}</option>)}</select></label><button className="plc-tree-add" onClick={()=>{setNewFolderParent(path);setFolderName('')}}>＋ dossier</button>
+      <div className="plc-tree-folder-tools"><button type="button" disabled={busy} title={`Renommer le dossier ${path}`} aria-label={`Renommer le dossier ${path}`} onClick={() => {setFolderAction({kind:'rename',path});setRenameValue(path.split('/').pop() || '');setError('')}}><PanelIcon name="rename"/></button><button type="button" disabled={busy} title={`Supprimer le dossier ${path}`} aria-label={`Supprimer le dossier ${path}`} onClick={() => {setFolderAction({kind:'delete',path});setError('')}}><PanelIcon name="delete"/></button></div>
     </div>
+    {folderActionForm(path)}
     {!collapsed[path] && <div>{newFolderParent===path && <form className="plc-tree-new-folder" onSubmit={e=>void submitFolder(e)}><input autoFocus aria-label={`Nom du dossier dans ${path}`} value={folderName} onChange={e=>setFolderName(e.target.value)} placeholder="Nom du dossier"/><button disabled={busy||!data||!folderName.trim()}>Créer</button><button type="button" onClick={()=>setNewFolderParent(null)}>Annuler</button></form>}{children(path).map(child=>renderFolder(child,depth+1))}{objects(path).map(object=>renderObject(object,depth+1))}</div>}
   </div>
   const renderObject = (object: PlcTreeObject, depth: number) => <div className="plc-tree-row object-row" key={`${object.kind}:${object.name}`} style={{'--tree-depth':depth} as React.CSSProperties} draggable onDragStart={e=>startDrag(e,object.name,false)} onDragEnd={()=>{dragged.current=null}}>
@@ -93,6 +134,7 @@ export default function V2PlcTree({ projectKey, projectRevision, csrf, onOpen, o
   </div>
   return <section className="plc-tree-panel" aria-label="Explorateur des objets CODESYS"><header className="plc-tree-header"><div><h2>Objets et dossiers</h2><p>{data?.objects.length ?? 0} objets · {data?.folders.length ?? 0} dossiers · Glissez un élément ou utilisez son menu de déplacement.</p></div><button type="button" disabled={busy||!data} onClick={()=>{setNewFolderParent('');setFolderName('')}}>＋ Nouveau dossier</button></header>
     {lastMove&&<div className="plc-tree-move-notice" role="status"><span>{lastMove.label} déplacé.</span><button disabled={busy} onClick={()=>void place(lastMove.name,lastMove.previous,lastMove.folder,true)}>Annuler ce déplacement</button></div>}
+    {folderNotice && <p className="plc-tree-move-notice" role="status">{folderNotice}</p>}
     {error&&<p className="plc-tree-error" role="alert">{error}</p>}{newFolderParent===''&&<form className="plc-tree-new-folder" onSubmit={e=>void submitFolder(e)}><input autoFocus aria-label="Nom du nouveau dossier" value={folderName} onChange={e=>setFolderName(e.target.value)} placeholder="Nom du dossier"/><button disabled={busy||!data||!folderName.trim()}>Créer</button><button type="button" onClick={()=>setNewFolderParent(null)}>Annuler</button></form>}
     <div className="plc-tree-root" data-plc-folder="" data-plc-drop-active={pointerDropTarget===''} style={pointerDropTarget===''?{outline:'2px solid #51836e',backgroundColor:'#eff8f2'}:{}} onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move'}} onDrop={e=>drop(e,'')}><div className="plc-tree-application" data-plc-folder="" data-plc-drop-active={pointerDropTarget===''}><strong>Application</strong><span>Racine du projet</span></div>{children('').map(path=>renderFolder(path,0))}{objects('').map(object=>renderObject(object,0))}{!data?.objects.length&&!data?.folders.length&&<p className="plc-tree-empty">Aucun objet CODESYS à afficher.</p>}</div>
     {pointerGhost&&<div aria-hidden="true" style={{position:'fixed',left:pointerGhost.x+14,top:pointerGhost.y+14,zIndex:2000,pointerEvents:'none',padding:'7px 11px',borderRadius:7,background:'#203b4b',color:'#fff',boxShadow:'0 4px 14px #10212b55',fontSize:13,whiteSpace:'nowrap'}}>{pointerGhost.name}</div>}

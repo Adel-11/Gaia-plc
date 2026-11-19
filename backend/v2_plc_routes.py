@@ -39,6 +39,10 @@ class FolderMoveRequest(BaseModel):
     destination: str = Field(max_length=512)
 
 
+class FolderRenameRequest(FolderRequest):
+    name: str = Field(min_length=1, max_length=255)
+
+
 def _clean_path(value: str, allow_root: bool = False) -> str:
     value = str(value or "").strip().strip("/")
     parts = value.split("/") if value else []
@@ -245,6 +249,56 @@ def register_plc_routes(app, get_session, current_user, csrf):
                 state['object_folders'][row['name']] = target + p[len(src):]
         saved = mutate_folder(state, session, user)
         return {'revision': saved.get('revision'), 'folders': folder_inventory(saved, inventory_objects(saved))[0]}
+
+    def edit_folder(state, src, target, deleting=False):
+        folders, rows = folder_inventory(state, inventory_objects(state))
+        if src not in folders: raise HTTPException(404, 'Dossier PLC introuvable.')
+        affected = {p for p in folders if p == src or p.startswith(src + '/')}
+        def remap(path):
+            if path == src: return target
+            if path.startswith(src + '/'):
+                return '/'.join(part for part in (target, path[len(src) + 1:]) if part)
+            return path
+        remaining = {p.casefold() for p in folders if p not in affected}
+        object_paths = {'/'.join(part for part in (remap(row['folder']), row['name']) if part).casefold() for row in rows}
+        for path in affected:
+            if deleting and path == src: continue
+            if len(remap(path)) > 512: raise HTTPException(422, 'Le chemin d’un sous-dossier dépasserait 512 caractères.')
+            if remap(path).casefold() in remaining:
+                raise HTTPException(409, f'Le dossier « {remap(path)} » existe déjà. Déplace ou renomme ce sous-dossier avant de continuer.')
+            if remap(path).casefold() in object_paths:
+                raise HTTPException(409, f'Le nom « {remap(path)} » est déjà utilisé par un objet PLC.')
+        state['plc_folders'] = sorted({remap(p) for p in folders if not (deleting and p == src)} - {''})
+        # Override effective placements inherited from the snapshot as well.
+        placements = {name: remap(path) for name, path in state.get('object_folders', {}).items()}
+        for row in rows:
+            if row['folder'] == src or row['folder'].startswith(src + '/'):
+                placements[row['name']] = remap(row['folder'])
+        state['object_folders'] = placements
+
+    @app.post('/api/v2/plc/folders/rename')
+    def rename_folder(body: FolderRenameRequest, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        state = project(session)
+        if body.revision != state.get('revision', 0): raise HTTPException(409, 'Project changed; refresh the PLC tree')
+        src = _clean_path(body.path)
+        name = body.name.strip()
+        if '/' in name or '\\' in name or name in {'', '.', '..'} or any(ord(char) < 32 for char in name):
+            raise HTTPException(422, 'Indique un nom de dossier sans / ni \\.')
+        target = '/'.join(part for part in (src.rpartition('/')[0], name) if part)
+        if len(target) > 512: raise HTTPException(422, 'Le chemin du dossier dépasse 512 caractères.')
+        edit_folder(state, src, target)
+        saved = mutate_folder(state, session, user)
+        return {'revision': saved.get('revision'), 'path': target, 'folders': folder_inventory(saved, inventory_objects(saved))[0]}
+
+    @app.post('/api/v2/plc/folders/delete')
+    def delete_folder(body: FolderRequest, session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
+        state = project(session)
+        if body.revision != state.get('revision', 0): raise HTTPException(409, 'Project changed; refresh the PLC tree')
+        src = _clean_path(body.path)
+        parent = src.rpartition('/')[0]
+        edit_folder(state, src, parent, deleting=True)
+        saved = mutate_folder(state, session, user)
+        return {'revision': saved.get('revision'), 'path': parent, 'folders': folder_inventory(saved, inventory_objects(saved))[0]}
 
     def direct_export(state, names, filename, session, user, digest_key):
         import copy

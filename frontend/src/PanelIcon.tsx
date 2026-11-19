@@ -4,6 +4,8 @@ const paths = {
   down: 'm6 9 6 6 6-6',
   up: 'm6 15 6-6 6 6',
   reset: 'M4 11a8 8 0 1 1 2 6m-2-6V5m0 6h6',
+  rename: 'm15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15v5Z',
+  delete: 'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7',
 }
 
 export default function PanelIcon({ name }: { name: keyof typeof paths }) {
