@@ -46,6 +46,21 @@ def test_reference_rewrite_preserves_strings_comments_and_field_members():
     assert result == "HMI.HMI_RUN := COM.FIELD_RUN; (* COM.HMI_RUN *)\n// COM.HMI_RUN\nlabel := 'COM.HMI_RUN';"
 
 
+def test_supervision_members_without_hmi_prefix_are_also_moved(original):
+    state = deepcopy(original)
+    typ = next(t for t in state['types'] if t['name'] == 'ADM100W')
+    next(d for d in typ['duts'] if d['role'] == 'COM')['members'].append({'name': 'OUTPUT_Value', 'iec_type': 'BOOL'})
+    row = deepcopy(next(p for p in state['tcp_points'] if p['Instance'] == 'ADM100W_1'))
+    row['GVL_COM variable'] = 'GVL_COM.COM_ADM100W_1.OUTPUT_Value'
+    row['id'] = 'qa-non-prefixed'
+    state['tcp_points'].append(row)
+    typ['fb']['body'] += '\nCOM.OUTPUT_Value := TRUE;\n'
+    migrate_state(state)
+    assert any(m['name'] == 'OUTPUT_Value' for d in typ['duts'] if d['role'] == 'HMI' for m in d['members'])
+    assert 'HMI.OUTPUT_Value := TRUE;' in typ['fb']['body']
+    assert next(p for p in state['tcp_points'] if p['id'] == row['id'])['GVL_COM variable'] == 'GVL_HMI.HMI_ADM100W_1.OUTPUT_Value'
+
+
 def test_both_mapping_domains_share_free_addresses_and_templates_are_separate(original):
     from backend.v2_modbus_templates import apply_template
     state = deepcopy(original)

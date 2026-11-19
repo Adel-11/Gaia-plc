@@ -54,9 +54,25 @@ def _walk(value, names=None, instances=None):
     return value
 
 
-def migrate_state(state):
+def supervision_members(state):
+    clients = {str(row.get('Client') or row.get('id')).casefold() for row in state.get('tcp_clients', [])
+               if re.search(r'hmi|scada|fuxa|webvisu|panelview|supervision', str(row.get('Client') or row.get('id')) + ' ' + str(row.get('Description') or ''), re.I)}
+    instances = {str(key): instance for instance in state.get('instances', []) for key in (instance.get('id'), instance.get('name')) if key}
+    result = {}
+    for point in state.get('tcp_points', []):
+        if domain(point) != 'HMI' and (state.get('separate_hmi') or str(point.get('Client') or point.get('client_id')).casefold() not in clients):
+            continue
+        instance = instances.get(str(point.get('Instance') or point.get('instance_id') or point.get('instance')))
+        path = str(point.get('GVL_COM variable') or '').split('.', 2)
+        if instance and len(path) == 3:
+            result.setdefault(str(instance['type_id']), set()).add(path[2].split('.')[0].split('[')[0].casefold())
+    return result
+
+
+def migrate_state(state, supervised=None):
     """Idempotent conversion of a detached state. The caller owns backup and persistence."""
     moved, instance_members = {}, {}
+    supervised = supervision_members(state) if supervised is None else supervised
     for typ in state.get('types', []):
         com = next((dut for dut in typ.get('duts', []) if dut.get('role') == 'COM'), None)
         hmi = next((dut for dut in typ.get('duts', []) if dut.get('role') == 'HMI'), None)
@@ -65,7 +81,7 @@ def migrate_state(state):
             typ['duts'].insert(typ['duts'].index(com) + 1 if com else 0, hmi)
         existing = {member['name'].casefold(): member for member in hmi['members'] if member['name'] != 'SPARE'}
         for member in (com or {}).get('members', []):
-            if member['name'].upper().startswith(('HMI_', 'SCADA_', 'WEBVISU_')):
+            if member['name'].upper().startswith(('HMI_', 'SCADA_', 'WEBVISU_')) or member['name'].casefold() in supervised.get(str(typ['id']), set()) | supervised.get(str(typ['name']), set()):
                 key = member['name'].casefold()
                 if key in existing and existing[key].get('iec_type') != member.get('iec_type'):
                     raise ValueError(f"Conflicting HMI member: {typ['name']}.{member['name']}")
@@ -152,7 +168,18 @@ def migrate_project(session, project_id, expected_revision, backup_dir=None):
             raise ValueError('Backup integrity check failed.')
     backup.chmod(0o600)
     state = copy.deepcopy(current)
-    migrate_state(state)
+    supervised = supervision_members(current)
+    # A shared catalogue needs the union of supervision members used by all its projects.
+    from sqlalchemy import select
+    from backend.v2_workspace import catalog_id
+    for project in session.scalars(select(store.V2Project)).all():
+        session.info['workspace_id'] = project.id
+        other = store.load_project(session)
+        if other and catalog_id(other) == catalog_id(current):
+            for key, names in supervision_members(other).items():
+                supervised.setdefault(key, set()).update(names)
+    session.info['workspace_id'] = project_id
+    migrate_state(state, supervised)
     problems = set(_compatibility_errors(state)) - set(_compatibility_errors(current))
     if problems:
         raise ValueError('Migration would introduce invalid PLC references: ' + '; '.join(sorted(problems)))
