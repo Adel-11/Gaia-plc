@@ -154,7 +154,8 @@ def rows_for(state, typ):
     return seed_rows(state, typ)
 
 
-def apply_template(state, instance_id, protocol, client=None, line=None, address=None, include=False, role='COM'):
+def apply_template(state, instance_id, protocol, client=None, line=None, address=None, include=False, role='COM',
+                   allocation='first_free', start_addresses=None):
     from backend.v2_capacity import tcp_capacity
     from backend.v2_configuration import apply_changes
     from backend.v2_instance_editor import _tcp_variable
@@ -169,11 +170,28 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
     if not rows:
         raise ValueError("Aucun modèle pour ce protocole. Configure-le dans Types.")
     tcp = protocol == "tcp"
+    if allocation not in {'first_free', 'from_address'}:
+        raise ValueError('Choisis la première adresse disponible ou une adresse de départ.')
+    if not tcp and allocation != 'first_free':
+        raise ValueError('Le choix du départ est réservé au modèle TCP. Les registres RTU restent ceux du modèle.')
     collection = "tcp_points" if tcp else "rtu_channels"
     points = state.setdefault(collection, [])
     if tcp:
         ranges, capacity = client_ranges(state, client), tcp_capacity(state)
         summary = []
+        starts = {}
+        if allocation == 'from_address':
+            if not isinstance(start_addresses, dict):
+                raise ValueError('Indique une adresse de départ pour chaque table TCP du modèle.')
+            for table in dict.fromkeys(row.table for row in rows):
+                lo, hi = ranges[table]
+                cap = capacity.get(table, [lo, hi])
+                lo, hi = max(lo, cap[0]), min(hi, cap[1])
+                start = start_addresses.get(table)
+                if type(start) is not int or not lo <= start <= hi:
+                    raise ValueError(f'Adresse de départ {table} : indique un entier entre {lo} et {hi}.')
+                starts[table] = start
+            summary.append('Allocation TCP à partir des adresses choisies ; adresses occupées sautées, mappings existants conservés.')
     else:
         slave = next((r for r in state.get("rtu_slaves", []) if r.get("Instance") == name), None)
         if slave is None:
@@ -228,12 +246,14 @@ def apply_template(state, instance_id, protocol, client=None, line=None, address
         if tcp:
             lo, hi = ranges[table]
             cap = capacity.get(table, [lo, hi])
-            start = next((n for n in range(max(lo, cap[0]), min(hi, cap[1]) - width + 2)
+            start = next((n for n in range(max(lo, cap[0], starts.get(table, lo)), min(hi, cap[1]) - width + 2)
                           if all(n + i not in used for i in range(width))), None)
         else:
             start = row.register_address if all(row.register_address + i not in used for i in range(width)) else None
         if start is None:
             raise ValueError(f"Aucune adresse libre pour {row.member} dans {table} ({width} registre(s)).")
+        if tcp and allocation == 'from_address':
+            starts[table] = start + width
         for offset, word in enumerate(WORD_ORDERS[row.order] if wide else (None,)):
             number = start + offset
             path = f"{union_base}.Word_value[{0 if word == 'LSW' else 1}]" if union else member

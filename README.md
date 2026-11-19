@@ -402,6 +402,8 @@ Use **Imports / Exports** for reviewed Excel imports, CODESYS XML exports and re
 
 Each FB INPUTS/OUTPUTS mapping editor has an **Excel** menu: download an empty template, export the current section, or import it back into the editable form. Each section has its own file, fictitious examples, column guide and copyable variable catalogue showing permitted source/destination roles. BOOL expressions accept AND, OR and parentheses. Import replaces only that section, can be undone in the form, and does not modify PROCESSING or save the project; save the FB through its normal review to apply the ST. Reference/example/guide sheets are never imported as PLC data.
 
+**Appliquer le modèle TCP** offers **Première adresse disponible** or **À partir d’une adresse définie**, in both the instance dialog and graphical communication mapping. Custom starts are specified separately for each Modbus table; only the tables used by the template are considered. New mappings follow template order from those starts, skip occupied addresses across all clients and COM/HMI domains, and keep two-register values contiguous. Existing mappings stay in place. Starts must fit both the client ranges and CODESYS array capacity; the reviewed preview lists the resulting addresses before saving. RTU keeps the manufacturer's registers from the type template.
+
 PA values are configured using **Paramètres PA** on each instance. The Arborescence synthesis page opens objects in the corresponding type, instance or code editor. Exchanges uses a full workspace canvas with a floating instance menu and a large variable mapping dialog. Selected code has a scrollable detail panel; frame sizes remain local to each user and project.
 
 ### PanelView V8
