@@ -98,7 +98,7 @@ def register_workspace_routes(app,get_session,current_user,csrf):
         else:
             state=copy.deepcopy(load_hmi_pack() if is_hmi(source) else engine.load_pack())
             state=ws.overlay(state,ws._catalog(source))
-            for coll in ('instances','tcp_points','rtu_slaves','rtu_channels','pa_values','exchange_calls','virtual_io'):state[coll]=[]
+            for coll in ('instances','tcp_points','rtu_slaves','rtu_channels','pa_values','exchange_calls','virtual_io','special_exc_assignments'):state[coll]=[]
             state['exchange_layout']={};state['generated_custom_code']={}
             for row in state.get('io_channels',[]):
                 for key in ('Instance','instance_id','GVL_IO member','member_name'):row[key]=None

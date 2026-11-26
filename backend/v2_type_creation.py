@@ -643,6 +643,7 @@ def register_type_creation_routes(app, get_session, current_user, csrf):
                 selected_types, referenced_names = _type_validation_closure(typ, current.get("types", []))
                 validation_state["types"] = selected_types
                 validation_state["instances"] = []
+                validation_state['special_exc_assignments'] = []
                 for collection in ("exchange_functions", "exchange_calls", "exchange_functions_detail",
                                   "tcp_points", "rtu_channels", "io_channels", "virtual_io"):
                     validation_state[collection] = []

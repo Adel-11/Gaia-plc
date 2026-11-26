@@ -364,6 +364,7 @@ def register_v2_routes(app, get_session, current_user, csrf):
                             referenced.update(str(d.get("name")) for d in dependency.get("duts", []))
             validation_state["types"] = selected_types
             validation_state["instances"] = []
+            validation_state['special_exc_assignments'] = []
             for collection in ("exchange_functions", "exchange_calls", "exchange_functions_detail",
                                "tcp_points", "rtu_slaves", "rtu_channels", "io_channels",
                                "virtual_io", "pa_values", "functions", "generated_custom_code"):

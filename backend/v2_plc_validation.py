@@ -103,6 +103,9 @@ def _refs(obj: dict) -> set[str]:
             refs.add(node.get("name"))
     # Generated ST is embedded as XHTML text. DUT names are also used in declarations.
     text = "\n".join(element.xpath(".//*[local-name()='ST' or local-name()='InterfaceAsPlainText']/*[local-name()='xhtml']/text()"))
+    if obj.get('external_source_assignments'):
+        from backend.v2_special_exc import mask_external_sources
+        text = mask_external_sources(text, obj['external_source_assignments'])
     text = _st_code(text)
     refs.update(re.findall(r"\bDUT_[A-Za-z0-9_]+\b", text))
     refs.update(re.findall(r"\b((?:FC_EXC|FNC|GFC)_[A-Za-z0-9_]+)\s*\(", text))
@@ -262,6 +265,8 @@ def plan_export(state: dict, objects: dict[str, dict], mode: str = "full", focus
                  and str(o.get("kind", "")).casefold() in {"dut", "gvl", "pou", "function", "functionblock", "function_block", "program"}}
     deletions.extend(sorted(n for n in old_names if n and n not in available_names and n != "DUT_Union_Real_Word"))
     manual = []
+    if state.get('special_exc_assignments'):
+        manual.append('Vérifier dans CODESYS l’existence et le type des sources ST des affectations EXC particulières ; ces sources ne sont pas déclarées automatiquement par le générateur.')
     if state.get("program_profile") == "hmi-v8":
         manual.append("PanelView 800 : utiliser les nouvelles adresses du classeur Modbus TCP. Coils et registres commencent à 1, entrées TOR à 10001. Conserver l’ordre CDAB.")
         if state.get("v7_archive_revision") or any("UPI_LOCAL_FUXA" in n or "UPI_LOCAL_WEBVISU" in n for n in deletions):
@@ -424,8 +429,10 @@ def validate_xml(xmlbytes: bytes, state: dict, objects: dict[str, dict]) -> dict
             _plain_variables(declaration) if declaration is not None else
             {v.get("name") for v in gvl.xpath("./*[local-name()='variable']") if v.get("name")}
         )
+    source_globals = set(declared_gvls) | (set(_snapshot_nodes(state)) if state.get('special_exc_assignments') else set())
     for pou in root.xpath("//*[local-name()='pou']"):
-        body = _st_code(pou.xpath("string(./*[local-name()='body']/*[local-name()='ST']/*[local-name()='xhtml'])"))
+        from backend.v2_special_exc import checked_body
+        body = _st_code(checked_body(pou, state, source_globals))
         decl = " ".join(pou.xpath(".//*[local-name()='derived']/@name"))
         plain = plain_declaration(pou)
         if plain is not None:
@@ -545,7 +552,8 @@ def _check_member_references(root: etree._Element, state: dict, errors: list[str
 
     # Check qualified paths in ST, after comments and literals were blanked.
     for pou in root.xpath("//*[local-name()='pou']"):
-        body = _st_code(pou.xpath("string(./*[local-name()='body']/*[local-name()='ST']/*[local-name()='xhtml'])"))
+        from backend.v2_special_exc import checked_body
+        body = _st_code(checked_body(pou, state, set(program_nodes)))
         for match in re.finditer(r"\b(GVL_[A-Za-z0-9_]+|EXC_[A-Za-z0-9_]+|COM|HMI|EXC|PA|IO|INTERN)((?:\.[A-Za-z0-9_]+(?:\[-?\d+\])?)+)", body):
             root_name = match.group(1)
             parts = match.group(2).lstrip(".").split(".")

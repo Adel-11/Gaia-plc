@@ -302,6 +302,7 @@ def register_plc_routes(app, get_session, current_user, csrf):
     def direct_export(state, names, filename, session, user, digest_key):
         import copy
         scoped_state = copy.deepcopy(state)
+        scoped_state['special_exc_assignments'] = []
         scoped_state['instances'] = [] if filename.endswith('-type.xml') else scoped_state.get('instances', [])
         for key in ('tcp_points', 'rtu_channels', 'io_channels', 'virtual_io', 'exchange_calls'):
             scoped_state[key] = []
@@ -334,6 +335,7 @@ def register_plc_routes(app, get_session, current_user, csrf):
         typ = next((t for t in state.get('types', []) if str(t.get('id')) == str(type_id)), None)
         if typ is None: raise HTTPException(404, 'PLC type not found')
         isolated = copy.deepcopy(state); isolated['instances'] = []
+        isolated['special_exc_assignments'] = []
         for key in ('tcp_points', 'rtu_channels', 'io_channels', 'virtual_io', 'pa_values', 'exchange_calls'): isolated[key] = []
         fbtext = str(typ.get('fb', {}).get('body') or '')
         fn_names = set(re.findall(r'\b(?:FC_EXC|FNC)_[A-Za-z0-9_]+', fbtext))
@@ -348,6 +350,7 @@ def register_plc_routes(app, get_session, current_user, csrf):
     def export_instances(session=Depends(get_session), user=Depends(current_user), _=Depends(csrf)):
         import copy
         state = project(session); isolated = copy.deepcopy(state)
+        isolated['special_exc_assignments'] = []
         for key in ('tcp_points', 'rtu_channels', 'io_channels', 'virtual_io', 'pa_values', 'exchange_calls'): isolated[key] = []
         isolated['exchange_functions'] = []
         try: objects = v2_plc.build_program(isolated, include_union=True)

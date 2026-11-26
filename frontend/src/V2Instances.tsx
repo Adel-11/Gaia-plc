@@ -2,6 +2,7 @@ import ModalFullscreen from './ModalFullscreen'
 import { useEffect, useState } from 'react'
 import V2ObjectView from './V2ObjectView'
 import InstanceMapping from './InstanceMapping'
+import SpecialExcAssignments from './SpecialExcAssignments'
 import './instances.css'
 
 type Row = Record<string, any>
@@ -15,6 +16,7 @@ export default function V2Instances({ project, csrf, onSaved, onCommunications, 
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[review,setReview]=useState<Row|null>(null)
   const [editor,setEditor]=useState<Row|null>(null),[editorDirty,setEditorDirty]=useState(false)
   const [commentDraft, setCommentDraft] = useState<{instance: Row; value: string} | null>(null)
+  const [specialExc, setSpecialExc] = useState<Row|null>(null)
   const [mapping,setMapping]=useState<{instance: Row; role: 'IO' | 'COM' | 'HMI'; template?: boolean} | null>(null)
   const [ioProposals,setIoProposals]=useState<IoProposal[] | null>(null)
   useEffect(() => { if (!openInstanceName) return; const instance = instances.find(item => (item.name || item.id) === openInstanceName); if (instance) { setEditor(instance); setEditorDirty(false); onOpenInstanceHandled?.() } }, [openInstanceName, project?.revision])
@@ -69,10 +71,11 @@ export default function V2Instances({ project, csrf, onSaved, onCommunications, 
     {error&&<p className="instances-error" role="alert">{error}</p>}{notice&&<p className="instance-simple-notice" role="status">{notice}</p>}
     <div className="instances-table-wrap"><table className="instances-table"><thead><tr><th>Instance</th><th>Type partagé</th><th>Actions</th></tr></thead><tbody>
       {newInstanceRow}
-      {instances.map(i=><tr key={i.id||i.name}><td><strong>{i.name||i.id}</strong>{(i.comment ?? i.description ?? i.Comment) && <div>{i.comment ?? i.description ?? i.Comment}</div>}</td><td>{typeFor(i.type_id)?.name||i.type_id}</td><td className="instance-actions"><button onClick={()=>{setEditor(i);setEditorDirty(false)}}>Blocs et code</button><button onClick={() => { setError(''); setCommentDraft({instance:i,value:i.comment ?? i.description ?? i.Comment ?? ''}) }}>Commentaire</button>{hasRole(typeFor(i.type_id), 'IO') && <button onClick={() => setMapping({instance:i,role:'IO'})}>IOMAP</button>}{hasRole(typeFor(i.type_id), 'COM') && <button onClick={() => setMapping({instance:i,role:'COM'})}>COM terrain</button>}{hasRole(typeFor(i.type_id), 'HMI') && <button onClick={() => setMapping({instance:i,role:'HMI'})}>HMI / SCADA</button>}{hasRole(typeFor(i.type_id), 'HMI') && <button onClick={() => setMapping({instance:i,role:'HMI',template:true})}>Modèle HMI</button>}{hasRole(typeFor(i.type_id), 'COM') && <button onClick={() => setMapping({instance:i,role:'COM',template:true})}>Appliquer le modèle Modbus</button>}{typeFor(i.type_id)?.duts?.some((d:Row)=>d.role==='PA')&&<button onClick={()=>void openPa(i)}>Paramètres PA</button>}<button className="danger" disabled={busy} aria-label={`Supprimer l’instance ${i.name||i.id}`} onClick={()=>void remove(i)}>Supprimer</button></td></tr>)}
+      {instances.map(i=><tr key={i.id||i.name}><td><strong>{i.name||i.id}</strong>{(i.comment ?? i.description ?? i.Comment) && <div>{i.comment ?? i.description ?? i.Comment}</div>}</td><td>{typeFor(i.type_id)?.name||i.type_id}</td><td className="instance-actions"><button onClick={()=>{setEditor(i);setEditorDirty(false)}}>Blocs et code</button><button onClick={() => { setError(''); setCommentDraft({instance:i,value:i.comment ?? i.description ?? i.Comment ?? ''}) }}>Commentaire</button>{hasRole(typeFor(i.type_id), 'EXC') && <button onClick={() => setSpecialExc(i)}>EXC</button>}{hasRole(typeFor(i.type_id), 'IO') && <button onClick={() => setMapping({instance:i,role:'IO'})}>IOMAP</button>}{hasRole(typeFor(i.type_id), 'COM') && <button onClick={() => setMapping({instance:i,role:'COM'})}>COM terrain</button>}{hasRole(typeFor(i.type_id), 'HMI') && <button onClick={() => setMapping({instance:i,role:'HMI'})}>HMI / SCADA</button>}{hasRole(typeFor(i.type_id), 'HMI') && <button onClick={() => setMapping({instance:i,role:'HMI',template:true})}>Modèle HMI</button>}{hasRole(typeFor(i.type_id), 'COM') && <button onClick={() => setMapping({instance:i,role:'COM',template:true})}>Appliquer le modèle Modbus</button>}{typeFor(i.type_id)?.duts?.some((d:Row)=>d.role==='PA')&&<button onClick={()=>void openPa(i)}>Paramètres PA</button>}<button className="danger" disabled={busy} aria-label={`Supprimer l’instance ${i.name||i.id}`} onClick={()=>void remove(i)}>Supprimer</button></td></tr>)}
       {!instances.length&&<tr><td colSpan={3}>Aucune instance. Déclarez-en une avec le formulaire ci-dessus.</td></tr>}
       {instances.length > 0 && newInstanceRow}
     </tbody></table></div>
+    {specialExc && <SpecialExcAssignments csrf={csrf} instanceId={specialExc.id || specialExc.name} onSaved={onSaved} onClose={() => setSpecialExc(null)}/>}
     {ioProposals && <div className="instance-backdrop"><section className="instance-dialog" role="dialog" aria-modal="true" aria-label="IOMAP de la nouvelle instance"><ModalFullscreen onClose={() => setIoProposals(null)} disabled={busy}/>
       <header><h2>IOMAP · {proposedName()}</h2></header>
       <div className="instance-form"><p>Choisis les variables à déclarer dans GVL_IOMAP et à relier aux E/S de cette instance.</p>

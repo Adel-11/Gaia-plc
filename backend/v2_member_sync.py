@@ -122,7 +122,8 @@ def _simple(value, delta, removed):
 
 def sync_consumers(state, typ, edits):
     """Propagate structured links; only handwritten references can block removal."""
-    if not edits: return [], []
+    edits = edits or {}
+    if not edits and not state.get('special_exc_assignments'): return [], []
     from backend.v2_exchanges import _normal_mappings, _sync
     from backend.v2_configuration import synchronize_workbooks
     names = {str(typ.get(k)) for k in ("id", "name")}
@@ -133,6 +134,9 @@ def sync_consumers(state, typ, edits):
              for name in set(instances_by_alias.values())}
     short_roots = {root.split(".", 1)[1]: delta for root, delta in roots.items()}
     errors, changes = [], []
+    from backend.v2_special_exc import sync as sync_special_exc
+    changes.extend(sync_special_exc(state, {**roots, **short_roots}, instances_by_alias, edits))
+    if not edits: return errors, changes
     sync_sheets = False
     if ({'COM', 'HMI'} & edits.keys()) and "modbus_template" in typ:
         updated = []

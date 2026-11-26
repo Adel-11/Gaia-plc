@@ -620,6 +620,11 @@ def _generated_objects(objs, state, sources):
     if "GFC_EXC" in objs:
         # Exchange calls can read values written by earlier calls. Keep their order.
         sections = ["\n".join(lines) for _, lines in call_chunks]
+        from backend.v2_special_exc import render, external_sources
+        if special := render(state):
+            sections.insert(0, special)
+            from backend.v2_plc_validation import _snapshot_nodes
+            objs['GFC_EXC']['external_source_assignments'] = external_sources(state, set(objs) | set(_snapshot_nodes(state)))
         _pou_text(objs["GFC_EXC"], "\n\n".join([*sections, "GFC_EXC := TRUE;"]))
     if "PLC_PRG" in objs: _pou_text(objs["PLC_PRG"],"GFC_COM_IN();\nGFC_IO_IN();\nGFB_UPI_1();\nGFC_EXC();\nGFB_INST_1();\nGFC_COM_OUT();\nGFC_IO_OUT();", preserve_reference=True)
 

@@ -10,6 +10,7 @@ class Preview(BaseModel):
     revision:int; action:str; function_id:str|None=None; type_a_id:str|None=None; type_b_id:str|None=None
     instance_a_id:str|None=None; instance_b_id:str|None=None; call_id:str|None=None
     mappings:list[dict]|None=None; custom_code:str|None=None; layout:dict|None=None; local_variables:list[dict]|None=None
+    assignments:list[dict]|None=None
 class Apply(BaseModel): token:str
 
 def _type(state, ident): return next((t for t in state.get('types',[]) if str(t.get('id'))==str(ident) or str(t.get('name'))==str(ident)),None)
@@ -38,7 +39,9 @@ def _view(state):
     calls=[]
     for c in state.get('exchange_calls',[]):
         x=copy.deepcopy(c); x.update(id=str(c.get('id') or f"{c.get('function_id') or c.get('FC')}:{c.get('instance_a_id') or c.get('Instance A')}:{c.get('instance_b_id') or c.get('Instance B')}"),function_id=c.get('function_id') or c.get('FC'),instance_a_id=c.get('instance_a_id') or c.get('Instance A'),instance_b_id=c.get('instance_b_id') or c.get('Instance B')) ; calls.append(x)
-    return {'revision':state.get('revision',0),'functions':functions,'calls':calls,'instances':copy.deepcopy(state.get('instances',[])),'types':copy.deepcopy(state.get('types',[])),'layout':copy.deepcopy(state.get('exchange_layout',{'nodes':{},'viewport':{'x':0,'y':0,'zoom':1}}))}
+    from backend.v2_special_exc import KEY, options
+    return {'revision':state.get('revision',0),'functions':functions,'calls':calls,'instances':copy.deepcopy(state.get('instances',[])),'types':copy.deepcopy(state.get('types',[])),'layout':copy.deepcopy(state.get('exchange_layout',{'nodes':{},'viewport':{'x':0,'y':0,'zoom':1}})),
+            KEY: copy.deepcopy(state.get(KEY, [])), 'special_exc_options': {_name(instance): options(state, instance) for instance in state.get('instances', [])}}
 
 PATH_RE=re.compile(r'^[A-Za-z_]\w*\.[A-Za-z_]\w*(?:\[-?\d+\])?(?:\.[A-Za-z_]\w*(?:\[-?\d+\])?)*$')
 def _lit(v, iec):
@@ -274,7 +277,12 @@ def register_exchange_routes(app,get_session,current_user,csrf):
         if body.revision!=current.get('revision',0): raise HTTPException(409,'Project revision changed; reload exchanges')
         state=copy.deepcopy(current); warnings=[]; changes=[]
         try:
-            if body.action=='layout':
+            if body.action=='save_special':
+                from backend.v2_special_exc import replace
+                if body.assignments is None: raise ValueError('La liste des affectations est obligatoire ; utilise une liste vide pour les supprimer.')
+                changes.extend(replace(state, body.instance_a_id, body.assignments))
+                warnings.append('Les sources ST libres doivent exister dans CODESYS et avoir un type compatible avec leur cible EXC. Les affectations sont exécutées avant les appels Exchange existants.')
+            elif body.action=='layout':
                 layout=body.layout or {}; nodes=layout.get('nodes',{}); valid={str(i.get('id') or i.get('name')) for i in state.get('instances',[])}
                 for k,v in nodes.items():
                     if k not in valid or not isinstance(v,dict) or not all(math.isfinite(float(v.get(axis))) and abs(float(v[axis]))<=1e6 for axis in ('x','y')): raise ValueError('Invalid graph layout coordinates')
@@ -383,6 +391,9 @@ def register_exchange_routes(app,get_session,current_user,csrf):
         proposed=_view(state)
         focus=body.function_id or (_fname(fn) if body.action=='connect' else None)
         generated=next((f['generated_st'] for f in proposed['functions'] if str(f['id'])==str(focus)), '')
+        if body.action == 'save_special':
+            from backend.v2_special_exc import render
+            generated = render(state)
         return {'token':token,'errors':[],'warnings':warnings,'changes':changes,'exchanges':proposed,'generated_st':generated}
     @app.post('/api/v2/exchanges/apply')
     def apply(body:Apply,session=Depends(get_session),user=Depends(current_user),_=Depends(csrf)):

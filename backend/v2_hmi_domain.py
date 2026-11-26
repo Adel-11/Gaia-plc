@@ -106,7 +106,7 @@ def migrate_state(state, supervised=None):
             if instance.get('type_id') in {typ['id'], typ['name']}:
                 instance_members[str(instance.get('name') or instance['id']).casefold()] = names
     for key in ('tcp_points', 'rtu_channels', 'gfc_copy_overrides', 'functions', 'exchange_functions',
-                'generated_custom_code', 'generated_local_variables', 'workbooks'):
+                'generated_custom_code', 'generated_local_variables', 'workbooks', 'special_exc_assignments'):
         if key in state:
             state[key] = _walk(state[key], instances=instance_members)
     for row in state.get('tcp_points', []) + state.get('rtu_channels', []):

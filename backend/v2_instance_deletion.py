@@ -65,6 +65,10 @@ def delete_instance(state, instance):
 
     calls = [call for call in state.get("exchange_calls", []) if connected(call)]
     state["exchange_calls"] = [call for call in state.get("exchange_calls", []) if not connected(call)]
+    from backend.v2_special_exc import KEY as SPECIAL_EXC
+    special = state.get(SPECIAL_EXC, [])
+    kept_special = [row for row in special if not owned(row) and not (_instance_symbols(name) & _identifiers(row.get('source', '')))]
+    if SPECIAL_EXC in state: state[SPECIAL_EXC] = kept_special
     for alias in aliases:
         nodes = state.get("exchange_layout", {}).get("nodes", {})
         for key in list(nodes):
@@ -90,6 +94,7 @@ def delete_instance(state, instance):
         f"Supprimer l’instance {name} et ses déclarations GVL, appels GFB et recopies GFC.",
         f"Libérer {len(removed['tcp_points'])} adresses TCP, {len(removed['rtu_channels'])} registres RTU et {len(removed['rtu_slaves'])} adresse(s) esclave.",
         f"Retirer {len(calls)} connexion(s) Exchange et {len(removed['pa_values'])} valeur(s) PA.",
+        f"Retirer {len(special) - len(kept_special)} affectation(s) EXC particulière(s).",
         f"Retirer {len(iomap)} variable(s) IOMAP, {len(modbus)} variable(s) Modbus PLC et {hardware_count} liaison(s) du rack. Libérer {physical} affectation(s) E/S.",
     ]
 
